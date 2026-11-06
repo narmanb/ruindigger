@@ -38,6 +38,12 @@ func _process(_d: float) -> void:
 		if key == "hall":
 			var r: Rect2i = mine.data["halls"][0]
 			c = Vector2i(r.position.x - 2, r.end.y - 2)
+		if key == "pocket":
+			var pr: Rect2i = mine.data["water_pockets"][int(args.get("i", "0"))]
+			c = Vector2i(pr.position.x - 3, pr.end.y - 1)
+			for yy in range(c.y - 2, c.y + 1):
+				for xx in range(c.x - 2, c.x + 1):
+					mine.grid.set_mat(xx, yy, Cell.AIR, true)
 		if key == "crawler":
 			for e in mine.data["entities"]:
 				if e["type"] == "crawler":

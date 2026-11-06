@@ -41,6 +41,8 @@ var eye_glow: Sprite2D
 var anim_t := 0.0
 var mat: ShaderMaterial
 var up_dir := Vector2.UP
+var hitstun := 0.0
+var windup := 0.0
 
 
 func _ready() -> void:
@@ -97,6 +99,11 @@ func _physics_process(delta: float) -> void:
 		_sleep_acc = 0.0
 	flash = maxf(0.0, flash - delta * 5.0)
 	attack_cd = maxf(0.0, attack_cd - delta)
+	hitstun = maxf(0.0, hitstun - delta)
+	if grid.get_water(cell.x, cell.y) >= Balance.WATER_MAX / 2:
+		hit(Balance.WATER_CRAWLER_DPS * delta, global_position, false)
+		if state == S.DEAD:
+			return
 	anim_t += delta
 	if not walkable(cell) and grid.is_solid(cell.x, cell.y):
 		# terrain changed under us (rubble landed): pop to a free neighbour
@@ -138,10 +145,18 @@ func _physics_process(delta: float) -> void:
 					_begin_tunnel()
 			if state == S.TUNNEL:
 				_tunnel(delta)
-			if pl and dist < 20.0 and attack_cd <= 0.0 and not pl.dead:
-				attack_cd = Balance.CRAWLER_ATTACK_COOLDOWN
-				pl.take_damage(Balance.CRAWLER_DAMAGE, global_position, "burrow crawler")
-				Audio.play_at("crawler_bite", global_position)
+			# bites are telegraphed: rear up for CRAWLER_WINDUP, then strike if
+			# still in reach. A drill hit during the wind-up cancels it.
+			if pl and dist < 22.0 and attack_cd <= 0.0 and windup <= 0.0 and hitstun <= 0.0 and not pl.dead:
+				windup = Balance.CRAWLER_WINDUP
+				Audio.play_at("crawler_alert", global_position, -8.0, 0.2, 0.3)
+			if windup > 0.0:
+				windup -= delta
+				if windup <= 0.0:
+					attack_cd = Balance.CRAWLER_ATTACK_COOLDOWN
+					if pl and not pl.dead and global_position.distance_to(pl.global_position) < 26.0 and hitstun <= 0.0:
+						pl.take_damage(Balance.CRAWLER_DAMAGE, global_position, "burrow crawler")
+						Audio.play_at("crawler_bite", global_position)
 	_step(delta)
 	_visual()
 
@@ -229,7 +244,7 @@ func _tunnel(delta: float) -> void:
 
 func _step(delta: float) -> void:
 	var speed := Balance.CRAWLER_SPEED_CHASE if state in [S.CHASE, S.INVESTIGATE] else Balance.CRAWLER_SPEED_PATROL
-	if state in [S.STUNNED, S.TUNNEL]:
+	if state in [S.STUNNED, S.TUNNEL] or hitstun > 0.0 or windup > 0.0:
 		speed = 0.0
 	if move_t < 1.0:
 		move_t = minf(1.0, move_t + speed * delta)
@@ -281,7 +296,7 @@ func _visual() -> void:
 		S.STUNNED:
 			anim = "stun"
 		S.CHASE:
-			anim = "attack" if attack_cd > Balance.CRAWLER_ATTACK_COOLDOWN - 0.25 else "walk"
+			anim = "attack" if (windup > 0.0 or attack_cd > Balance.CRAWLER_ATTACK_COOLDOWN - 0.25) else "walk"
 		S.INVESTIGATE:
 			anim = "alert"
 	if flash > 0.5:
@@ -292,6 +307,8 @@ func _visual() -> void:
 	spr.position = Vector2(randf_range(-1, 1), 0).round() if state == S.TUNNEL else Vector2.ZERO
 	if state == S.STUNNED:
 		spr.position.y = sin(anim_t * 20.0)
+	if windup > 0.0:
+		queue_redraw()
 	eye_glow.global_position = global_position + Vector2(facing * 10, -4).rotated(spr.rotation)
 	var alert := state in [S.CHASE, S.TUNNEL]
 	eye_glow.modulate = Color(1.0, 0.25, 0.2, 0.8) if alert else Color(1.0, 0.6, 0.2, 0.45)
@@ -302,13 +319,39 @@ func hit(dmg: float, from: Vector2, knock: bool = true) -> void:
 		return
 	hp -= dmg
 	flash = 1.0
+	queue_redraw()
 	if knock:
 		Audio.play_at("crawler_hit", global_position, -3.0, 0.1, 0.12)
 		mine.fx.burst(global_position, Color(0.8, 0.3, 0.4), 6)
+		hitstun = Balance.DRILL_HITSTUN
+		windup = 0.0
+		_knockback(from)
 	if state == S.PATROL or state == S.INVESTIGATE:
 		_alert()
 	if hp <= 0.0:
 		die()
+
+
+func _knockback(from: Vector2) -> void:
+	if move_t < 1.0:
+		return
+	var away := global_position - from
+	var step := Vector2i(signi(int(away.x)), 0) if absf(away.x) >= absf(away.y) else Vector2i(0, signi(int(away.y)))
+	var n := cell + step
+	if step != Vector2i.ZERO and walkable(n):
+		next_cell = n
+		move_t = 0.35   # snap most of the way so the shove reads instantly
+		path.clear()
+
+
+func _draw() -> void:
+	if hp < Balance.CRAWLER_HP and state != S.DEAD:
+		var w := 18.0
+		var f := clampf(hp / Balance.CRAWLER_HP, 0.0, 1.0)
+		draw_rect(Rect2(-w * 0.5 - 1, -17, w + 2, 4), Color(0, 0, 0, 0.7))
+		draw_rect(Rect2(-w * 0.5, -16, w * f, 2), Color(1.0, 0.35, 0.3))
+	if windup > 0.0:
+		draw_arc(Vector2.ZERO, 12.0 + windup * 10.0, 0, TAU, 20, Color(1.0, 0.3, 0.2, 0.7), 1.0)
 
 
 func stun(t: float) -> void:

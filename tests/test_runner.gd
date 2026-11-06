@@ -130,6 +130,73 @@ func _terrain() -> void:
 	check(g4.line_clear(Vector2(8, 8), Vector2(150, 8)), "LOS clear in open grid")
 	g4.put(5, 0, Cell.HARD)
 	check(not g4.line_clear(Vector2(8, 8), Vector2(150, 8)), "LOS blocked by a solid cell")
+	_water_units()
+	_boulder_units()
+
+
+func _basin() -> TerrainGrid:
+	# 20x12 grid: solid everywhere except a closed basin x 2..9, y 2..9, plus a
+	# sealed side room x 11..17 behind a one-cell wall at x 10
+	var g := TerrainGrid.new(20, 12)
+	for y in 12:
+		for x in 20:
+			g.put(x, y, Cell.HARD)
+	for y in range(2, 10):
+		for x in range(2, 10):
+			g.put(x, y, Cell.AIR)
+		for x in range(11, 18):
+			g.put(x, y, Cell.AIR)
+	return g
+
+
+func _water_units() -> void:
+	var g := _basin()
+	var sim := WaterSim.new(g)
+	for x in range(3, 7):
+		g.set_water(x, 2, Balance.WATER_MAX)   # 4 cells of water dropped at the top
+	var total0 := sim.total()
+	sim.settle(400)
+	check(sim.total() == total0, "water is conserved while settling (%d -> %d)" % [total0, sim.total()])
+	var floor_lv: Array = []
+	for x in range(2, 10):
+		floor_lv.append(g.get_water(x, 9))
+	check(floor_lv.max() - floor_lv.min() <= Balance.WATER_MAX / 8, "water levels out across the basin floor %s" % str(floor_lv))
+	check(g.get_water(4, 2) == 0, "water falls away from where it was poured")
+	# breach the wall: water must flow into the side room
+	g.set_mat(10, 9, Cell.AIR, true)
+	g.set_mat(10, 8, Cell.AIR, true)
+	sim.settle(400)
+	var room := 0
+	for x in range(11, 18):
+		room += g.get_water(x, 9)
+	check(room > 0, "breaching a wall lets water flow through (%d units arrived)" % room)
+	check(sim.total() == total0, "water conserved through the breach")
+	# a solid landing in water displaces it upward instead of deleting it
+	var before := sim.total()
+	g.set_mat(5, 9, Cell.LOOSE)
+	check(sim.total() + sim.lost == before, "displaced water is accounted for")
+
+
+func _boulder_units() -> void:
+	var g := TerrainGrid.new(16, 16)
+	for y in 16:
+		for x in 16:
+			g.put(x, y, Cell.SOFT if y < 3 else Cell.AIR)
+	g.put(7, 3, Cell.SOFT)                      # neck
+	for y in range(4, 6):
+		for x in range(6, 9):
+			g.put(x, y, Cell.HARD)
+	check(Boulders.unsupported_mass(g, Vector2i(7, 4)).is_empty(), "basalt hanging from a sediment neck is anchored")
+	g.put(7, 3, Cell.AIR)
+	check(Boulders.unsupported_mass(g, Vector2i(7, 4)).size() == 6, "removing the neck leaves a free-falling 6-cell boulder")
+	for x in 16:
+		g.put(x, 6, Cell.LOOSE)
+	check(Boulders.unsupported_mass(g, Vector2i(7, 4)).is_empty(), "a boulder resting on anything solid stays put")
+	var big := TerrainGrid.new(16, 16)
+	for y in range(2, 10):
+		for x in range(2, 10):
+			big.put(x, y, Cell.HARD)
+	check(Boulders.unsupported_mass(big, Vector2i(5, 5)).is_empty(), "big basalt masses count as bedded in")
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +246,8 @@ func _generation(n: int) -> void:
 	section("generation x%d seeds" % n)
 	var repaired := 0
 	var worst_ms := 0
+	var total_water := 0
+	var total_boulders := 0
 	for i in n:
 		var seed_value := 1000 + i * 7919
 		var contract: Dictionary = Balance.CONTRACTS[i % Balance.CONTRACTS.size()]
@@ -217,10 +286,31 @@ func _generation(n: int) -> void:
 			if g.ore[idx] != 0 and (g.flags[idx] & Cell.F_PROTECTED):
 				ore_in_protected += 1
 		check(ore_in_protected == 0, tag + ": no ore inside protected structures")
+		# water starts settled and sealed; no basalt starts unsupported
+		var total_w := 0
+		for v in g.water:
+			total_w += v
+		var sim := WaterSim.new(g)
+		sim.wake_all()
+		sim.step()
+		sim.step()
+		check(sim.last_moves == 0, tag + ": generated water is at rest (%d moving)" % sim.last_moves)
+		g.cell_changed.disconnect(sim._on_cell_changed)
+		var floating := 0
+		for y in range(2, g.h - 6):
+			for x in range(2, g.w - 2):
+				if g.get_mat(x, y) == Cell.HARD and not g.is_solid(x, y + 1):
+					if not Boulders.unsupported_mass(g, Vector2i(x, y)).is_empty():
+						floating += 1
+		check(floating == 0, tag + ": no basalt starts out unsupported (%d)" % floating)
+		total_water += total_w
+		total_boulders += int(d.get("boulders", 0))
 		if i < 4:
 			var again := MineGenerator.new().generate(seed_value, contract)
 			check(_grid_hash(again["grid"]) == _grid_hash(g), tag + ": generation is deterministic")
-	print("  seeds needing repair: %d / %d, slowest generation %d ms" % [repaired, n, worst_ms])
+	print("  seeds needing repair: %d / %d, slowest generation %d ms, water units %d, hanging boulders %d" % [repaired, n, worst_ms, total_water, total_boulders])
+	check(total_water > 0, "mines contain water")
+	check(total_boulders > n, "mines contain hanging boulders (avg > 1 per seed)")
 	check(repaired == 0, "guaranteed route never needed the repair fallback")
 
 
@@ -446,6 +536,113 @@ func _gameplay() -> void:
 			await _frames(2)
 			check(se.state == Sentry.S.DEAD, "destroying the power module disables the sentry")
 		pl.invuln = 0.0
+	# --- drilling straight up reaches the ceiling of a 2-cell tunnel
+	var ux := 46
+	var uy := 60
+	for y in range(uy - 4, uy + 2):
+		for x in range(ux - 2, ux + 3):
+			g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE, false)
+			g.set_mat(x, y, Cell.SOFT)
+	g.set_mat(ux, uy, Cell.AIR)
+	g.set_mat(ux, uy - 1, Cell.AIR)
+	g.set_mat(ux + 1, uy, Cell.AIR)
+	g.set_mat(ux + 1, uy - 1, Cell.AIR)
+	pl.global_position = Vector2(ux * 16 + 8, (uy + 1) * 16 - Player.HALF.y - 0.5)
+	pl.velocity = Vector2.ZERO
+	pl.invuln = 99.0
+	await _frames(10)
+	pl.input_override = {"drill": true, "y": -1.0}
+	await _frames(40)
+	pl.input_override = {"x": 0.0}
+	check(not g.is_solid(ux, uy - 2), "drilling up breaks the ceiling above a 2-cell tunnel")
+	await _frames(20)
+	# --- the drill kills a crawler quickly and stops its bites
+	var cr2 := Crawler.new()
+	cr2.mine = mine
+	cr2.position = g.cell_center(Vector2i(ux + 1, uy))
+	mine.entity_root.add_child(cr2)
+	mine.enemies.append(cr2)
+	await _frames(2)
+	pl.global_position = Vector2(ux * 16 + 8, (uy + 1) * 16 - Player.HALF.y - 0.5)
+	pl.facing = 1
+	pl.invuln = 0.0
+	pl.hp = pl.max_hp
+	var hp0 := pl.hp
+	pl.input_override = {"drill": true, "x": 0.3}
+	var kill_frames := 0
+	for i in 120:
+		await get_tree().physics_frame
+		kill_frames += 1
+		if not is_instance_valid(cr2) or cr2.state == Crawler.S.DEAD:
+			break
+	pl.input_override = {"x": 0.0}
+	check(not is_instance_valid(cr2) or cr2.state == Crawler.S.DEAD, "drilling a crawler kills it (%d frames)" % kill_frames)
+	check(kill_frames <= 60, "crawler dies within a second of drilling")
+	check(pl.hp >= hp0 - Balance.CRAWLER_DAMAGE, "a crawler being drilled gets at most one bite in (hp %d -> %d)" % [hp0, pl.hp])
+	# --- unsupported basalt: drop a hanging boulder on a crawler
+	var bx := 54
+	var by := 80
+	for y in range(by - 1, by + 9):
+		for x in range(bx - 4, bx + 5):
+			g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE, false)
+			g.set_mat(x, y, Cell.AIR if y < by + 8 else Cell.HARD)
+	g.set_mat(bx, by - 1, Cell.SOFT)
+	for x in range(bx - 4, bx + 5):
+		g.set_mat(x, by - 1, Cell.SOFT)
+	g.set_mat(bx, by, Cell.SOFT)                   # neck
+	for x in range(bx - 1, bx + 2):
+		g.set_mat(x, by + 1, Cell.HARD)
+		g.set_mat(x, by + 2, Cell.HARD)
+	var victim := Crawler.new()
+	victim.mine = mine
+	victim.position = g.cell_center(Vector2i(bx, by + 7))
+	mine.entity_root.add_child(victim)
+	mine.enemies.append(victim)
+	await _frames(1)
+	victim.stun(30.0)   # hold it under the boulder
+	pl.global_position = Vector2((bx + 3) * 16 + 8, (by + 8) * 16 - Player.HALF.y - 0.5)
+	pl.invuln = 99.0
+	await _frames(5)
+	var dropped0: int = mine.collapse.boulders_dropped
+	mine.damage_cell(Vector2i(bx, by), 99.0, 0, false, "test")
+	await _frames(20)
+	check(mine.collapse.boulder_pending.size() > 0 or mine.collapse.boulders_dropped > dropped0, "cutting the neck telegraphs a falling boulder")
+	await _frames(120)
+	check(mine.collapse.boulders_dropped > dropped0, "the boulder fell")
+	check(not is_instance_valid(victim) or victim.state == Crawler.S.DEAD or victim.state == Crawler.S.STUNNED, "falling basalt crushes the crawler below")
+	pl.invuln = 0.0
+	# --- water: released water floods, the player swims
+	var wx := 30
+	var wy := 100
+	for y in range(wy - 6, wy + 2):
+		for x in range(wx - 6, wx + 7):
+			g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE, false)
+			g.set_mat(x, y, Cell.HARD if (y == wy + 1 or x == wx - 6 or x == wx + 6 or y == wy - 6) else Cell.AIR)
+			g.set_water(x, y, 0)
+	for y in range(wy - 5, wy + 1):
+		g.set_mat(wx, y, Cell.HARD)            # dam in the middle
+	for y in range(wy - 3, wy + 1):
+		for x in range(wx - 5, wx):
+			g.set_water(x, y, Balance.WATER_MAX)
+	mine.water.wake_all()
+	await _frames(20)
+	var right_before := 0
+	for x in range(wx + 1, wx + 6):
+		right_before += g.get_water(x, wy)
+	check(right_before == 0, "dammed water stays behind the dam")
+	mine.damage_cell(Vector2i(wx, wy), 99.0, 0, false, "test")
+	mine.damage_cell(Vector2i(wx, wy - 1), 99.0, 0, false, "test")
+	await _frames(90)
+	var right_after := 0
+	for x in range(wx + 1, wx + 6):
+		right_after += g.get_water(x, wy)
+	check(right_after > 0, "breaking the dam floods the other side (%d units)" % right_after)
+	pl.global_position = Vector2((wx - 3) * 16 + 8, wy * 16)
+	pl.velocity = Vector2(0, 300)
+	pl.input_override = {"x": 0.0}
+	await _frames(10)
+	check(pl.submerged(), "player is submerged in the pool")
+	check(pl.velocity.y <= Balance.WATER_MAX_FALL + 1.0, "water slows the player's fall (vy %.0f)" % pl.velocity.y)
 	# --- relic + extraction end cleanly
 	Game.run["cargo"] = {1: 3}
 	mine.relic.take()

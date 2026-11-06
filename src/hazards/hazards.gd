@@ -184,15 +184,141 @@ class Collapse extends Node2D:
 	var tex: Texture2D
 	var landed := 0
 	var shattered := 0
+	# basalt boulders
+	var _boulder_checks: Dictionary = {}   # Vector2i -> true, resolved once per frame
+	var boulder_pending: Array = []        # {cells: Array[Vector2i], t}
+	var boulders: Array = []               # {x0, y0, cells: [[dx,dy,ore,hp,s]], off(px), vy}
+	var boulders_dropped := 0
+	var boulders_landed := 0
+	var _claimed: Dictionary = {}          # cells already in a pending/falling boulder
 
 	func _ready() -> void:
 		tex = load("res://assets/gen/terrain_atlas.png")
 
 	func on_opened(x: int, y: int) -> void:
-		# a cell just became open: anything loose directly above may lose support
+		# a cell just became open: anything loose directly above may lose support,
+		# and any neighbouring basalt mass may have lost its anchor
 		var g: TerrainGrid = mine.grid
 		if g.get_mat(x, y - 1) == Cell.LOOSE:
 			_queue(Vector2i(x, y - 1))
+		for d in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1)]:
+			var n := Vector2i(x + d.x, y + d.y)
+			if g.get_mat(n.x, n.y) == Cell.HARD:
+				_boulder_checks[n] = true
+
+	func _resolve_boulder_checks() -> void:
+		if _boulder_checks.is_empty():
+			return
+		var g: TerrainGrid = mine.grid
+		for c in _boulder_checks.keys():
+			if _claimed.has(c):
+				continue
+			var mass := Boulders.unsupported_mass(g, c)
+			if mass.is_empty():
+				continue
+			for m in mass:
+				_claimed[m] = true
+			boulder_pending.append({"cells": mass, "t": Balance.BOULDER_TELEGRAPH})
+			Audio.play_at("rumble", g.cell_center(mass[0]), 0.0, 0.1, 0.2)
+			mine.shake(0.15)
+		_boulder_checks.clear()
+
+	func _drop_boulder(cells: Array) -> void:
+		var g: TerrainGrid = mine.grid
+		var x0 := 1 << 20
+		var y0 := 1 << 20
+		for c in cells:
+			x0 = mini(x0, c.x)
+			y0 = mini(y0, c.y)
+		var parts: Array = []
+		for c in cells:
+			parts.append([c.x - x0, c.y - y0, g.get_ore(c.x, c.y), g.hp[g.idx(c.x, c.y)], g.get_stratum(c.x, c.y)])
+		for c in cells:
+			g.set_mat(c.x, c.y, Cell.AIR, false)
+			_claimed.erase(c)
+		boulders.append({"x0": x0, "y0": y0, "cells": parts, "off": 0.0, "vy": 0.0})
+		boulders_dropped += 1
+
+	func _boulder_rects(b: Dictionary, dy_cells: int) -> Array[Rect2]:
+		var out: Array[Rect2] = []
+		for p in b["cells"]:
+			out.append(Rect2((b["x0"] + p[0]) * 16, (b["y0"] + p[1] + dy_cells) * 16, 16, 16))
+		return out
+
+	func _boulder_cell_set(b: Dictionary) -> Dictionary:
+		var d: Dictionary = {}
+		for p in b["cells"]:
+			d[Vector2i(b["x0"] + p[0], b["y0"] + p[1])] = true
+		return d
+
+	func _step_boulders(delta: float) -> void:
+		var g: TerrainGrid = mine.grid
+		for b in boulders.duplicate():
+			b["vy"] = minf(b["vy"] + 900.0 * delta, 460.0)
+			b["off"] += b["vy"] * delta
+			while b["off"] >= 16.0:
+				# can the whole mass move down one row?
+				var own := _boulder_cell_set(b)
+				var blocked := false
+				for c in own.keys():
+					var below := Vector2i(c.x, c.y + 1)
+					if not own.has(below) and (g.is_solid(below.x, below.y) or below.y >= g.h - 1):
+						blocked = true
+						break
+				if blocked:
+					b["off"] = 0.0
+					_land_boulder(b)
+					boulders.erase(b)
+					break
+				b["y0"] += 1
+				b["off"] -= 16.0
+			if not boulders.has(b):
+				continue
+			# crush whatever is underneath the moving mass
+			var hit := false
+			var rects := _boulder_rects(b, 0)
+			for r0 in rects:
+				var r: Rect2 = r0
+				r.position.y += b["off"]
+				var pl: Player = mine.player
+				if pl and not pl.dead and Rect2(pl.global_position - Player.HALF, Player.HALF * 2.0).intersects(r.grow(-2.0)):
+					pl.take_damage(Balance.BOULDER_PLAYER_DAMAGE, r.get_center(), "falling basalt")
+					hit = true
+				for e in mine.enemies:
+					if is_instance_valid(e) and e.hit_rect().intersects(r.grow(-1.0)):
+						e.hit(Balance.BOULDER_ENEMY_DAMAGE, r.get_center())
+						e.stun(Balance.RUBBLE_STUN)
+						hit = true
+				if hit:
+					break
+			if hit:
+				# the impact breaks the boulder apart into rubble that keeps falling
+				Audio.play_at("break_hard", rects[0].get_center(), 2.0)
+				mine.shake(0.5)
+				for p in b["cells"]:
+					falling.append({"x": b["x0"] + p[0], "y": (b["y0"] + p[1]) * 16.0 + b["off"] - 18.0, "vy": b["vy"] * 0.3, "s": p[4], "nodmg": true})
+				boulders.erase(b)
+
+	func _land_boulder(b: Dictionary) -> void:
+		var g: TerrainGrid = mine.grid
+		boulders_landed += 1
+		var centre := Vector2.ZERO
+		for p in b["cells"]:
+			var x: int = b["x0"] + p[0]
+			var y: int = b["y0"] + p[1]
+			centre += Vector2(x * 16 + 8, y * 16 + 8)
+			if g.has_flag(x, y, Cell.F_NO_RUBBLE) or g.is_solid(x, y):
+				mine.fx.burst(Vector2(x * 16 + 8, y * 16 + 8), Cell.debris_color(Cell.HARD, p[4]))
+				continue
+			g.place(x, y, Cell.HARD, p[2], p[3])
+		centre /= maxf(1.0, b["cells"].size())
+		Audio.play_at("break_hard", centre, 4.0, 0.05, 0.0)
+		Audio.play_at("land", centre, 2.0)
+		mine.fx.dust(centre + Vector2(0, 10), Color(0.7, 0.65, 0.6))
+		mine.fx.dust(centre + Vector2(12, 10), Color(0.7, 0.65, 0.6))
+		mine.fx.dust(centre + Vector2(-12, 10), Color(0.7, 0.65, 0.6))
+		mine.shake(0.45)
+		mine.noise(centre, 12.0)
 
 	func _queue(c: Vector2i) -> void:
 		if pending.has(c) or cascade_budget <= 0:
@@ -205,6 +331,20 @@ class Collapse extends Node2D:
 
 	func _physics_process(delta: float) -> void:
 		var g: TerrainGrid = mine.grid
+		_resolve_boulder_checks()
+		for bp in boulder_pending.duplicate():
+			bp["t"] -= delta
+			if randf() < 0.4:
+				var cc: Vector2i = bp["cells"][randi() % bp["cells"].size()]
+				mine.fx.dust(g.cell_center(cc) + Vector2(randf_range(-6, 6), 8), Color(0.7, 0.65, 0.6))
+			if bp["t"] <= 0.0:
+				boulder_pending.erase(bp)
+				var again := Boulders.unsupported_mass(g, bp["cells"][0])
+				for c in bp["cells"]:
+					_claimed.erase(c)
+				if not again.is_empty():
+					_drop_boulder(again)
+		_step_boulders(delta)
 		_budget_t -= delta
 		if _budget_t <= 0.0:
 			_budget_t = 1.5
@@ -224,7 +364,7 @@ class Collapse extends Node2D:
 			var ny: float = f["y"] + f["vy"] * delta
 			var below_cell := int(floor((ny + 16.0) / 16.0))
 			var rect := Rect2(f["x"] * 16 + 1, ny, 14, 16)
-			if _hit_entities(rect):
+			if not f.get("nodmg", false) and _hit_entities(rect):
 				falling.erase(f)
 				_shatter(Vector2(f["x"] * 16 + 8, ny + 8), f["s"])
 				continue
@@ -279,6 +419,28 @@ class Collapse extends Node2D:
 	func _draw() -> void:
 		var g: TerrainGrid = mine.grid
 		var t := Time.get_ticks_msec() / 1000.0
+		for bp in boulder_pending:
+			for c in bp["cells"]:
+				var pp := Vector2(c.x * 16, c.y * 16)
+				draw_rect(Rect2(pp, Vector2(16, 16)), Color(1.0, 0.5, 0.3, 0.12 + 0.12 * sin(t * 40.0)))
+		for b in boulders:
+			var own := _boulder_cell_set(b)
+			for p in b["cells"]:
+				var x: int = b["x0"] + p[0]
+				var y: int = b["y0"] + p[1]
+				var mask := 0
+				if not own.has(Vector2i(x, y - 1)):
+					mask |= 1
+				if not own.has(Vector2i(x + 1, y)):
+					mask |= 2
+				if not own.has(Vector2i(x, y + 1)):
+					mask |= 4
+				if not own.has(Vector2i(x - 1, y)):
+					mask |= 8
+				var src: Rect2 = mine.view.tile_rect(Cell.HARD, p[4], mask, x, y)
+				draw_texture_rect_region(tex, Rect2(x * 16, y * 16 + b["off"], 16, 16), src)
+				if p[2] != 0:
+					draw_texture_rect_region(mine.view.tex_ore, Rect2(x * 16, y * 16 + b["off"], 16, 16), Rect2(0, TerrainView.ORE_ROW.get(p[2], 0) * 16, 16, 16))
 		for c in pending.keys():
 			var p := Vector2(c.x * 16, c.y * 16)
 			var off := Vector2(sin(t * 60.0 + c.x) * 1.0, 0).round()

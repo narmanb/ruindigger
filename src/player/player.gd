@@ -231,7 +231,26 @@ func _physics_process(delta: float) -> void:
 	_animate(delta, ax)
 
 
+func submerged() -> bool:
+	if grid == null:
+		return false
+	var c := grid.world_to_cell(global_position)
+	return grid.get_water(c.x, c.y) >= Balance.WATER_MAX / 2 or grid.get_water(c.x, c.y - 1) >= Balance.WATER_MAX / 4
+
+
+var in_water := false
+
+
 func _move_normal(delta: float, ax: float, on_floor: bool) -> void:
+	var wet := submerged()
+	if wet != in_water:
+		in_water = wet
+		if mine:
+			mine.fx.dust(global_position + Vector2(0, -6), Color(0.6, 0.85, 1.0))
+			Audio.play_at("land", global_position, -6.0, 0.2)
+	if wet:
+		_swim(delta, ax)
+		return
 	var target := ax * Balance.RUN_SPEED
 	if drilling and on_floor and drill_dir.y != 0:
 		target *= 0.15
@@ -283,6 +302,18 @@ func _move_normal(delta: float, ax: float, on_floor: bool) -> void:
 		jumping = false
 	if velocity.y >= 0.0:
 		jumping = false
+
+
+func _swim(delta: float, ax: float) -> void:
+	velocity.x = move_toward(velocity.x, ax * Balance.RUN_SPEED * Balance.WATER_SPEED, Balance.AIR_ACCEL * delta)
+	velocity.y = minf(velocity.y + Balance.GRAVITY * Balance.WATER_GRAVITY * delta, Balance.WATER_MAX_FALL)
+	velocity.y = move_toward(velocity.y, 0.0, 120.0 * delta)
+	jet_ready = true
+	if buffer > 0.0 or (_pressed("jump") and velocity.y > -40.0):
+		buffer = 0.0
+		velocity.y = -Balance.WATER_SWIM
+		if mine and randf() < 0.5:
+			mine.fx.dust(global_position + Vector2(0, 10), Color(0.7, 0.9, 1.0))
 
 
 func _wall_dir() -> int:
@@ -360,6 +391,11 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 		_shake_t = 0.06
 		if drill_dir.y > 0 and hit_any:
 			velocity.y = minf(velocity.y, 30.0)
+	# drill bite: while the bit is in rock above or beside you, it holds your
+	# weight, so you can tunnel upward and cling to walls
+	if _touching_solid() and not is_on_floor() and drill_dir.y <= 0:
+		velocity.y = minf(velocity.y, 0.0 if drill_dir.y < 0 else 25.0)
+		jet_ready = true
 	heat = minf(heat_cap, heat + Balance.HEAT_PER_SEC * heat_mult * delta)
 	if heat >= heat_cap:
 		overheated = true
@@ -368,6 +404,13 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 		if mine:
 			mine.toast("DRILL OVERHEAT - venting")
 			mine.fx.steam(global_position + Vector2(facing * 10, -6))
+
+
+func _touching_solid() -> bool:
+	for t in targets:
+		if grid.is_solid(t.x, t.y):
+			return true
+	return false
 
 
 func compute_targets(dir: Vector2i) -> Array[Vector2i]:
@@ -388,7 +431,13 @@ func compute_targets(dir: Vector2i) -> Array[Vector2i]:
 	elif dir.y > 0:
 		out.append(grid.world_to_cell(Vector2(p.x, p.y + HALF.y + 5.0)))
 	else:
-		out.append(grid.world_to_cell(Vector2(p.x, p.y - HALF.y - 5.0)))
+		# the head sits ~6 px below the top of a 2-cell tunnel, so probe a cell
+		# above the head (still only the first solid cell, never through rock)
+		var head := grid.world_to_cell(Vector2(p.x, p.y - HALF.y - 2.0))
+		if grid.is_solid(head.x, head.y):
+			out.append(head)
+		else:
+			out.append(Vector2i(head.x, head.y - 1) if p.y - HALF.y - (head.y * C) < 9.0 else head)
 	return out
 
 
@@ -405,7 +454,7 @@ func _heat_and_audio(delta: float) -> void:
 	if not drilling:
 		cool_delay -= delta
 		if cool_delay <= 0.0:
-			heat = maxf(0.0, heat - Balance.heat_cooling(Progress.level("heat")) * delta * (1.4 if overheated else 1.0))
+			heat = maxf(0.0, heat - Balance.heat_cooling(Progress.level("heat")) * delta * (1.4 if overheated else 1.0) * (Balance.WATER_COOLING if in_water else 1.0))
 	if overheated and heat <= heat_cap * Balance.HEAT_RECOVER_FRACTION:
 		overheated = false
 		Audio.play("ui_confirm", -6.0)

@@ -30,6 +30,8 @@ static func cell_color(g: TerrainGrid, x: int, y: int) -> Color:
 	var o := g.get_ore(x, y)
 	if o != 0 and Cell.is_solid(m):
 		return Balance.ore_color(o)
+	if not Cell.is_solid(m) and g.get_water(x, y) >= Balance.WATER_MAX / 3:
+		return Color(0.2, 0.5, 0.9, 0.95)
 	match m:
 		Cell.AIR:
 			return Color(0.05, 0.04, 0.07, 0.85)

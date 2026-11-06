@@ -5,6 +5,7 @@ extends RefCounted
 
 signal cell_changed(x: int, y: int, old_mat: int, new_mat: int)
 signal cell_damaged(x: int, y: int, hp_frac: float)
+signal water_changed(x: int, y: int)
 
 const CHUNK := 16
 const SHADE_REACH := 3   # interior shading looks this many cells deep
@@ -16,10 +17,12 @@ var hp: PackedFloat32Array
 var ore: PackedByteArray
 var flags: PackedByteArray
 var stratum: PackedByteArray
+var water: PackedByteArray         # 0..WATER_MAX in open cells
 var chunks_w: int
 var chunks_h: int
 var _dirty: Dictionary = {}        # Vector2i chunk -> true
 var _explore_dirty: Array[Vector2i] = []
+var _water_dirty: Dictionary = {}  # chunk -> true (water presentation only)
 var edits: int = 0                 # count of cell changes (for tests/telemetry)
 
 
@@ -37,6 +40,8 @@ func _init(width: int = 8, height: int = 8) -> void:
 	flags.resize(n)
 	stratum = PackedByteArray()
 	stratum.resize(n)
+	water = PackedByteArray()
+	water.resize(n)
 	chunks_w = ceili(float(w) / CHUNK)
 	chunks_h = ceili(float(h) / CHUNK)
 
@@ -103,6 +108,39 @@ func put(x: int, y: int, m: int, ore_id: int = 0) -> void:
 	mat[i] = m
 	ore[i] = ore_id
 	hp[i] = Cell.max_hp(m)
+
+
+func get_water(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return 0
+	return water[y * w + x]
+
+
+func set_water(x: int, y: int, v: int) -> void:
+	if not in_bounds(x, y):
+		return
+	var i := y * w + x
+	if water[i] == v:
+		return
+	water[i] = clampi(v, 0, 255)
+	_water_dirty[Vector2i(x / CHUNK, y / CHUNK)] = true
+
+
+func take_water_dirty() -> Array:
+	var k := _water_dirty.keys()
+	_water_dirty.clear()
+	return k
+
+
+## Re-insert a solid cell with its ore and hp intact (falling boulders).
+func place(x: int, y: int, m: int, ore_id: int, hp_v: float) -> void:
+	if not in_bounds(x, y):
+		return
+	set_mat(x, y, m)
+	var i := y * w + x
+	ore[i] = ore_id
+	hp[i] = hp_v
+	flags[i] &= ~Cell.F_DUG
 
 
 ## Runtime write: updates hp, dirty chunks and notifies listeners.
@@ -276,6 +314,7 @@ func to_dict() -> Dictionary:
 		"flags": Marshalls.raw_to_base64(flags),
 		"stratum": Marshalls.raw_to_base64(stratum),
 		"hp": Marshalls.raw_to_base64(hp.to_byte_array()),
+		"water": Marshalls.raw_to_base64(water),
 	}
 
 
@@ -286,4 +325,6 @@ static func from_dict(d: Dictionary) -> TerrainGrid:
 	g.flags = Marshalls.base64_to_raw(d["flags"])
 	g.stratum = Marshalls.base64_to_raw(d["stratum"])
 	g.hp = Marshalls.base64_to_raw(d["hp"]).to_float32_array()
+	if d.has("water"):
+		g.water = Marshalls.base64_to_raw(d["water"])
 	return g

@@ -5,10 +5,10 @@ extends Node
 const CELL := 16
 
 # --- Player movement (pixels, seconds) ---
-const RUN_SPEED := 112.0
-const GROUND_ACCEL := 1400.0
-const AIR_ACCEL := 1000.0
-const GROUND_FRICTION := 1600.0
+const RUN_SPEED := 152.0
+const GROUND_ACCEL := 2000.0
+const AIR_ACCEL := 1350.0
+const GROUND_FRICTION := 2200.0
 const GRAVITY := 960.0
 const MAX_FALL := 430.0
 const JUMP_VELOCITY := 318.0        # ~3.3 cells
@@ -20,14 +20,16 @@ const WALL_SLIDE_SPEED := 70.0
 const WALL_JUMP_PUSH := 150.0
 const WALL_JUMP_VELOCITY := 285.0
 const WALL_JUMP_LOCK := 0.13
-const LADDER_SPEED := 92.0
+const LADDER_SPEED := 125.0
 const INVULN_TIME := 1.0
 const FALL_DAMAGE_SPEED := 9999.0   # no fall damage: we want digging down to feel free
 
 # --- Drill ---
 const DRILL_TICK := 0.085           # seconds between impact ticks
 const DRILL_POWER := [4.2, 5.8, 7.8, 10.5]   # hp per second by drill level
-const DRILL_ENEMY_DPS := 36.0
+const DRILL_ENEMY_DPS := 75.0
+const DRILL_HITSTUN := 0.3          # enemies hit by the drill can't attack for this long
+const DRILL_KNOCKBACK := true
 const HEAT_CAPACITY := [100.0, 145.0, 200.0, 270.0]
 const HEAT_PER_SEC := 8.5          # while drilling soft material
 const HEAT_COOL_PER_SEC := [30.0, 36.0, 44.0, 55.0]
@@ -103,14 +105,32 @@ const RUBBLE_ENEMY_DAMAGE := 34.0
 const RUBBLE_SENTRY_DAMAGE := 80.0
 const RUBBLE_STUN := 3.0
 
+# --- Water (cellular, levels 0..WATER_MAX per cell) ---
+const WATER_MAX := 64              # fine resolution so lakes level out flat
+const WATER_TICK := 0.06            # simulation step
+const WATER_BUDGET := 2400          # max cell updates per step
+const WATER_GRAVITY := 0.35         # gravity multiplier while submerged
+const WATER_MAX_FALL := 90.0
+const WATER_SPEED := 0.72           # run speed multiplier while submerged
+const WATER_SWIM := 175.0           # upward stroke on jump while submerged
+const WATER_COOLING := 2.5          # drill cools this much faster in water
+const WATER_CRAWLER_DPS := 7.0      # crawlers hate water
+
+# --- Unsupported basalt ---
+const BOULDER_MAX_CELLS := 36       # bigger basalt masses are treated as bedded in
+const BOULDER_TELEGRAPH := 0.7
+const BOULDER_PLAYER_DAMAGE := 28.0
+const BOULDER_ENEMY_DAMAGE := 90.0
+
 # --- Burrow Crawler ---
-const CRAWLER_HP := 42.0
+const CRAWLER_HP := 38.0
 const CRAWLER_SPEED_PATROL := 1.6   # cells / s
 const CRAWLER_SPEED_CHASE := 3.4
 const CRAWLER_SIGHT := 9            # cells
 const CRAWLER_HEARING := 8          # drill noise radius in cells
 const CRAWLER_FORGET := 4.0         # s without sight/noise before giving up
-const CRAWLER_DAMAGE := 13.0
+const CRAWLER_DAMAGE := 12.0
+const CRAWLER_WINDUP := 0.4         # visible rear-up before every bite
 const CRAWLER_ATTACK_COOLDOWN := 1.1
 const CRAWLER_REPATH := 0.45
 const CRAWLER_TUNNEL_TIME := 1.6    # s to chew one sediment cell

@@ -18,6 +18,7 @@ var glow_root: Node2D
 var entity_root: Node2D
 var gas: Hazards.GasSystem
 var collapse: Hazards.Collapse
+var water: WaterSim
 var hud: Node
 var pause_menu: Node
 var enemies: Array = []
@@ -70,6 +71,7 @@ func _build_world() -> void:
 	view = TerrainView.new()
 	add_child(view)
 	view.setup(grid, glow_root)
+	water = WaterSim.new(grid)
 	entity_root = Node2D.new()
 	add_child(entity_root)
 	collapse = Hazards.Collapse.new()
@@ -230,6 +232,11 @@ func _build_ui() -> void:
 
 
 # ---------------------------------------------------------------------------
+func _physics_process(delta: float) -> void:
+	if water:
+		water.update(delta)
+
+
 func _process(delta: float) -> void:
 	if player == null:
 		return

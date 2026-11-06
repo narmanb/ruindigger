@@ -21,6 +21,7 @@ func _ready() -> void:
 	if OS.get_cmdline_user_args().has("norepair"):
 		pass
 	print(d.get("diag_0"), d.get("diag_1"))
+	print("boulders=", d.get("boulders"), " geodes=", d.get("geodes"), " pockets=", d.get("water_pockets", []).size(), " lake=", d.get("lake"), " settle=", d.get("settle_steps"), " stabilized=", d.get("basalt_stabilized"), " water=", d.get("water_total"))
 	print("generated in %d ms, valid=%s repairs=%d" % [Time.get_ticks_msec() - t0, d["valid"], d["repairs"]])
 	var g: TerrainGrid = d["grid"]
 	var img := Image.create(g.w, g.h, false, Image.FORMAT_RGBA8)
@@ -34,6 +35,8 @@ func _ready() -> void:
 				c = c.lerp(Color(0.1, 0.5, 0.45), 0.5)
 			if g.get_mat(x, y) in [1, 2] and g.get_stratum(x, y) == 2:
 				c = c.lerp(Color(0.3, 0.2, 0.4), 0.6)
+			if not Cell.is_solid(g.get_mat(x, y)) and g.get_water(x, y) > 0:
+				c = Color(0.2, 0.45, 1.0)
 			var o := g.get_ore(x, y)
 			if o != 0:
 				c = Balance.ore_color(o)

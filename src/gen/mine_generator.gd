@@ -29,6 +29,8 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	data = {"seed": seed_value, "entities": [], "grid": g, "route": []}
 	_base_fill(seed_value)
 	_caves(seed_value)
+	_worm_tunnels()
+	_rail_tunnel()
 	_lift_room()
 	_shaft()
 	_relay_station()
@@ -37,8 +39,13 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	_set_pieces()
 	_route()
 	_loose_ceilings()
+	_hanging_boulders()
 	_ore()
+	_geodes()
 	_gas()
+	_water_pockets()
+	_lake()
+	_stabilize_basalt()
 	_enemies()
 	_finalize_hp()
 	_validate_and_repair()
@@ -133,6 +140,54 @@ func _caves(seed_value: int) -> void:
 			if region.size() < 8:
 				for cc in region:
 					g.put(cc.x, cc.y, Cell.SOFT)
+
+
+# ---------------------------------------------------------------------------
+# Extra structure: worm tunnels and an abandoned rail tunnel (destructive, so
+# they run before the protected rooms and the guaranteed route).
+func _carve_free(x: int, y: int) -> void:
+	if x < 3 or x >= W - 3 or y < 12 or y >= H - 8:
+		return
+	if g.has_flag(x, y, Cell.F_PROTECTED) or g.get_mat(x, y) == Cell.BEDROCK:
+		return
+	g.put(x, y, Cell.AIR)
+
+
+func _worm_tunnels() -> void:
+	var count := rng.randi_range(5, 8)
+	for i in count:
+		var x := rng.randi_range(6, W - 7)
+		var y := rng.randi_range(16, Balance.STRATUM_ROWS[2] - 4)
+		var dir := Vector2(1 if rng.randf() < 0.5 else -1, 0)
+		for step in rng.randi_range(25, 60):
+			for dy in range(-1, 2):
+				for dx in range(0, 2):
+					_carve_free(int(x) + dx, int(y) + dy)
+			if rng.randf() < 0.18:
+				dir = Vector2(dir.x if rng.randf() < 0.7 else -dir.x, rng.randf_range(-0.9, 0.9))
+			x = clampi(int(round(x + dir.x)), 5, W - 7)
+			y = clampi(int(round(y + dir.y * 0.6 + (1 if rng.randf() < 0.08 else 0))), 15, H - 12)
+
+
+func _rail_tunnel() -> void:
+	if rng.randf() < 0.25:
+		return
+	var y := rng.randi_range(22, 58)
+	var length := rng.randi_range(24, 44)
+	var x0 := rng.randi_range(3, W - length - 3)
+	for x in range(x0, x0 + length):
+		for dy in range(-2, 1):
+			_carve_free(x, y + dy)
+		if not g.is_solid(x, y + 1):
+			g.put(x, y + 1, Cell.HARD)
+		if not g.is_solid(x, y - 3):
+			g.put(x, y - 3, Cell.SOFT)
+	for x in range(x0 + 2, x0 + length - 1, 6):
+		data["entities"].append({"type": "beam", "cell": Vector2i(x, y - 1)})
+	for x in range(x0 + 5, x0 + length - 1, 12):
+		data["entities"].append({"type": "lamp", "cell": Vector2i(x, y - 2)})
+	data["entities"].append({"type": "crate", "cell": Vector2i(x0 + length / 2, y)})
+	data["rail"] = Rect2i(x0, y - 2, length, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +604,189 @@ func _loose_ceilings() -> void:
 				no_feature[Vector2i(xx, y - 1)] = true
 				no_feature[Vector2i(xx, y - 2)] = true
 			placed += 1
+
+
+func _free_region(cx: int, cy: int, rx: int, ry: int, need_solid: bool) -> bool:
+	for y in range(cy - ry, cy + ry + 1):
+		for x in range(cx - rx, cx + rx + 1):
+			if x < 3 or x >= W - 3 or y < 14 or y >= H - 8:
+				return false
+			var c := Vector2i(x, y)
+			if reserved.has(c) or no_feature.has(c) or g.has_flag(x, y, Cell.F_PROTECTED):
+				return false
+			if need_solid and not g.is_solid(x, y):
+				return false
+			if g.get_mat(x, y) == Cell.ALLOY:
+				return false
+	return true
+
+
+## Basalt blobs hanging from cave ceilings by a single sediment "neck". Dig or
+## blast the neck and the boulder drops, crushing whatever is below it.
+func _hanging_boulders() -> void:
+	var counts := [5, 4, 2]
+	var placed_total := 0
+	for st in 3:
+		var placed := 0
+		var tries := 0
+		while placed < counts[st] and tries < 1500:
+			tries += 1
+			var x := rng.randi_range(5, W - 6)
+			var lo: int = maxi(16, Balance.STRATUM_ROWS[st])
+			var hi: int = (Balance.STRATUM_ROWS[st + 1] if st < 2 else H - 10) - 8
+			var y := rng.randi_range(lo, hi)
+			if not g.is_solid(x, y) or g.get_mat(x, y) == Cell.ALLOY:
+				continue
+			var ok := true
+			for yy in range(y + 1, y + 7):
+				for xx in range(x - 2, x + 3):
+					if g.is_solid(xx, yy) or reserved.has(Vector2i(xx, yy)) or no_feature.has(Vector2i(xx, yy)):
+						ok = false
+			if not ok:
+				continue
+			if g.get_mat(x, y) != Cell.SOFT:
+				g.put(x, y, Cell.SOFT)
+			g.put(x, y + 1, Cell.SOFT)            # the neck
+			var big := rng.randf() < 0.5
+			for yy in range(y + 2, y + (5 if big else 4)):
+				for xx in range(x - 1, x + 2):
+					if big or absi(xx - x) + (yy - y - 2) < 2 or yy == y + 2:
+						g.put(xx, yy, Cell.HARD, Cell.ORE_COBALT if (st > 0 and rng.randf() < 0.2) else Cell.ORE_NONE)
+						no_feature[Vector2i(xx, yy)] = true
+			no_feature[Vector2i(x, y + 1)] = true
+			placed += 1
+			placed_total += 1
+	data["boulders"] = placed_total
+
+
+## Hollow crystal geodes sealed in basalt.
+func _geodes() -> void:
+	var n := rng.randi_range(1, 3)
+	var made := 0
+	var tries := 0
+	while made < n and tries < 200:
+		tries += 1
+		var cx := rng.randi_range(8, W - 9)
+		var cy := rng.randi_range(Balance.STRATUM_ROWS[1] + 6, H - 16)
+		var rx := rng.randi_range(3, 5)
+		var ry := rng.randi_range(2, 4)
+		if not _free_region(cx, cy, rx + 1, ry + 1, false):
+			continue
+		var kind := Cell.ORE_AETHER if cy > Balance.STRATUM_ROWS[2] else Cell.ORE_COBALT
+		for y in range(cy - ry - 1, cy + ry + 2):
+			for x in range(cx - rx - 1, cx + rx + 2):
+				var dx := (x + 0.5 - cx) / (rx + 0.5)
+				var dy := (y + 0.5 - cy) / (ry + 0.5)
+				var d := dx * dx + dy * dy
+				if d <= 0.55:
+					g.put(x, y, Cell.AIR)
+				elif d <= 1.0:
+					g.put(x, y, Cell.HARD, kind if rng.randf() < 0.55 else Cell.ORE_NONE)
+				elif d <= 1.6:
+					g.put(x, y, Cell.HARD)
+				no_feature[Vector2i(x, y)] = true
+		made += 1
+	data["geodes"] = made
+
+
+## Sealed flooded pockets. Treasure lines the floor; breach the wall and the
+## water floods out into whatever you have dug.
+func _water_pockets() -> void:
+	var counts := [2, 5, 2]
+	var pockets: Array = []
+	for st in 3:
+		var placed := 0
+		var tries := 0
+		while placed < counts[st] and tries < 400:
+			tries += 1
+			var rx := rng.randi_range(3, 6)
+			var ry := rng.randi_range(2, 3)
+			var cx := rng.randi_range(6 + rx, W - 7 - rx)
+			var lo: int = maxi(18, Balance.STRATUM_ROWS[st] + ry + 2)
+			var hi: int = (Balance.STRATUM_ROWS[st + 1] if st < 2 else H - 10) - ry - 3
+			if hi <= lo:
+				continue
+			var cy := rng.randi_range(lo, hi)
+			if not _free_region(cx, cy, rx + 2, ry + 2, true):
+				continue
+			var cells: Array[Vector2i] = []
+			for y in range(cy - ry, cy + ry + 1):
+				for x in range(cx - rx, cx + rx + 1):
+					var dx := (x + 0.5 - cx) / (rx + 0.5)
+					var dy := (y + 0.5 - cy) / (ry + 0.5)
+					if dx * dx + dy * dy <= 1.0:
+						cells.append(Vector2i(x, y))
+			var fill_from := cy - ry + rng.randi_range(0, 1)
+			for c in cells:
+				g.put(c.x, c.y, Cell.AIR)
+				if c.y >= fill_from:
+					g.water[g.idx(c.x, c.y)] = Balance.WATER_MAX
+			# treasure on the floor, a cracked-looking hint above
+			for c in cells:
+				if not cells.has(c + Vector2i(0, 1)) and g.get_mat(c.x, c.y + 1) in [Cell.SOFT, Cell.HARD] and rng.randf() < 0.5:
+					g.ore[g.idx(c.x, c.y + 1)] = Cell.ORE_AETHER if st == 2 or rng.randf() < 0.3 else Cell.ORE_COBALT
+			for y in range(cy - ry - 2, cy + ry + 3):
+				for x in range(cx - rx - 2, cx + rx + 3):
+					no_feature[Vector2i(x, y)] = true
+			pockets.append(Rect2i(cx - rx, cy - ry, rx * 2 + 1, ry * 2 + 1))
+			placed += 1
+	data["water_pockets"] = pockets
+
+
+## A partly flooded natural cavern in the Spore Veins.
+func _lake() -> void:
+	for attempt in 40:
+		var x := rng.randi_range(6, W - 7)
+		var y := rng.randi_range(Balance.STRATUM_ROWS[1] + 10, Balance.STRATUM_ROWS[2] - 8)
+		if g.is_solid(x, y) or reserved.has(Vector2i(x, y)):
+			continue
+		var region: Array[Vector2i] = [Vector2i(x, y)]
+		var seen: Dictionary = {Vector2i(x, y): true}
+		var head := 0
+		var bad := false
+		while head < region.size() and region.size() < 500:
+			var c: Vector2i = region[head]
+			head += 1
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: Vector2i = c + d
+				if seen.has(n) or g.is_solid(n.x, n.y):
+					continue
+				if reserved.has(n):
+					bad = true
+				seen[n] = true
+				region.append(n)
+		if bad or region.size() < 50 or region.size() >= 500:
+			continue
+		var maxy := 0
+		for c in region:
+			maxy = maxi(maxy, c.y)
+		var depth := rng.randi_range(2, 4)
+		var filled := 0
+		for c in region:
+			if c.y > maxy - depth:
+				g.water[g.idx(c.x, c.y)] = Balance.WATER_MAX
+				filled += 1
+		data["lake"] = {"cells": filled, "at": Vector2i(x, y)}
+		break
+	# let lakes find their level now so the mine starts calm
+	var sim := WaterSim.new(g)
+	data["settle_steps"] = sim.settle(600)
+	g.cell_changed.disconnect(sim._on_cell_changed)
+	data["water_total"] = sim.total()
+
+
+## No basalt starts out unsupported: anything that would fall immediately is
+## turned into sediment (it then anchors its neighbours).
+func _stabilize_basalt() -> void:
+	var fixed := 0
+	for y in range(2, H - 6):
+		for x in range(2, W - 2):
+			if g.get_mat(x, y) == Cell.HARD and not g.is_solid(x, y + 1):
+				var mass := Boulders.unsupported_mass(g, Vector2i(x, y))
+				for c in mass:
+					g.put(c.x, c.y, Cell.SOFT, g.get_ore(c.x, c.y))
+					fixed += 1
+	data["basalt_stabilized"] = fixed
 
 
 func _near_open(x: int, y: int, r: int) -> bool:

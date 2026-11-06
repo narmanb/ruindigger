@@ -12,6 +12,8 @@ var grid: TerrainGrid
 var glow_parent: Node2D            # node inside the additive glow layer
 var chunks: Dictionary = {}        # Vector2i -> TerrainChunk
 var glow_chunks: Dictionary = {}   # Vector2i -> GlowChunk
+var water_chunks: Dictionary = {}  # Vector2i -> WaterChunk
+var water_redraws := 0
 var bodies: Dictionary = {}        # Vector2i -> RID
 var shapes: Dictionary = {}        # Vector2i -> Array[RID]
 var _col_dirty: Dictionary = {}
@@ -62,7 +64,17 @@ func setup(g: TerrainGrid, glow_node: Node2D) -> void:
 			glow_parent.add_child(gc)
 			glow_chunks[key] = gc
 			_col_dirty[key] = true
+	# water draws above terrain and above the player (z) so swimmers look submerged
+	for key in chunks.keys():
+		var wc := WaterChunk.new()
+		wc.view = self
+		wc.key = key
+		wc.position = chunks[key].position
+		wc.z_index = 3
+		add_child(wc)
+		water_chunks[key] = wc
 	grid.take_dirty()
+	grid.take_water_dirty()
 	_flush_collision()
 
 
@@ -94,7 +106,12 @@ func _process(_delta: float) -> void:
 		if chunks.has(key):
 			chunks[key].queue_redraw()
 			glow_chunks[key].queue_redraw()
+			water_chunks[key].queue_redraw()
 			redraw_count += 1
+	for key in grid.take_water_dirty():
+		if water_chunks.has(key):
+			water_chunks[key].queue_redraw()
+			water_redraws += 1
 
 
 func _flush_collision() -> void:
@@ -289,6 +306,41 @@ func draw_deco(ci: CanvasItem, x: int, y: int, p: Vector2, s: int) -> void:
 			2:
 				if hsh / 11 % 2 == 0:
 					ci.draw_texture_rect_region(tex_props, Rect2(p + Vector2(0, 8), Vector2(16, 8)), prop_rect("pebbles"), Color(0.7, 0.6, 0.9))
+
+
+const WATER_COL := [Color(0.16, 0.42, 0.78, 0.62), Color(0.1, 0.55, 0.62, 0.62), Color(0.32, 0.3, 0.8, 0.62)]
+const WATER_TOP := [Color(0.6, 0.85, 1.0, 0.9), Color(0.55, 1.0, 0.9, 0.9), Color(0.75, 0.7, 1.0, 0.9)]
+
+
+class WaterChunk extends Node2D:
+	var view: TerrainView
+	var key: Vector2i
+
+	func _draw() -> void:
+		var g := view.grid
+		var x0 := key.x * CHUNK
+		var y0 := key.y * CHUNK
+		var mx := float(Balance.WATER_MAX)
+		for ly in CHUNK:
+			var y := y0 + ly
+			if y >= g.h:
+				break
+			for lx in CHUNK:
+				var x := x0 + lx
+				if x >= g.w:
+					break
+				var lv := g.get_water(x, y)
+				if lv <= 0:
+					continue
+				var s := g.get_stratum(x, y)
+				var above := g.get_water(x, y - 1)
+				var h := 16.0 if above > 0 else ceilf(lv / mx * 16.0)
+				var top := 16.0 - h
+				draw_rect(Rect2(lx * C, ly * C + top, C, h), WATER_COL[s])
+				if above <= 0:
+					draw_rect(Rect2(lx * C, ly * C + top, C, 1), WATER_TOP[s])
+					if (x + y) % 3 == 0:
+						draw_rect(Rect2(lx * C + 4, ly * C + top + 2, 5, 1), Color(1, 1, 1, 0.25))
 
 
 class GlowChunk extends Node2D:

@@ -31,7 +31,21 @@ SIL Open Font License fonts (see *Credits*).
 
 * **Drill** hits only the cells touching your body (with aim assist and corner
   brackets that show the targets). It builds **heat**; when the heat bar fills, the
-  drill vents and locks until it has cooled to 35%.
+  drill vents and locks until it has cooled to 35%. Drilling up reaches the
+  ceiling of a 2-cell tunnel. While the bit is biting rock above or beside you in
+  mid-air, it holds your weight, so you can tunnel upward and cling to walls.
+* **Fighting crawlers:** the drill shreds them in well under a second. Every
+  drill hit staggers and shoves a crawler, cancelling its bite. Crawlers rear up
+  with a red ring for 0.4 s before biting, so either back off or keep drilling.
+  They also hate water, and falling basalt crushes them.
+* **Water** sits in sealed flooded pockets (often with cobalt or aetherite on the
+  floor) and in underground lakes. Breach a pocket and the water floods your
+  tunnels. Underwater you sink slowly, swim up with JUMP, and your drill cools
+  faster.
+* **Basalt boulders** (the dark rock): a basalt mass of up to 36 cells that is
+  neither attached to sediment (or any other anchoring rock) nor resting on
+  something falls after a short shake. Hanging boulders on a thin sediment "neck"
+  are traps you can spring on crawlers below. Bigger basalt seams are bedded in.
 * **Sediment** breaks in a few ticks and **basalt** takes several times longer.
   **Ruin alloy** needs the Mk.IV drill and is immune to blasts. **Bedrock** is
   permanent. A **cracked wall** is weak rock hiding a secret.
@@ -84,14 +98,14 @@ missing result line. Use `GODOT=/path/to/godot`, `TEST_TIMEOUT=<s>` and
 
 | Suite | What it checks |
 |---|---|
-| `terrain` | hit counts by material and drill tier, alloy and bedrock immunity, protected cells, ore paying out exactly once, dirty-chunk locality (1 chunk normally, exactly 4 on a corner), edge masks, interior depth, JSON round-trip, grid line-of-sight |
+| `terrain` | water conservation, levelling, flow through a breach and displacement; boulder anchoring rules; hit counts by material and drill tier, alloy and bedrock immunity, protected cells, ore paying out exactly once, dirty-chunk locality (1 chunk normally, exactly 4 on a corner), edge masks, interior depth, JSON round-trip, grid line-of-sight |
 | `save` | progress round-trip, a corrupt file falling back to defaults, hostile values clamped, purchases, settings sanitising |
 | `ui` | touch buttons never overlap each other or the HUD across 5 aspect ratios × 3 button scales |
-| `gen` | 60 seeds × all contracts: validated route spawn→relic door→lift and depths→relay **without digging**, open standing spawn, no sealed pockets, protected alloy relic shell, crawlers never in rock and under the cap, no ore in protected cells, determinism, zero repair fallbacks |
-| `game` | live mine: player lands safely; drilling down removes the floor and the player drops into the hole; ore collected; the same cell never pays twice; collision rebuilt; blasts spare alloy and bedrock but clear sediment; rubble is telegraphed and never lands inside the player; the gas warning comes before the cloud and a blast ignites it; crawler investigates noise, chases on sight, never enters rock, loses interest, is stunned by rubble; sentry warns, fires, goes dormant, dies when its power module dies; extraction banks credits; a new run starts clean; death banks nothing; 900-frame random-input soak |
+| `gen` | 60 seeds × all contracts: validated route spawn→relic door→lift and depths→relay **without digging**, open standing spawn, no sealed pockets, protected alloy relic shell, crawlers never in rock and under the cap, no ore in protected cells, generated water at rest, no basalt starting unsupported, determinism, zero repair fallbacks |
+| `game` | live mine: player lands safely; drilling down removes the floor and the player drops into the hole; ore collected; the same cell never pays twice; collision rebuilt; blasts spare alloy and bedrock but clear sediment; rubble is telegraphed and never lands inside the player; the gas warning comes before the cloud and a blast ignites it; crawler investigates noise, chases on sight, never enters rock, loses interest, is stunned by rubble; sentry warns, fires, goes dormant, dies when its power module dies; upward drilling reaches the ceiling; the drill kills a crawler within a second, with at most one bite taken; cutting a boulder's neck drops it onto a crawler; a broken dam floods; the player swims; extraction banks credits; a new run starts clean; death banks nothing; 900-frame random-input soak |
 
 Last local run (Linux, Godot 4.6.3, headless):
-`terrain 20/20, save 11/11, ui 15/15, gen 1130/1130 (0 repairs), game 39/39`.
+`terrain 30/30, save 11/11, ui 15/15, gen 1252/1252 (0 repairs), game 50/50`.
 
 Other tools:
 
@@ -164,7 +178,9 @@ arrays, and serialises to JSON. `TerrainView` derives everything else from it:
 
 **Generation** (`MineGenerator`) is seeded and order-sensitive:
 1. base rock and wavy strata boundaries
-2. stratum-specific caves, cellular-automata smoothing, and filling tiny pockets
+2. stratum-specific caves, cellular-automata smoothing, and filling tiny pockets,
+   then random-walk worm tunnels and an abandoned rail tunnel with timber and
+   lamps
 3. the protected lift room, then the timber shaft with a ladder and platforms
 4. the relay lift station
 5. alloy ruin halls with sentries and power modules
@@ -175,7 +191,10 @@ arrays, and serialises to JSON. `TerrainView` derives everything else from it:
 8. the guaranteed route, carved **after** every destructive pass, with ladder
    shafts and plank bridges over caves; secret passages never overwrite route
    cells
-9. loose ceilings, ore and gas, placed only on rock and never on the route
+9. loose ceilings, hanging basalt boulders, ore, crystal geodes, gas, sealed
+   flooded treasure pockets and a Spore Veins lake (pre-settled with the water
+   sim), never on the route; then any basalt that would start unsupported is
+   turned into sediment
 10. crawlers
 11. validation with `RouteCheck` (walk, fall, 3-cell jump, ladders, platforms;
     no digging, jet or wall jump) in both directions. A repair pass exists but
@@ -189,6 +208,19 @@ no-rubble zones (lift rooms, route ladders, the relic approach) or inside any
 body. A rolling cascade budget (18 per 1.5 s) and a cap of 28 falling blocks
 bound the cost. Rubble is always diggable, so a collapse can never permanently
 block a route.
+
+**Water.** `WaterSim` is a cellular automaton on the grid (0..64 units per open
+cell). Only active cells update, with a budget of 2400 updates per 60 ms step,
+so a settled lake costs nothing. Water falls first, then levels sideways. A
+solid that lands in water pushes the water up or sideways. Water renders in
+per-chunk overlays that redraw only when their water changes.
+
+**Boulders.** `Boulders.unsupported_mass` floods the basalt next to every newly
+opened cell (bounded at 36 cells). A mass falls only if it has no anchor
+(sediment, cracked wall, gas, alloy, bedrock or protected rock) and nothing
+solid under it. It shakes for 0.7 s, then falls as one rigid piece, row by row,
+keeping its ore. If it hits a body it shatters into rubble and deals crush
+damage. It never lands in no-rubble zones.
 
 **Enemy rules.**
 * *Burrow Crawler* moves cell to cell along open cells that touch terrain:
