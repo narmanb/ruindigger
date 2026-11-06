@@ -50,8 +50,9 @@ def tex_soft(stratum, seed):
     n = fbm(TEX, TEX, 16, 4, seed)
     warp = fbm(TEX, TEX, 32, 2, seed + 7)
     ys = np.arange(TEX)[:, None] * np.ones((1, TEX))
-    bands = 0.5 + 0.5 * np.sin(2 * np.pi * (ys / TEX * 4) + 3.0 * warp)
-    v = 0.25 + 0.45 * n + 0.22 * bands
+    bands = 0.5 + 0.5 * np.sin(2 * np.pi * (ys / TEX * 3) + 4.0 * warp)
+    fine = fbm(TEX, TEX, 8, 2, seed + 5)
+    v = 0.22 + 0.42 * n + 0.12 * bands + 0.2 * fine
     lv = quantize(v, 4) + 1  # 1..4
     # pebbles / inclusions
     for _ in range(14):

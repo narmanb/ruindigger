@@ -2,7 +2,7 @@ extends Control
 ## End-of-run summary (extraction or death).
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UIKit.theme()
 	var r: Dictionary = Game.last_result
 	var ok: bool = r.get("extracted", false)

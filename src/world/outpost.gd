@@ -400,8 +400,8 @@ func _upgrade_panel() -> Control:
 		left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var pips := ""
 		for i in info["costs"].size():
-			pips += "■" if i < lv else "□"
-		left.add_child(UIKit.label("%s  %s" % [info["name"], pips], 11, UIKit.AMBER, true))
+			pips += "#" if i < lv else "-"
+		left.add_child(UIKit.label("%s  [%s]" % [info["name"], pips], 11, UIKit.AMBER, true))
 		var now_d: String = info["desc"][lv]
 		var nxt: String = info["desc"][lv + 1] if lv + 1 < info["desc"].size() else "MAXED"
 		left.add_child(UIKit.label("%s  ->  %s" % [now_d, nxt], 9, UIKit.TEXT))

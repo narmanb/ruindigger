@@ -10,12 +10,12 @@ var embers: Array = []
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	theme = UIKit.theme()
 	Audio.music("amb_outpost")
 	sky = _layer("outpost_sky.png", 0)
 	far = _layer("outpost_far.png", 120)
-	mid = _layer("outpost_mid.png", 200)
+	mid = _layer("outpost_mid.png", 220)
 	var shade := ColorRect.new()
 	shade.color = Color(0.03, 0.02, 0.05, 0.35)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -124,8 +124,8 @@ class Logo extends Control:
 		draw_string(f, Vector2(x, 52), title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("f5a23a"))
 		# glint sweeping across the logo
 		var gx := fmod(t * 120.0, w + 200.0) - 100.0
-		draw_string(f, Vector2(x, 52), title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.9, 0.6, 0.0))
-		draw_rect(Rect2(x + gx, 18, 6, 40), Color(1.0, 0.95, 0.8, 0.18))
+		var hi := clampf(1.0 - absf(gx - w * 0.5) / (w * 0.5), 0.0, 1.0)
+		draw_string(f, Vector2(x, 52), title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.92, 0.7, 0.25 * hi))
 		var tag := "Break the ground. Wake what lies below. Get out richer."
 		var tw := UIKit.font_body().get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 		draw_string(UIKit.font_body(), Vector2((size.x - tw) * 0.5, 76), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("e9ddc8"))

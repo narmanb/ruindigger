@@ -1,0 +1,89 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.6.3
+
+jobs:
+  test-and-export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot + export templates
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}
+
+      - name: Install Godot + templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot && cd ~/godot
+          curl -sSL -o g.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q g.zip && rm g.zip
+          curl -sSL -o t.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          D=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p "$D"
+          unzip -o -j -q t.tpz templates/android_debug.apk templates/android_release.apk \
+            templates/linux_debug.x86_64 templates/linux_release.x86_64 templates/version.txt -d "$D"
+          rm t.tpz
+
+      - name: Put Godot on PATH
+        run: |
+          ln -sf ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+          echo "$HOME/godot" >> "$GITHUB_PATH"
+          ~/godot/godot --version
+
+      - name: Run test suites
+        run: ./tools/run_tests.sh
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: build/test-logs
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK packages
+        run: |
+          SDKM="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Debug keystore + editor settings
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android -alias androiddebugkey \
+            -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          ./tools/configure_android_editor.sh "$ANDROID_SDK_ROOT" "$JAVA_HOME" "$RUNNER_TEMP/debug.keystore"
+
+      - name: Export debug APK + Linux build
+        run: |
+          mkdir -p build/android build/linux
+          godot --headless --export-debug "Android" build/android/ruin_digger-debug.apk 2>&1 | tee build/android-export.log
+          godot --headless --export-release "Linux" build/linux/ruin_digger.x86_64
+          test -s build/android/ruin_digger-debug.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose build/android/ruin_digger-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ruin-digger-android-debug-apk
+          path: build/android/ruin_digger-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ruin-digger-linux
+          path: build/linux/ruin_digger.x86_64

@@ -5,7 +5,7 @@ extends Node2D
 
 const C := 16
 const CHUNK := TerrainGrid.CHUNK
-const SHADE := [1.0, 0.8, 0.66, 0.56]
+const SHADE := [1.0, 0.88, 0.79, 0.72]
 const ORE_ROW := {1: 0, 2: 1, 3: 2, 4: 3}
 
 var grid: TerrainGrid
