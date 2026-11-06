@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+- Smooth water. Free-falling water now leaves the grid as droplets with gravity and momentum, so it pours in continuous streams, arcs off ledges, splashes and merges back into the pool.
+- Pools draw a blended, continuous surface. Levels ease instead of stepping, and a shader adds rolling waves and caustic shimmer.
+
 ## 0.2.0
 - Movement is about 35% faster with snappier acceleration and faster ladders.
 - Drill fixes: drilling up now reaches the ceiling of a 2-cell tunnel. The drill bites and holds you while you tunnel up or cling to walls.

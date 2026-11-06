@@ -115,6 +115,11 @@ const WATER_SPEED := 0.72           # run speed multiplier while submerged
 const WATER_SWIM := 175.0           # upward stroke on jump while submerged
 const WATER_COOLING := 2.5          # drill cools this much faster in water
 const WATER_CRAWLER_DPS := 7.0      # crawlers hate water
+const WATER_DROP_UNITS := 3         # volume carried by one falling droplet
+const WATER_EMIT_PER_TICK := 16     # max units a free-falling cell sheds per tick
+const WATER_MAX_DROPS := 900        # beyond this, falling water moves cell-to-cell
+const WATER_DROP_GRAVITY := 820.0
+const WATER_DROP_MAX_FALL := 420.0
 
 # --- Unsupported basalt ---
 const BOULDER_MAX_CELLS := 36       # bigger basalt masses are treated as bedded in

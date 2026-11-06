@@ -72,6 +72,11 @@ func _build_world() -> void:
 	add_child(view)
 	view.setup(grid, glow_root)
 	water = WaterSim.new(grid)
+	var drops := TerrainView.WaterDrops.new()
+	drops.sim = water
+	drops.grid = grid
+	drops.z_index = 3
+	add_child(drops)
 	entity_root = Node2D.new()
 	add_child(entity_root)
 	collapse = Hazards.Collapse.new()
@@ -235,6 +240,10 @@ func _build_ui() -> void:
 func _physics_process(delta: float) -> void:
 	if water:
 		water.update(delta)
+		for sp in water.splashes:
+			fx.splash(sp)
+			if randf() < 0.2:
+				Audio.play_at("step", sp, -14.0, 0.4, 0.05)
 
 
 func _process(delta: float) -> void:

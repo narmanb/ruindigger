@@ -32,6 +32,7 @@ func setup(glow: Node2D) -> void:
 	_make_pool("glints", 6, 10, glow_layer)
 	_make_pool("fire", 3, 40, glow_layer)
 	_make_pool("gas", 6, 10, self)
+	_make_pool("splash", 10, 6, self)
 	for i in 6:
 		var l := PointLight2D.new()
 		l.texture = _light_tex
@@ -131,6 +132,20 @@ func _configure(p: CPUParticles2D, kind: String) -> void:
 			g3.add_point(0.4, Color(1.0, 0.45, 0.1, 0.6))
 			g3.set_color(g3.get_point_count() - 1, Color(0.3, 0.05, 0.05, 0.0))
 			p.color_ramp = g3
+		"splash":
+			p.texture = _dot_tex
+			p.lifetime = 0.45
+			p.gravity = Vector2(0, 500)
+			p.initial_velocity_min = 30.0
+			p.initial_velocity_max = 90.0
+			p.direction = Vector2.UP
+			p.spread = 55.0
+			p.scale_amount_min = 0.2
+			p.scale_amount_max = 0.4
+			var g5 := Gradient.new()
+			g5.set_color(0, Color(0.75, 0.9, 1.0, 0.9))
+			g5.set_color(1, Color(0.5, 0.75, 1.0, 0.0))
+			p.color_ramp = g5
 		"gas":
 			p.texture = _puff_tex
 			var m3 := CanvasItemMaterial.new()
@@ -166,6 +181,10 @@ func _emit(kind: String, pos: Vector2, color: Color, dir: Vector2 = Vector2.ZERO
 		p.direction = Vector2.UP
 	p.restart()
 	p.emitting = true
+
+
+func splash(pos: Vector2) -> void:
+	_emit("splash", pos, Color(1, 1, 1), Vector2.UP)
 
 
 func chips(pos: Vector2, dir: Vector2, color: Color) -> void:

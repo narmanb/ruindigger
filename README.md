@@ -210,7 +210,11 @@ bound the cost. Rubble is always diggable, so a collapse can never permanently
 block a route.
 
 **Water.** `WaterSim` is a cellular automaton on the grid (0..64 units per open
-cell). Only active cells update, with a budget of 2400 updates per 60 ms step,
+cell). Water over open air leaves the grid as droplets (3 units each, capped at
+900). They fall with gravity and momentum, render as overlapping capsules that
+form a continuous stream, and deposit back into the grid where they land.
+Pooled water draws as per-column polygons with blended edge heights, eased
+display levels and a wave/caustic shader. Only active cells update, with a budget of 2400 updates per 60 ms step,
 so a settled lake costs nothing. Water falls first, then levels sideways. A
 solid that lands in water pushes the water up or sideways. Water renders in
 per-chunk overlays that redraw only when their water changes.

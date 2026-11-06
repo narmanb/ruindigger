@@ -11,6 +11,13 @@ var _acc := 0.0
 var steps := 0
 var last_moves := 0
 var lost := 0
+# Free-falling water leaves the grid as droplets so it pours as a continuous
+# stream with momentum, then merges back in where it lands.
+var drop_pos := PackedVector2Array()
+var drop_vel := PackedVector2Array()
+var drop_vol := PackedInt32Array()
+var splashes: Array[Vector2] = []   # landing points this frame (for FX)
+var deposits := 0
 
 
 func _init(g: TerrainGrid) -> void:
@@ -22,7 +29,13 @@ func total() -> int:
 	var t := 0
 	for v in grid.water:
 		t += v
+	for v in drop_vol:
+		t += v
 	return t
+
+
+func drop_count() -> int:
+	return drop_pos.size()
 
 
 func wake(x: int, y: int) -> void:
@@ -70,6 +83,82 @@ func update(delta: float) -> void:
 		_acc -= Balance.WATER_TICK
 		step()
 		n += 1
+	update_drops(delta)
+
+
+func _emit(x: int, y: int, amount: int) -> void:
+	# spill sideways momentum: water leaves away from the fuller side
+	var lw := grid.get_water(x - 1, y) if _open(x - 1, y) else -1
+	var rw := grid.get_water(x + 1, y) if _open(x + 1, y) else -1
+	var vx := 0.0
+	if lw > rw + 2:
+		vx = 38.0
+	elif rw > lw + 2:
+		vx = -38.0
+	var cx := x * 16.0 + 8.0
+	var left := amount
+	while left > 0:
+		var v := mini(Balance.WATER_DROP_UNITS, left)
+		left -= v
+		# spread releases over the tick so the stream is continuous, not pulsed
+		var lag := randf()
+		var vy0 := 30.0 + 60.0 * (1.0 - lag)
+		drop_pos.append(Vector2(cx + randf_range(-3.0, 3.0) + vx * Balance.WATER_TICK * (1.0 - lag), (y + 1) * 16.0 + 0.5 + vy0 * Balance.WATER_TICK * (1.0 - lag)))
+		drop_vel.append(Vector2(vx + randf_range(-4.0, 4.0), vy0))
+		drop_vol.append(v)
+
+
+func update_drops(delta: float) -> void:
+	splashes.clear()
+	var i := 0
+	while i < drop_pos.size():
+		var p := drop_pos[i]
+		var v := drop_vel[i]
+		v.y = minf(v.y + Balance.WATER_DROP_GRAVITY * delta, Balance.WATER_DROP_MAX_FALL)
+		var np := p + v * delta
+		# sideways into rock: stop drifting
+		var side := grid.world_to_cell(Vector2(np.x, p.y))
+		if grid.is_solid(side.x, side.y):
+			np.x = p.x
+			v.x = 0.0
+		var c := grid.world_to_cell(np)
+		var land := Vector2i(-1, -1)
+		if grid.is_solid(c.x, c.y):
+			land = grid.world_to_cell(p)          # hit a floor: settle in the last open cell
+		elif grid.get_water(c.x, c.y) >= Balance.WATER_MAX / 3:
+			land = c                               # plunged into a pool
+		elif grid.is_solid(c.x, c.y + 1) and np.y > c.y * 16.0 + 12.0:
+			land = c                               # reached the floor of this cell
+		if land.x >= 0:
+			_deposit(land, drop_vol[i])
+			if randf() < 0.35:
+				splashes.append(np)
+			drop_pos.remove_at(i)
+			drop_vel.remove_at(i)
+			drop_vol.remove_at(i)
+			continue
+		drop_pos[i] = np
+		drop_vel[i] = v
+		i += 1
+
+
+func _deposit(c: Vector2i, vol: int) -> void:
+	deposits += 1
+	var cell := c
+	var guard := 0
+	while vol > 0 and guard < 24:
+		guard += 1
+		if not _open(cell.x, cell.y):
+			cell.y -= 1
+			continue
+		var room := Balance.WATER_MAX - grid.get_water(cell.x, cell.y)
+		var mv := mini(room, vol)
+		if mv > 0:
+			grid.set_water(cell.x, cell.y, grid.get_water(cell.x, cell.y) + mv)
+			vol -= mv
+			wake(cell.x, cell.y)
+		cell.y -= 1
+	lost += vol
 
 
 func step() -> void:
@@ -99,8 +188,15 @@ func step() -> void:
 		if lv <= 0 or not _open(x, y):
 			continue
 		var changed := false
-		# 1) fall
-		if _open(x, y + 1):
+		# 1) fall: into open air as droplets, into water cell-to-cell
+		if _open(x, y + 1) and grid.get_water(x, y + 1) == 0 and drop_pos.size() < Balance.WATER_MAX_DROPS:
+			var out := mini(lv, Balance.WATER_EMIT_PER_TICK)
+			_emit(x, y, out)
+			lv -= out
+			grid.set_water(x, y, lv)
+			changed = true
+			moves += out
+		elif _open(x, y + 1):
 			var below := grid.get_water(x, y + 1)
 			if below < Balance.WATER_MAX:
 				var mv := mini(lv, Balance.WATER_MAX - below)
@@ -138,6 +234,8 @@ func settle(max_steps: int = 400) -> int:
 	wake_all()
 	for i in max_steps:
 		step()
-		if active.is_empty() or last_moves == 0:
+		for k in 4:
+			update_drops(Balance.WATER_TICK / 4.0)
+		if (active.is_empty() or last_moves == 0) and drop_pos.is_empty():
 			return i
 	return max_steps
