@@ -131,5 +131,8 @@ func load_progress() -> void:
 		return
 	var txt := f.get_as_text()
 	f.close()
-	var parsed: Variant = JSON.parse_string(txt)
-	from_dict(parsed)
+	var j := JSON.new()
+	if j.parse(txt) != OK:
+		push_warning("Progress: save file unreadable, using defaults")
+		return
+	from_dict(j.data)

@@ -214,7 +214,6 @@ func _relay_station() -> void:
 	var x0 := 6 + rng.randi_range(0, 6) if left else W - 22 - rng.randi_range(0, 6)
 	_rect_fill(x0, y_floor - 5, 14, 6, Cell.AIR, Cell.F_NO_RUBBLE)
 	_rect_fill(x0, y_floor + 1, 14, 1, Cell.HARD)
-	_rect_fill(x0 + 5, y_floor + 1, 4, 1, Cell.HARD, Cell.F_PROTECTED)
 	for y in range(y_floor - 5, y_floor + 1):
 		for x in range(x0, x0 + 14):
 			reserved[Vector2i(x, y)] = true
@@ -485,19 +484,23 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 	while x != best.x and steps < 60:
 		steps += 1
 		x += dirx
-		var inside := r.has_point(Vector2i(x, fy))
+		var col_reserved := false
 		for dy in range(-2, 1):
 			if g.has_flag(x, fy + dy, Cell.F_PROTECTED) or g.get_mat(x, fy + dy) == Cell.BEDROCK:
 				return
-			if not inside and not placed_wall and wall_mat != Cell.AIR and not r.grow(1).has_point(Vector2i(x, fy)):
-				pass
-			g.put(x, fy + dy, Cell.AIR)
-		if not r.grow(1).has_point(Vector2i(x, fy)) and not placed_wall:
-			# first cell outside the room: seal it with the secret wall
+			if reserved.has(Vector2i(x, fy + dy)):
+				col_reserved = true
+		for dy in range(-2, 1):
+			var cc := Vector2i(x, fy + dy)
+			if not reserved.has(cc) or Cell.is_solid(g.get_mat(cc.x, cc.y)):
+				if g.get_mat(cc.x, cc.y) != Cell.LADDER and g.get_mat(cc.x, cc.y) != Cell.PLATFORM:
+					g.put(cc.x, cc.y, Cell.AIR)
+		if not r.grow(1).has_point(Vector2i(x, fy)) and not placed_wall and not col_reserved:
+			# first free column outside the room: seal it with the secret wall
 			for dy in range(-2, 1):
 				g.put(x, fy + dy, wall_mat)
 			placed_wall = true
-		if not g.is_solid(x, fy + 1) and not reserved.has(Vector2i(x, fy + 1)):
+		if not g.is_solid(x, fy + 1) and not reserved.has(Vector2i(x, fy + 1)) and g.get_mat(x, fy + 1) != Cell.LADDER:
 			g.put(x, fy + 1, Cell.HARD)
 	var ystep := signi(best.y - fy)
 	var y := fy
@@ -508,9 +511,10 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 		for xx in [x, x + 1]:
 			if g.has_flag(xx, y, Cell.F_PROTECTED) or g.get_mat(xx, y) == Cell.BEDROCK:
 				return
-			if g.get_mat(xx, y) != Cell.LADDER:
+			if g.get_mat(xx, y) != Cell.LADDER and g.get_mat(xx, y) != Cell.PLATFORM:
 				g.put(xx, y, Cell.AIR)
-		g.put(x, y, Cell.LADDER)
+		if g.get_mat(x, y) != Cell.PLATFORM:
+			g.put(x, y, Cell.LADDER)
 
 
 # ---------------------------------------------------------------------------
