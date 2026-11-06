@@ -1,0 +1,23 @@
+{
+ "size": [
+  512,
+  288
+ ],
+ "layers": {
+  "dustworks": [
+   "far",
+   "mid",
+   "near"
+  ],
+  "spore_veins": [
+   "far",
+   "mid",
+   "near"
+  ],
+  "forgotten_engine": [
+   "far",
+   "mid",
+   "near"
+  ]
+ }
+}

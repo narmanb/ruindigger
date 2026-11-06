@@ -1,0 +1,55 @@
+{
+ "cell": 64,
+ "soft_white": [
+  0,
+  0
+ ],
+ "soft_warm": [
+  0,
+  1
+ ],
+ "soft_cool": [
+  0,
+  2
+ ],
+ "soft_red": [
+  0,
+  3
+ ],
+ "chunk_soil": [
+  1,
+  0
+ ],
+ "chunk_basalt": [
+  1,
+  1
+ ],
+ "chunk_alloy": [
+  1,
+  2
+ ],
+ "chunk_metal": [
+  1,
+  3
+ ],
+ "spark": [
+  2,
+  0
+ ],
+ "spark_warm": [
+  2,
+  1
+ ],
+ "spark_cool": [
+  2,
+  2
+ ],
+ "ring": [
+  2,
+  3
+ ],
+ "smoke": [
+  3,
+  0
+ ]
+}

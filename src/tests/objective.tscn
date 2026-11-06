@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cobjruindigger00"]
+
+[ext_resource type="Script" path="res://src/tests/objective.gd" id="1_obj"]
+
+[node name="Objective" type="Node"]
+script = ExtResource("1_obj")

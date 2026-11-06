@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Pinned so CI and local builds agree. Godot's Android exporter targets SDK 36,
+  # so the platform/build-tools installed below must be at least that new.
+  GODOT_VERSION: "4.6.3"
+  GODOT_RELEASE: "4.6.3-stable"
+
+jobs:
+  # Fast gate: import everything and run the headless suites.
+  test:
+    name: Headless tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot
+        run: |
+          set -e
+          mkdir -p "$HOME/bin"
+          curl -sSL -o /tmp/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" "$HOME/bin/godot"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          godot --version
+
+      - name: Import project
+        run: |
+          set -e
+          # The first run creates .godot/ and imports every asset; it can report
+          # spurious errors before that cache exists, so retry once.
+          godot --headless --import || true
+          godot --headless --import
+
+      - name: Run test suites
+        run: ./tools/run_tests.sh
+
+  # Separate job so a broken SDK setup can never hide test results.
+  android:
+    name: Android APK
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          # Action inputs are not shell-expanded, so these are literal.
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Install Godot
+        run: |
+          set -e
+          mkdir -p "$HOME/bin"
+          curl -sSL -o /tmp/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          install -m 0755 "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" "$HOME/bin/godot"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Install Godot export templates
+        run: |
+          set -e
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$TEMPLATE_DIR"
+          curl -sSL -o /tmp/templates.tpz \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          cp /tmp/templates/templates/* "$TEMPLATE_DIR/"
+          test -f "$TEMPLATE_DIR/android_debug.apk"
+
+      # The exporter reads the SDK/JDK locations from EditorSettings, not from
+      # export_presets.cfg. It auto-generates and caches a debug keystore under
+      # ~/.local/share/godot/keystores, so no keystore has to be provided here.
+      - name: Point Godot at the Android SDK
+        run: |
+          set -e
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-${GODOT_VERSION%.*}.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "${ANDROID_HOME}"
+          export/android/java_sdk_path = "${JAVA_HOME}"
+          EOF
+
+      - name: Import project
+        run: |
+          set -e
+          godot --headless --import || true
+          godot --headless --import
+
+      - name: Export Android APK
+        run: |
+          set -e
+          mkdir -p build/android
+          godot --headless --export-debug "Android" build/android/ruin_digger.apk
+          test -s build/android/ruin_digger.apk
+
+      - name: Verify the APK is signed and well-formed
+        run: |
+          set -e
+          APK=build/android/ruin_digger.apk
+          "$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs "$APK"
+          "$ANDROID_HOME"/build-tools/36.0.0/aapt dump badging "$APK" \
+            | grep -E "^package|^sdkVersion|^targetSdkVersion|^application-label"
+          ls -la build/android/
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruin-digger-android-apk
+          path: build/android/*.apk
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,14 @@
+{
+ "cell": [
+  16,
+  16
+ ],
+ "rows": {
+  "ore_copper": 0,
+  "ore_amber": 1,
+  "ore_spore": 2,
+  "ore_quartz": 3,
+  "ore_void": 4,
+  "ore_relic_dust": 5
+ }
+}

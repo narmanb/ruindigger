@@ -1,0 +1,26 @@
+# Godot 4
+.godot/
+*.translation
+
+# Exports / builds
+build/
+*.apk
+*.aab
+*.idsig
+*.pck
+*.x86_64
+*.exe
+*.dmg
+
+# Android signing (never commit real keystores)
+*.keystore
+*.jks
+
+# Python tooling
+__pycache__/
+*.pyc
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp

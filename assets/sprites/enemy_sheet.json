@@ -1,0 +1,24 @@
+{
+ "cell": [
+  24,
+  20
+ ],
+ "anims": {
+  "crawler_walk": {
+   "row": 0,
+   "frames": 6
+  },
+  "crawler_attack": {
+   "row": 1,
+   "frames": 4
+  },
+  "sentry_idle": {
+   "row": 2,
+   "frames": 4
+  },
+  "sentry_fire": {
+   "row": 3,
+   "frames": 3
+  }
+ }
+}
