@@ -52,6 +52,12 @@ func _process(_d: float) -> void:
 		mine.player.global_position = Vector2(c.x * 16 + 8, (c.y + 1) * 16 - 14)
 		mine.player.invuln = 999.0
 		mine.camera.reset_smoothing()
+	if mine and args.has("settings") and frame == 25:
+		if mine.has_method("_settings"):
+			mine._settings()
+		elif mine.get("pause_menu") != null:
+			mine.pause_menu.open()
+			mine.pause_menu._settings()
 	if mine and args.has("waterfall") and frame == 20:
 		var g: TerrainGrid = mine.grid
 		var ox := 22
@@ -69,9 +75,13 @@ func _process(_d: float) -> void:
 		g.set_mat(ox, oy - 1, Cell.HARD)
 		g.set_mat(ox, oy - 2, Cell.HARD)
 		g.set_mat(ox, oy - 3, Cell.HARD)
-		for y in range(oy - 5, oy):
+		if args.has("ledge"):
 			for x in range(ox - 10, ox):
-				g.set_water(x, y, Balance.WATER_MAX)
+				g.set_water(x, oy - 1, 20)
+		else:
+			for y in range(oy - 5, oy):
+				for x in range(ox - 10, ox):
+					g.set_water(x, y, Balance.WATER_MAX)
 		mine.water.wake_all()
 		mine.player.global_position = Vector2((ox + 8) * 16, (oy + 10) * 16 - 14)
 		mine.player.invuln = 999.0

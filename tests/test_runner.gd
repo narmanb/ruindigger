@@ -45,6 +45,7 @@ func _run() -> void:
 		_generation(int(args.get("seeds", "60")))
 	if suite in ["all", "ui"]:
 		_ui()
+		await _ui_settings()
 	if suite in ["all", "game"]:
 		await _gameplay()
 	print("")
@@ -171,6 +172,34 @@ func _water_units() -> void:
 		room += g.get_water(x, 9)
 	check(room > 0, "breaching a wall lets water flow through (%d units arrived)" % room)
 	check(sim.total() == total0, "water conserved through the breach")
+	# a shallow puddle on a ledge drains over the lip quickly (no long dribble)
+	var lg := TerrainGrid.new(24, 16)
+	for yy in 16:
+		for xx in 24:
+			lg.put(xx, yy, Cell.HARD)
+	for yy in range(2, 14):
+		for xx in range(2, 22):
+			lg.put(xx, yy, Cell.AIR)
+	for xx in range(10, 22):
+		lg.put(xx, 8, Cell.HARD)          # ledge floor; the drop is at x < 10
+	var lsim := WaterSim.new(lg)
+	for xx in range(12, 21):
+		lg.set_water(xx, 7, 14)           # thin puddle, 126 units
+	lsim.wake_all()
+	for k in 30:                          # 1.8 s of simulated time
+		lsim.step()
+		for j in 4:
+			lsim.update_drops(Balance.WATER_TICK / 4.0)
+	var left_on_ledge := 0
+	for xx in range(10, 22):
+		left_on_ledge += lg.get_water(xx, 7)
+	check(left_on_ledge <= 12, "a shallow ledge puddle pours off within 1.8 s (%d units left)" % left_on_ledge)
+	var hanging := 0
+	for xx in range(2, 10):
+		for yy in range(2, 12):
+			if lg.get_water(xx, yy) > 0 and not lg.is_solid(xx, yy + 1) and lg.get_water(xx, yy + 1) == 0:
+				hanging += lg.get_water(xx, yy)
+	check(hanging <= 4, "no water left hanging over the drop (%d units)" % hanging)
 	# a solid landing in water displaces it upward instead of deleting it
 	var before := sim.total()
 	g.set_mat(5, 9, Cell.LOOSE)
@@ -338,6 +367,24 @@ func _ui() -> void:
 			check(not overlap, "touch buttons separate and clear of HUD at %dx%d scale %.1f" % [aspect.x, aspect.y, sc])
 	Settings.values["touch_scale"] = 1.0
 	tc.queue_free()
+
+
+func _ui_settings() -> void:
+	# the settings panel must open centred and fully on screen (title + pause)
+	var host := Control.new()
+	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(host)
+	await get_tree().process_frame
+	var sp := SettingsPanel.new()
+	host.add_child(sp)
+	for i in 3:
+		await get_tree().process_frame
+	var vp := get_viewport().get_visible_rect()
+	var r := sp.get_global_rect()
+	check(vp.encloses(r), "settings panel is fully on screen (%s in %s)" % [str(r), str(vp)])
+	check(absf(r.get_center().x - vp.get_center().x) < 4.0 and absf(r.get_center().y - vp.get_center().y) < 4.0, "settings panel is centred (%s vs %s)" % [str(r.get_center()), str(vp.get_center())])
+	host.queue_free()
+	await get_tree().process_frame
 
 
 # ---------------------------------------------------------------------------

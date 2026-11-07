@@ -16,6 +16,7 @@ var lost := 0
 var drop_pos := PackedVector2Array()
 var drop_vel := PackedVector2Array()
 var drop_vol := PackedInt32Array()
+var drop_src := PackedInt32Array()   # emitting cell index: lets the renderer join a stream
 var splashes: Array[Vector2] = []   # landing points this frame (for FX)
 var deposits := 0
 
@@ -106,6 +107,7 @@ func _emit(x: int, y: int, amount: int) -> void:
 		drop_pos.append(Vector2(cx + randf_range(-3.0, 3.0) + vx * Balance.WATER_TICK * (1.0 - lag), (y + 1) * 16.0 + 0.5 + vy0 * Balance.WATER_TICK * (1.0 - lag)))
 		drop_vel.append(Vector2(vx + randf_range(-4.0, 4.0), vy0))
 		drop_vol.append(v)
+		drop_src.append(y * grid.w + x)
 
 
 func update_drops(delta: float) -> void:
@@ -136,6 +138,7 @@ func update_drops(delta: float) -> void:
 			drop_pos.remove_at(i)
 			drop_vel.remove_at(i)
 			drop_vol.remove_at(i)
+			drop_src.remove_at(i)
 			continue
 		drop_pos[i] = np
 		drop_vel[i] = v
@@ -208,14 +211,28 @@ func step() -> void:
 		# 2) spread sideways toward lower neighbours (only once resting)
 		if lv > 0 and (not _open(x, y + 1) or grid.get_water(x, y + 1) >= Balance.WATER_MAX):
 			var sides: Array = [Vector2i(-1, 0), Vector2i(1, 0)] if flip else [Vector2i(1, 0), Vector2i(-1, 0)]
+			# sheet flow: water lying on a floor runs toward the nearest edge it
+			# can pour over, instead of only levelling out neighbour by neighbour
+			var run_dir := _drop_dir(x, y) if not _open(x, y + 1) else 0
+			if run_dir != 0:
+				sides = [Vector2i(run_dir, 0), Vector2i(-run_dir, 0)]
 			for d in sides:
 				var nx: int = x + d.x
 				if not _open(nx, y):
 					continue
 				var ln := grid.get_water(nx, y)
 				var diff := lv - ln
-				if diff >= 2 or (diff == 1 and ln == 0 and _open(nx, y + 1) and grid.get_water(nx, y + 1) < Balance.WATER_MAX):
-					var mv2 := maxi(1, diff / 2)
+				var drop_off := _open(nx, y + 1) and grid.get_water(nx, y + 1) < Balance.WATER_MAX
+				var mv2 := 0
+				if d.x == run_dir and not drop_off and ln <= lv and ln < Balance.WATER_MAX:
+					mv2 = mini(maxi(1, (lv + 1) / 2), Balance.WATER_MAX - ln)
+				elif drop_off and ln < Balance.WATER_MAX:
+					# the neighbour pours away below: water runs over the lip
+					# quickly instead of dribbling out one unit per tick
+					mv2 = mini(maxi(1, (lv + 1) / 2), Balance.WATER_MAX - ln)
+				elif diff >= 2:
+					mv2 = maxi(1, diff / 2)
+				if mv2 > 0:
 					grid.set_water(nx, y, ln + mv2)
 					lv -= mv2
 					grid.set_water(x, y, lv)
@@ -227,6 +244,27 @@ func step() -> void:
 			wake(x, y)
 			active[Vector2i(x, y + 1)] = true
 	last_moves = moves
+
+
+const RUN_SCAN := 12
+
+
+## Direction (-1/+1) of the nearest edge along this floor where water can pour
+## down, within RUN_SCAN cells; 0 if none.
+func _drop_dir(x: int, y: int) -> int:
+	var best := RUN_SCAN + 1
+	var dir := 0
+	for s in [-1, 1]:
+		for k in range(1, RUN_SCAN + 1):
+			var cx: int = x + s * k
+			if not _open(cx, y):
+				break
+			if _open(cx, y + 1) and grid.get_water(cx, y + 1) < Balance.WATER_MAX:
+				if k < best:
+					best = k
+					dir = s
+				break
+	return dir
 
 
 ## Runs the simulation until nothing moves (used by the generator to settle lakes).

@@ -108,17 +108,12 @@ func close() -> void:
 
 
 func _settings() -> void:
-	panel.visible = false
+	var layout := panel.get_parent() as Control   # pause panel + survey map
+	layout.visible = false
 	var sp := SettingsPanel.new()
 	root.add_child(sp)
-	sp.anchor_left = 0.5
-	sp.anchor_top = 0.5
-	sp.anchor_right = 0.5
-	sp.anchor_bottom = 0.5
-	sp.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	sp.grow_vertical = Control.GROW_DIRECTION_BOTH
 	sp.closed.connect(func() -> void:
-		panel.visible = true
+		layout.visible = true
 		resume_btn.grab_focus())
 
 

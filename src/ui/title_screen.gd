@@ -95,12 +95,6 @@ func _settings() -> void:
 	menu.visible = false
 	var sp := SettingsPanel.new()
 	add_child(sp)
-	sp.anchor_left = 0.5
-	sp.anchor_top = 0.5
-	sp.anchor_right = 0.5
-	sp.anchor_bottom = 0.5
-	sp.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	sp.grow_vertical = Control.GROW_DIRECTION_BOTH
 	sp.closed.connect(func() -> void:
 		menu.visible = true
 		menu.get_child(0).grab_focus())

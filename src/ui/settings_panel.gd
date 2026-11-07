@@ -9,7 +9,6 @@ var first_focus: Control
 
 func _ready() -> void:
 	theme = UIKit.theme()
-	set_anchors_preset(Control.PRESET_CENTER)
 	custom_minimum_size = Vector2(330, 0)
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 6)
@@ -17,7 +16,7 @@ func _ready() -> void:
 	outer.add_child(UIKit.header("SYSTEM SETTINGS"))
 	outer.add_child(UIKit.Scanline.new())
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(320, 210)
+	scroll.custom_minimum_size = Vector2(320, clampf(get_viewport_rect().size.y - 130.0, 120.0, 210.0))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	outer.add_child(scroll)
 	var list := VBoxContainer.new()
@@ -49,9 +48,34 @@ func _ready() -> void:
 		closed.emit()
 		queue_free())
 	outer.add_child(back)
+	_center()
+	get_viewport().size_changed.connect(_center)
 	await get_tree().process_frame
+	_center()
 	if first_focus:
 		first_focus.grab_focus()
+
+
+## Centre on the screen from the panel's real minimum size. (Setting anchors
+## after the panel is already in the tree keeps its old position, which is what
+## pushed it into the top-left corner.)
+func _center() -> void:
+	if not is_inside_tree():
+		return
+	var vp := get_viewport_rect().size
+	var ms := get_combined_minimum_size()
+	ms.x = minf(ms.x, vp.x - 12.0)
+	ms.y = minf(ms.y, vp.y - 12.0)
+	anchor_left = 0.5
+	anchor_right = 0.5
+	anchor_top = 0.5
+	anchor_bottom = 0.5
+	offset_left = -ms.x * 0.5
+	offset_right = ms.x * 0.5
+	offset_top = -ms.y * 0.5
+	offset_bottom = ms.y * 0.5
+	grow_horizontal = Control.GROW_DIRECTION_BOTH
+	grow_vertical = Control.GROW_DIRECTION_BOTH
 
 
 func _name(t: String) -> Label:

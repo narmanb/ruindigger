@@ -185,12 +185,30 @@ func resting(x: int, y: int) -> bool:
 
 
 func pooled(x: int, y: int) -> bool:
+	## Resting water, or a drain column *inside* a pool: both sides must be
+	## resting water or rock. A cell with open air beside it and a drop below is
+	## a lip where water pours over, and is drawn as a stream instead of a lump.
 	if resting(x, y):
 		return true
+	var water_side := false
 	for dx in [-1, 1]:
-		if not grid.is_solid(x + dx, y) and grid.get_water(x + dx, y) >= Balance.WATER_MAX / 4 and resting(x + dx, y):
-			return true
-	return false
+		var sx: int = x + dx
+		if grid.is_solid(sx, y):
+			continue
+		if grid.get_water(sx, y) >= Balance.WATER_MAX / 4 and resting(sx, y):
+			water_side = true
+			continue
+		return false
+	return water_side
+
+
+func source_side(x: int, y: int) -> int:
+	## -1 if the water feeding this lip comes from the left, +1 from the right
+	var l := grid.get_water(x - 1, y) if not grid.is_solid(x - 1, y) else -1
+	var r := grid.get_water(x + 1, y) if not grid.is_solid(x + 1, y) else -1
+	if l == r:
+		return 0
+	return -1 if l > r else 1
 
 
 class FieldDrawer extends Node2D:
@@ -247,10 +265,12 @@ class FieldDrawer extends Node2D:
 							top = snappedf(by - h, 0.5)
 							bottom = maxf(by, top + min_h)
 						else:
-							# water tipping off an edge: a soft vertical stream segment
-							var w := 4.0 + 8.0 * clampf(lv / mx, 0.0, 1.0)
-							var cx := x * 16.0 + 8.0
-							draw_texture_rect(blob, Rect2(cx - w, by - 16.0 - w * 0.5, w * 2.0, 16.0 + w * 2.0), false)
+							# water tipping off an edge: a soft stream segment that hugs the
+							# side it pours from, so it stays attached to the pool's lip
+							var f := clampf(lv / mx, 0.0, 1.0)
+							var w := 3.5 + 6.0 * sqrt(f)
+							var cx := x * 16.0 + 8.0 + float(r.source_side(x, y)) * (8.0 - w * 0.6)
+							draw_texture_rect(blob, Rect2(cx - w, by - 16.0 - w, w * 2.0, 16.0 + w * 2.0), false)
 				# merge horizontal runs with the same top/bottom into one soft rect
 				if run_start >= 0 and (top != run_top or bottom != run_bottom):
 					_soft_rect(Rect2(run_start * 16.0, run_top, (x - run_start) * 16.0, run_bottom - run_top))
@@ -259,16 +279,31 @@ class FieldDrawer extends Node2D:
 					run_start = x
 					run_top = top
 					run_bottom = bottom
-		# falling droplets: stretched blobs along their velocity
+		# falling droplets: stretched blobs along their velocity, and a soft bridge
+		# to the previous droplet from the same spout so a thin trickle draws as
+		# one continuous thread instead of separate floating blobs
 		var sim := r.sim
 		var n := sim.drop_count()
+		var last: Dictionary = {}   # src cell -> [pos, radius]
 		for i in n:
 			var p: Vector2 = sim.drop_pos[i]
 			if not view_rect.grow(16.0).has_point(p):
 				continue
+			var src: int = sim.drop_src[i] % r.grid.w   # join per column
+			var rad0 := BLOB_R * (0.62 + 0.38 * clampf(float(sim.drop_vol[i]) / float(Balance.WATER_DROP_UNITS), 0.0, 1.5))
+			if last.has(src):
+				var q: Vector2 = last[src][0]
+				var seg := q - p
+				var dist := seg.length()
+				if dist > 1.0 and dist < 48.0 and seg.y > 0.0 and absf(seg.x) < 12.0:
+					var br := minf(rad0, float(last[src][1])) * 0.85
+					draw_set_transform((p + q) * 0.5, seg.angle() - PI * 0.5, Vector2(1.0, (dist * 0.5 + br) / br))
+					draw_texture_rect(blob, Rect2(-br, -br, br * 2.0, br * 2.0), false)
+			last[src] = [p, rad0]
 			var v: Vector2 = sim.drop_vel[i]
-			var rad := BLOB_R + float(sim.drop_vol[i]) * 0.35
-			var stretch := 1.0 + clampf(v.length() / 180.0, 0.0, 1.8)
+			# small trickles draw as thin threads, full pours as thick ribbons
+			var rad := BLOB_R * (0.62 + 0.38 * clampf(float(sim.drop_vol[i]) / float(Balance.WATER_DROP_UNITS), 0.0, 1.5))
+			var stretch := 1.5 + clampf(v.length() / 160.0, 0.0, 2.0)
 			draw_set_transform(p - v * 0.012, v.angle() - PI * 0.5 if v.length() > 1.0 else 0.0, Vector2(1.0, stretch))
 			draw_texture_rect(blob, Rect2(-rad, -rad, rad * 2.0, rad * 2.0), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
