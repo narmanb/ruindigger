@@ -603,8 +603,9 @@ func _animate(delta: float, ax: float) -> void:
 	flash_mat.set_shader_parameter("flash", fl)
 	flash_mat.set_shader_parameter("flash_color", Color(1, 0.35, 0.3) if Settings.reduced_flashing() else Color(1, 1, 1))
 	var blink := invuln > 0.0 and int(invuln * 14.0) % 2 == 0 and not Settings.reduced_flashing()
-	body_sprite.modulate.a = 0.55 if blink else 1.0
-	drill_sprite.modulate.a = body_sprite.modulate.a
+	var tint := Color(0.62, 0.82, 1.0) if in_water else Color.WHITE   # submerged look
+	body_sprite.modulate = Color(tint.r, tint.g, tint.b, 0.55 if blink else 1.0)
+	drill_sprite.modulate = body_sprite.modulate
 	preview.queue_redraw()
 
 

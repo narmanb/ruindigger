@@ -72,11 +72,9 @@ func _build_world() -> void:
 	add_child(view)
 	view.setup(grid, glow_root)
 	water = WaterSim.new(grid)
-	var drops := TerrainView.WaterDrops.new()
-	drops.sim = water
-	drops.grid = grid
-	drops.z_index = 3
-	add_child(drops)
+	var water_view := WaterRenderer.new()
+	add_child(water_view)
+	water_view.setup(grid, water, self)
 	entity_root = Node2D.new()
 	add_child(entity_root)
 	collapse = Hazards.Collapse.new()

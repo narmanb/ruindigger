@@ -12,8 +12,7 @@ var grid: TerrainGrid
 var glow_parent: Node2D            # node inside the additive glow layer
 var chunks: Dictionary = {}        # Vector2i -> TerrainChunk
 var glow_chunks: Dictionary = {}   # Vector2i -> GlowChunk
-var water_chunks: Dictionary = {}  # Vector2i -> WaterChunk
-var water_redraws := 0
+var back_chunks: Dictionary = {}   # Vector2i -> BackChunk (tunnel back-walls + decor)
 var bodies: Dictionary = {}        # Vector2i -> RID
 var shapes: Dictionary = {}        # Vector2i -> Array[RID]
 var _col_dirty: Dictionary = {}
@@ -30,7 +29,6 @@ var tex_glow: Texture2D
 var tex_alloy_glow: Texture2D
 var props_meta: Dictionary = {}
 var glow_material: ShaderMaterial
-var water_material: ShaderMaterial
 
 
 func setup(g: TerrainGrid, glow_node: Node2D) -> void:
@@ -48,8 +46,6 @@ func setup(g: TerrainGrid, glow_node: Node2D) -> void:
 	glow_material = ShaderMaterial.new()
 	glow_material.shader = load("res://src/fx/glow_pulse.gdshader")
 	grid.cell_changed.connect(_on_cell_changed)
-	water_material = ShaderMaterial.new()
-	water_material.shader = load("res://src/fx/water.gdshader")
 	for cy in grid.chunks_h:
 		for cx in grid.chunks_w:
 			var key := Vector2i(cx, cy)
@@ -67,16 +63,15 @@ func setup(g: TerrainGrid, glow_node: Node2D) -> void:
 			glow_parent.add_child(gc)
 			glow_chunks[key] = gc
 			_col_dirty[key] = true
-	# water draws above terrain and above the player (z) so swimmers look submerged
+	# back-walls and decor sit behind the water layer (z -10); solid rock in front
 	for key in chunks.keys():
-		var wc := WaterChunk.new()
-		wc.view = self
-		wc.key = key
-		wc.position = chunks[key].position
-		wc.z_index = 3
-		wc.material = water_material
-		add_child(wc)
-		water_chunks[key] = wc
+		var bc := BackChunk.new()
+		bc.view = self
+		bc.key = key
+		bc.position = chunks[key].position
+		bc.z_index = -10
+		add_child(bc)
+		back_chunks[key] = bc
 	grid.take_dirty()
 	grid.take_water_dirty()
 	_flush_collision()
@@ -110,15 +105,9 @@ func _process(_delta: float) -> void:
 		if chunks.has(key):
 			chunks[key].queue_redraw()
 			glow_chunks[key].queue_redraw()
-			water_chunks[key].queue_redraw()
+			back_chunks[key].queue_redraw()
 			redraw_count += 1
-	for key in grid.take_water_dirty():
-		# neighbours too: surface blending reads across chunk edges
-		for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var k2: Vector2i = key + d
-			if water_chunks.has(k2):
-				water_chunks[k2].touch()
-		water_redraws += 1
+	grid.take_water_dirty()   # water is drawn by WaterRenderer every frame
 
 
 func _flush_collision() -> void:
@@ -275,14 +264,37 @@ class TerrainChunk extends Node2D:
 						var stage := 0 if f > 0.6 else (1 if f > 0.3 else 2)
 						draw_texture_rect_region(cracked_tex, Rect2(p, Vector2(C, C)), Rect2(((x * 5 + y) % 4) * C, stage * C, C, C))
 				else:
-					if g.has_flag(x, y, Cell.F_DUG):
-						draw_texture_rect_region(view.tex_back, Rect2(p, Vector2(C, C)), Rect2(s * 64 + (x % 4) * C, (y % 4) * C, C, C))
 					if m == Cell.LADDER:
 						draw_texture_rect_region(view.tex_props, Rect2(p, Vector2(C, C)), view.prop_rect("ladder_wood" if s == 0 else "ladder_metal"))
 					elif m == Cell.PLATFORM:
 						draw_texture_rect_region(view.tex_props, Rect2(p, Vector2(C, C)), view.prop_rect("platform"))
-					elif not g.has_flag(x, y, Cell.F_DUG):
-						view.draw_deco(self, x, y, p, s)
+
+
+class BackChunk extends Node2D:
+	var view: TerrainView
+	var key: Vector2i
+
+	func _draw() -> void:
+		var g := view.grid
+		var x0 := key.x * CHUNK
+		var y0 := key.y * CHUNK
+		for ly in CHUNK:
+			var y := y0 + ly
+			if y >= g.h:
+				break
+			for lx in CHUNK:
+				var x := x0 + lx
+				if x >= g.w:
+					break
+				var m := g.get_mat(x, y)
+				if Cell.is_solid(m):
+					continue
+				var p := Vector2(lx * C, ly * C)
+				var s := g.get_stratum(x, y)
+				if g.has_flag(x, y, Cell.F_DUG):
+					draw_texture_rect_region(view.tex_back, Rect2(p, Vector2(C, C)), Rect2(s * 64 + (x % 4) * C, (y % 4) * C, C, C))
+				elif m == Cell.AIR:
+					view.draw_deco(self, x, y, p, s)
 
 
 func draw_tile(ci: CanvasItem, m: int, s: int, mask: int, x: int, y: int, p: Vector2, col: Color) -> void:
@@ -315,169 +327,6 @@ func draw_deco(ci: CanvasItem, x: int, y: int, p: Vector2, s: int) -> void:
 					ci.draw_texture_rect_region(tex_props, Rect2(p + Vector2(0, 8), Vector2(16, 8)), prop_rect("pebbles"), Color(0.7, 0.6, 0.9))
 
 
-const WATER_COL := [Color(0.16, 0.42, 0.78, 0.62), Color(0.1, 0.55, 0.62, 0.62), Color(0.32, 0.3, 0.8, 0.62)]
-const WATER_TOP := [Color(0.6, 0.85, 1.0, 0.9), Color(0.55, 1.0, 0.9, 0.9), Color(0.75, 0.7, 1.0, 0.9)]
-
-
-class WaterChunk extends Node2D:
-	## Smooth water: each surface column blends into its neighbours, levels ease
-	## toward the simulation instead of stepping, the shader rolls waves, and
-	## free-falling water is left to the droplet renderer.
-	var view: TerrainView
-	var key: Vector2i
-	var disp: PackedFloat32Array
-	var animating := false
-
-	func _ready() -> void:
-		disp = PackedFloat32Array()
-		disp.resize(CHUNK * CHUNK)
-		var g := view.grid
-		for ly in CHUNK:
-			for lx in CHUNK:
-				disp[ly * CHUNK + lx] = g.get_water(key.x * CHUNK + lx, key.y * CHUNK + ly)
-
-	func touch() -> void:
-		animating = true
-		set_process(true)
-
-	func _process(delta: float) -> void:
-		if not animating:
-			set_process(false)
-			return
-		var g := view.grid
-		var k := clampf(delta * 10.0, 0.0, 1.0)
-		var settled := true
-		for ly in CHUNK:
-			for lx in CHUNK:
-				var i := ly * CHUNK + lx
-				var target := float(g.get_water(key.x * CHUNK + lx, key.y * CHUNK + ly))
-				var d := disp[i]
-				if absf(d - target) > 0.4:
-					disp[i] = lerpf(d, target, k)
-					settled = false
-				else:
-					disp[i] = target
-		queue_redraw()
-		if settled:
-			animating = false
-
-	func _flat(r: Rect2, c: Color) -> void:
-		# uv.y = 0 everywhere so the wave shader leaves these vertices still
-		var z := Vector2.ZERO
-		draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]),
-			PackedColorArray([c, c, c, c]), PackedVector2Array([z, z, z, z]))
-
-	func _lv(x: int, y: int) -> float:
-		var lx := x - key.x * CHUNK
-		var ly := y - key.y * CHUNK
-		if lx >= 0 and ly >= 0 and lx < CHUNK and ly < CHUNK:
-			return disp[ly * CHUNK + lx]
-		return float(view.grid.get_water(x, y))
-
-	func _resting(g: TerrainGrid, x: int, y: int) -> bool:
-		return g.is_solid(x, y + 1) or g.get_water(x, y + 1) >= Balance.WATER_MAX - 6
-
-	func _pooled(g: TerrainGrid, x: int, y: int) -> bool:
-		if _resting(g, x, y):
-			return true
-		# a drain column inside a pool still reads as pool, not as a spout
-		for dx in [-1, 1]:
-			if not g.is_solid(x + dx, y) and g.get_water(x + dx, y) >= Balance.WATER_MAX / 4 and _resting(g, x + dx, y):
-				return true
-		return false
-
-	func _surface_h(g: TerrainGrid, x: int, y: int) -> float:
-		## height (px) of the water column top in cell (x,y), or -1 if none
-		if g.is_solid(x, y):
-			return -1.0
-		var lv := _lv(x, y)
-		if lv < 0.5 or not _pooled(g, x, y):
-			return -1.0
-		if g.get_water(x, y - 1) > 0 and _pooled(g, x, y - 1):
-			return 16.0
-		return clampf(lv / float(Balance.WATER_MAX) * 16.0, 0.6, 16.0)
-
-	func _draw() -> void:
-		var g := view.grid
-		var x0 := key.x * CHUNK
-		var y0 := key.y * CHUNK
-		for ly in CHUNK:
-			var y := y0 + ly
-			if y >= g.h:
-				break
-			for lx in CHUNK:
-				var x := x0 + lx
-				if x >= g.w:
-					break
-				var lv := _lv(x, y)
-				if lv < 0.5 or g.is_solid(x, y):
-					continue
-				var s := g.get_stratum(x, y)
-				var col: Color = WATER_COL[s]
-				var bx := lx * C
-				var by := ly * C + C
-				if not _pooled(g, x, y):
-					# water about to pour off a ledge: a thin spout (droplets do the rest)
-					# water tipping over an edge: a straight narrow lip that meets the
-					# droplet stream below (no wedge shapes)
-					var w := 3.0 + 5.0 * clampf(lv / float(Balance.WATER_MAX), 0.0, 1.0)
-					var top_y := by - clampf(lv / float(Balance.WATER_MAX) * 16.0, 2.0, 16.0)
-					_flat(Rect2(bx + 8 - w * 0.5, top_y, w, by - top_y), Color(col.r, col.g, col.b, col.a * 0.8))
-					continue
-				var h := _surface_h(g, x, y)
-				if h >= 16.0:
-					var deep := col.darkened(0.25)
-					_flat(Rect2(bx, by - 16, C, C), deep)
-					continue
-				# blend edge heights with neighbouring columns for a continuous surface
-				var hl := _surface_h(g, x - 1, y)
-				var hr := _surface_h(g, x + 1, y)
-				var el := (h + hl) * 0.5 if hl >= 0.0 else (h if g.is_solid(x - 1, y) else h * 0.55)
-				var er := (h + hr) * 0.5 if hr >= 0.0 else (h if g.is_solid(x + 1, y) else h * 0.55)
-				el = minf(el, 16.0)
-				er = minf(er, 16.0)
-				var top := col.lightened(0.12)
-				var bot := col.darkened(0.2)
-				var pts := PackedVector2Array([Vector2(bx, by), Vector2(bx + C, by), Vector2(bx + C, by - er), Vector2(bx + 8, by - h), Vector2(bx, by - el)])
-				var cols := PackedColorArray([bot, bot, top, top, top])
-				var uvs := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0.5, 1), Vector2(0, 1)])
-				draw_polygon(pts, cols, uvs)
-				# surface highlight strip (also rides the waves: uv.y = 1)
-				var hi: Color = WATER_TOP[s]
-				var strip := PackedVector2Array([Vector2(bx, by - el), Vector2(bx + 8, by - h), Vector2(bx + C, by - er), Vector2(bx + C, by - er + 1.2), Vector2(bx + 8, by - h + 1.2), Vector2(bx, by - el + 1.2)])
-				draw_polygon(strip, PackedColorArray([hi, hi, hi, hi, hi, hi]), PackedVector2Array([Vector2(0, 1), Vector2(0.5, 1), Vector2(1, 1), Vector2(1, 1), Vector2(0.5, 1), Vector2(0, 1)]))
-
-
-## Renders airborne droplets as stretched, overlapping blobs so a waterfall reads
-## as one continuous stream.
-class WaterDrops extends Node2D:
-	var sim: WaterSim
-	var grid: TerrainGrid
-
-	func _process(_d: float) -> void:
-		if sim and (sim.drop_count() > 0 or _had):
-			queue_redraw()
-		_had = sim != null and sim.drop_count() > 0
-
-	var _had := false
-
-	func _draw() -> void:
-		if sim == null:
-			return
-		var n := sim.drop_count()
-		for i in n:
-			var p: Vector2 = sim.drop_pos[i]
-			var v: Vector2 = sim.drop_vel[i]
-			var s := grid.get_stratum(int(p.x / 16.0), int(p.y / 16.0))
-			var c: Color = WATER_COL[s]
-			c.a = 0.75
-			# soft capsule along the motion: overlapping discs merge into a ribbon
-			var r := 2.3 + float(sim.drop_vol[i]) * 0.3
-			var tail := p - v * 0.04
-			for k in 4:
-				draw_circle(p.lerp(tail, k / 3.0), r * (1.0 - k * 0.12), c)
-			if i % 4 == 0:
-				draw_line(p.lerp(tail, 0.8) + Vector2(-0.6, 0), p + Vector2(-0.6, 0), Color(1, 1, 1, 0.25), 1.0)
 
 
 class GlowChunk extends Node2D:

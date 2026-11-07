@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+- New liquid renderer (`src/fx/water_renderer.gd`). Water cells and droplets draw as soft shapes into an off-screen density buffer, and a shader thresholds it into one smooth liquid surface. No cell seams; pools flow into waterfalls seamlessly; streams merge. It adds depth shading, a surface highlight, waves and caustics.
+- Water sits behind the rock tiles, so its edges always meet rock cleanly. A faint masked copy in front of the player, plus a blue tint, makes swimmers look submerged.
+- Tunnel back-walls and cave decor moved to their own layer behind the water.
+
 ## 0.2.2
 - Water polish from on-device video. No more wedge-shaped spout under drain holes, no light band through a pool above its drain, and entering water now splashes instead of puffing smoke.
 - Unstable ceilings telegraph: loose rubble held by a thin layer trickles dust, and a toast warns when a ceiling starts to give way.

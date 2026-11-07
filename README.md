@@ -213,8 +213,15 @@ block a route.
 cell). Water over open air leaves the grid as droplets (3 units each, capped at
 900). They fall with gravity and momentum, render as overlapping capsules that
 form a continuous stream, and deposit back into the grid where they land.
-Pooled water draws as per-column polygons with blended edge heights, eased
-display levels and a wave/caustic shader. Only active cells update, with a budget of 2400 updates per 60 ms step,
+Rendering (`WaterRenderer`) is a metaball-style liquid pass. Every visible
+water cell (merged into horizontal runs) is drawn as a 9-slice soft rectangle
+whose linear ramps are centred on the cell edges, and every droplet as a
+velocity-stretched soft blob. They go additively into an off-screen buffer, so
+neighbours sum into one seamless density field. `water_composite.gdshader`
+thresholds that field into a smooth surface with depth shading, a highlight
+line, waves and caustics. The full-strength copy sits behind the rock tiles. A
+faint copy in front of the player is masked out of solid cells using a per-cell
+mask texture. Only active cells update, with a budget of 2400 updates per 60 ms step,
 so a settled lake costs nothing. Water falls first, then levels sideways. A
 solid that lands in water pushes the water up or sideways. Water renders in
 per-chunk overlays that redraw only when their water changes.
