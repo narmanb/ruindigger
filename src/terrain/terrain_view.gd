@@ -374,8 +374,17 @@ class WaterChunk extends Node2D:
 			return disp[ly * CHUNK + lx]
 		return float(view.grid.get_water(x, y))
 
-	func _pooled(g: TerrainGrid, x: int, y: int) -> bool:
+	func _resting(g: TerrainGrid, x: int, y: int) -> bool:
 		return g.is_solid(x, y + 1) or g.get_water(x, y + 1) >= Balance.WATER_MAX - 6
+
+	func _pooled(g: TerrainGrid, x: int, y: int) -> bool:
+		if _resting(g, x, y):
+			return true
+		# a drain column inside a pool still reads as pool, not as a spout
+		for dx in [-1, 1]:
+			if not g.is_solid(x + dx, y) and g.get_water(x + dx, y) >= Balance.WATER_MAX / 4 and _resting(g, x + dx, y):
+				return true
+		return false
 
 	func _surface_h(g: TerrainGrid, x: int, y: int) -> float:
 		## height (px) of the water column top in cell (x,y), or -1 if none
@@ -409,12 +418,11 @@ class WaterChunk extends Node2D:
 				var by := ly * C + C
 				if not _pooled(g, x, y):
 					# water about to pour off a ledge: a thin spout (droplets do the rest)
-					var w := 3.0 + 7.0 * clampf(lv / float(Balance.WATER_MAX), 0.0, 1.0)
-					var sc := Color(col.r, col.g, col.b, col.a * 0.85)
-					var z := Vector2.ZERO
-					# tapered lip where water tips over the edge
-					draw_polygon(PackedVector2Array([Vector2(bx + 8 - w, by - 16 + 16 - lv / float(Balance.WATER_MAX) * 16.0), Vector2(bx + 8 + w, by - 16 + 16 - lv / float(Balance.WATER_MAX) * 16.0), Vector2(bx + 8 + w * 0.4, by), Vector2(bx + 8 - w * 0.4, by)]),
-						PackedColorArray([sc, sc, sc, sc]), PackedVector2Array([z, z, z, z]))
+					# water tipping over an edge: a straight narrow lip that meets the
+					# droplet stream below (no wedge shapes)
+					var w := 3.0 + 5.0 * clampf(lv / float(Balance.WATER_MAX), 0.0, 1.0)
+					var top_y := by - clampf(lv / float(Balance.WATER_MAX) * 16.0, 2.0, 16.0)
+					_flat(Rect2(bx + 8 - w * 0.5, top_y, w, by - top_y), Color(col.r, col.g, col.b, col.a * 0.8))
 					continue
 				var h := _surface_h(g, x, y)
 				if h >= 16.0:

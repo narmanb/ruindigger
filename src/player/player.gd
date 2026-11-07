@@ -246,7 +246,8 @@ func _move_normal(delta: float, ax: float, on_floor: bool) -> void:
 	if wet != in_water:
 		in_water = wet
 		if mine:
-			mine.fx.dust(global_position + Vector2(0, -6), Color(0.6, 0.85, 1.0))
+			for k in 3:
+				mine.fx.splash(global_position + Vector2(randf_range(-6, 6), -4))
 			Audio.play_at("land", global_position, -6.0, 0.2)
 	if wet:
 		_swim(delta, ax)
@@ -313,7 +314,7 @@ func _swim(delta: float, ax: float) -> void:
 		buffer = 0.0
 		velocity.y = -Balance.WATER_SWIM
 		if mine and randf() < 0.5:
-			mine.fx.dust(global_position + Vector2(0, 10), Color(0.7, 0.9, 1.0))
+			mine.fx.splash(global_position + Vector2(0, 8))
 
 
 func _wall_dir() -> int:

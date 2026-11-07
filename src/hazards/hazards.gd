@@ -328,9 +328,31 @@ class Collapse extends Node2D:
 		if pending.size() == 1 or randf() < 0.3:
 			Audio.play_at("rumble", mine.grid.cell_center(c), -2.0, 0.1, 0.4)
 			mine.shake(0.12)
+		if pending.size() == 1:
+			mine.toast("The ceiling is giving way!")
+
+	var _dribble_t := 0.0
+
+	func _dribble(g: TerrainGrid) -> void:
+		## Loose rubble held up by a thin layer sheds a little dust through it,
+		## so unstable ceilings read before they come down.
+		var pl: Player = mine.player
+		if pl == null:
+			return
+		var pc := g.world_to_cell(pl.global_position)
+		for k in 6:
+			var x := pc.x + randi_range(-14, 14)
+			var y := pc.y + randi_range(-10, 4)
+			if g.get_mat(x, y) == Cell.LOOSE and g.is_solid(x, y + 1) and g.get_mat(x, y + 1) != Cell.LOOSE and not g.is_solid(x, y + 2):
+				mine.fx.dust(Vector2(x * 16 + randf_range(3, 13), (y + 2) * 16 + 1), Color(0.85, 0.75, 0.55))
+				return
 
 	func _physics_process(delta: float) -> void:
 		var g: TerrainGrid = mine.grid
+		_dribble_t -= delta
+		if _dribble_t <= 0.0:
+			_dribble_t = 0.35
+			_dribble(g)
 		_resolve_boulder_checks()
 		for bp in boulder_pending.duplicate():
 			bp["t"] -= delta
