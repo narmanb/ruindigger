@@ -55,7 +55,10 @@ func _ready() -> void:
 		img.set_pixelv(c, img.get_pixelv(c).lerp(Color(0.2, 1.0, 0.3), 0.6))
 	if OS.get_cmdline_user_args().has("ascii"):
 		var first := Vector2i(-1, -1)
-		for rc in d["route"]:
+		var order: Array = d["route"].duplicate()
+		if OS.get_cmdline_user_args().has("up"):
+			order.reverse()
+		for rc in order:
 			if not reach.has(rc) and RouteCheck.body_ok(g, rc.x, rc.y):
 				first = rc
 				break
@@ -78,5 +81,47 @@ func _ready() -> void:
 	img.set_pixelv(d["spawn"], Color(0, 1, 0))
 	img.set_pixelv(d["door_outside"], Color(1, 1, 1))
 	img.resize(g.w * 4, g.h * 4, Image.INTERPOLATE_NEAREST)
+	if not OS.get_cmdline_user_args().has("plain"):
+		var plan: Dictionary = d.get("plan", {})
+		for c in plan.get("chambers", []):
+			_outline(img, c["rect"], Color(1, 1, 1, 0.9) if c["backbone"] else Color(0.6, 0.6, 0.7, 0.9))
+		for l in d.get("landmarks", []):
+			_outline(img, l["rect"], Color(1.0, 0.6, 0.1))
+		for wf in d.get("water_features", []):
+			_outline(img, wf["rect"], Color(0.3, 0.7, 1.0))
+		var kinds: Array = []
+		for c in plan.get("chambers", []):
+			kinds.append("%s%s%s" % [c["arch"], "/" + c["variant"] if c["variant"] != "" else "", "*" if c["backbone"] else ""])
+		print("plan: ", " ".join(PackedStringArray(kinds)), " | branches=", plan.get("branches"), " loops=", plan.get("loops"), " fixes=", plan.get("chamber_fixes"), " approach=", plan.get("relic_approach"), " overlaps=", plan.get("overlaps", []).size())
+		var lm: Array = []
+		for l in d.get("landmarks", []):
+			lm.append(l["kind"])
+		var wfs: Array = []
+		for wf in d.get("water_features", []):
+			wfs.append(wf["kind"])
+		print("landmarks: ", lm, " water: ", wfs)
+		for c in plan.get("chambers", []):
+			if c["fixed"]:
+				print("FIXED chamber ", c["arch"], " ", c["rect"])
+		print("metrics: ", GenMetrics.compute(d))
 	img.save_png(out)
 	get_tree().quit(0)
+
+
+func _outline(img: Image, r: Rect2i, col: Color) -> void:
+	var x0 := r.position.x * 4
+	var y0 := r.position.y * 4
+	var x1 := r.end.x * 4 - 1
+	var y1 := r.end.y * 4 - 1
+	for x in range(x0, x1 + 1):
+		if x >= 0 and x < img.get_width():
+			if y0 >= 0 and y0 < img.get_height():
+				img.set_pixel(x, y0, col)
+			if y1 >= 0 and y1 < img.get_height():
+				img.set_pixel(x, y1, col)
+	for y in range(y0, y1 + 1):
+		if y >= 0 and y < img.get_height():
+			if x0 >= 0 and x0 < img.get_width():
+				img.set_pixel(x0, y, col)
+			if x1 >= 0 and x1 < img.get_width():
+				img.set_pixel(x1, y, col)

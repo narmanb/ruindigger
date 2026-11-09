@@ -1,12 +1,20 @@
 class_name MineGenerator
 extends RefCounted
-## Seeded mine generation. ORDER MATTERS (see README "Generation"):
-##  1 base rock + strata     2 natural caves + smoothing
-##  3 lift room + timber shaft (protected)   4 relay lift station
-##  5 ruin halls (stratum 3) 6 relic chamber (protected alloy, one door)
-##  7 set pieces             8 guaranteed route carved AFTER destructive passes
-##  9 loose ceilings / ore / gas on rock only, never on the route
-## 10 enemies   11 validation + repair (strict traversal both ways)
+## Seeded mine generation (generator v2). ORDER MATTERS (see README "Generation"):
+##  1 strata-specific base rock      2 light background caves + worm tunnels
+##  3 anchors claim footprints: lift room, timber shaft, relay, relic chamber
+##  4 LayoutPlanner chooses chambers + roles; ChamberCarver gives them shape;
+##    each backbone chamber is checked for traversal on its own
+##  5 guaranteed route through the backbone chambers (carved AFTER every
+##    destructive pass above), varied relic approach
+##  6 supports of the route/backbone floors are marked untouchable
+##  7 landmarks claim footprints and connect; branches and loops are carved as
+##    organic tunnels that may never touch route cells or their supports
+##  8 features on rock only (loose ceilings, boulders, ore, gas, water)
+##  9 stabilise basalt, encounters, validation (strict traversal both ways),
+##    environmental props, metrics
+## Independent RNG streams (topology, landmarks, water, ore, encounters, props)
+## keep one system's changes from reshuffling the others.
 
 var rng := RandomNumberGenerator.new()
 var g: TerrainGrid
@@ -18,6 +26,20 @@ var reserved: Dictionary = {}     # cells the route owns; later passes must not 
 var no_feature: Dictionary = {}   # cells where ore/gas/loose must not appear
 var repairs := 0
 var no_repair := false
+const VERSION := 2
+var space: GenSpace
+var carver: ChamberCarver
+var chambers: Array = []
+var support: Dictionary = {}      # solid cells that hold up the route/backbone floors
+var topo := RandomNumberGenerator.new()
+var land_rng := RandomNumberGenerator.new()
+var water_rng := RandomNumberGenerator.new()
+var ore_rng := RandomNumberGenerator.new()
+var enc_rng := RandomNumberGenerator.new()
+var route_rng := RandomNumberGenerator.new()
+var branches := 0
+var loops := 0
+var chamber_fixes := 0
 
 
 func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
@@ -26,31 +48,58 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	W = Balance.MAP_W
 	H = Balance.MAP_H
 	g = TerrainGrid.new(W, H)
-	data = {"seed": seed_value, "entities": [], "grid": g, "route": []}
+	data = {"seed": seed_value, "entities": [], "grid": g, "route": [], "version": VERSION, "landmarks": [], "water_features": []}
+	var cseed: int = hash(str(contract.get("id", "survey")))
+	topo.seed = seed_value ^ 0x70706f74
+	land_rng.seed = seed_value ^ 0x646e616c ^ cseed
+	water_rng.seed = seed_value ^ 0x72657477
+	ore_rng.seed = seed_value ^ 0x2065726f ^ cseed
+	enc_rng.seed = seed_value ^ 0x20636e65 ^ cseed
+	route_rng.seed = seed_value ^ 0x74756f72
+	space = GenSpace.new(W, H)
+	carver = ChamberCarver.new(self, topo)
 	_base_fill(seed_value)
 	_caves(seed_value)
 	_worm_tunnels()
-	_rail_tunnel()
 	_lift_room()
 	_shaft()
 	_relay_station()
-	_ruin_halls()
 	_relic_chamber()
-	_set_pieces()
+	_plan_chambers()
 	_route()
+	_trace("_route()")
+	_mark_supports()
+	_trace("_mark_supports()")
+	_set_pieces()
+	_trace("_set_pieces()")
+	_branches_and_loops()
+	_trace("_branches_and_loops()")
+	_roughen_route()
+	_trace("_roughen_route()")
 	_loose_ceilings()
+	_trace("_loose_ceilings()")
 	_hanging_boulders()
+	_trace("_hanging_boulders()")
 	_ore()
+	_trace("_ore()")
 	_geodes()
+	_trace("_geodes()")
 	_gas()
+	_trace("_gas()")
 	_water_pockets()
+	_trace("_water_pockets()")
 	_lake()
+	_trace("_lake()")
 	_stabilize_basalt()
+	_trace("_stabilize_basalt()")
 	_enemies()
+	_trace("_enemies()")
 	_finalize_hp()
+	_trace("_finalize_hp()")
 	_validate_and_repair()
 	_water_environment()
 	data["repairs"] = repairs
+	_summarise_plan()
 	return data
 
 
@@ -61,6 +110,9 @@ func _base_fill(seed_value: int) -> void:
 	n.frequency = 0.07
 	n.fractal_octaves = 3
 	var phase := rng.randf() * TAU
+	var warp := FastNoiseLite.new()
+	warp.seed = seed_value + 5
+	warp.frequency = 0.04
 	for y in H:
 		for x in W:
 			var s := 0
@@ -72,6 +124,11 @@ func _base_fill(seed_value: int) -> void:
 			var v := n.get_noise_2d(x, y)
 			var hard_thr: float = [0.28, 0.12, -0.02][s]
 			var m := Cell.HARD if v > hard_thr else Cell.SOFT
+			if s == 0:
+				# Dustworks: layered sediment. Thin, gently warped basalt beds
+				# instead of blobs, so the stratum reads as mining country.
+				var bed := sin(y * 0.52 + warp.get_noise_2d(x, y) * 2.2)
+				m = Cell.HARD if (bed > 0.82 or v > 0.42) else Cell.SOFT
 			if x < 2 or x >= W - 2 or y < 2 or y >= H - 6:
 				m = Cell.BEDROCK
 			g.put(x, y, m)
@@ -92,17 +149,19 @@ func _caves(seed_value: int) -> void:
 			var thr := 0.0
 			match s:
 				0:
+					# long flat lenses between sediment beds
 					n.frequency = 0.06
-					v = n.get_noise_2d(x * 0.55, y * 1.5)
-					thr = 0.3
+					v = n.get_noise_2d(x * 0.4, y * 1.9)
+					thr = 0.4
 				1:
 					n.frequency = 0.045
 					v = n.get_noise_2d(x, y) * 0.8 + n2.get_noise_2d(x, y) * 0.35
-					thr = 0.2
+					thr = 0.33
 				2:
+					# the Engine is mostly worked rock: natural voids are rare
 					n.frequency = 0.05
 					v = n.get_noise_2d(x * 0.8, y * 1.2)
-					thr = 0.36
+					thr = 0.52
 			if v > thr:
 				g.put(x, y, Cell.AIR)
 	# smooth twice (cellular automata) so walls read as organic shapes
@@ -155,7 +214,7 @@ func _carve_free(x: int, y: int) -> void:
 
 
 func _worm_tunnels() -> void:
-	var count := rng.randi_range(5, 8)
+	var count := rng.randi_range(2, 4)
 	for i in count:
 		var x := rng.randi_range(6, W - 7)
 		var y := rng.randi_range(16, Balance.STRATUM_ROWS[2] - 4)
@@ -168,27 +227,6 @@ func _worm_tunnels() -> void:
 				dir = Vector2(dir.x if rng.randf() < 0.7 else -dir.x, rng.randf_range(-0.9, 0.9))
 			x = clampi(int(round(x + dir.x)), 5, W - 7)
 			y = clampi(int(round(y + dir.y * 0.6 + (1 if rng.randf() < 0.08 else 0))), 15, H - 12)
-
-
-func _rail_tunnel() -> void:
-	if rng.randf() < 0.25:
-		return
-	var y := rng.randi_range(22, 58)
-	var length := rng.randi_range(24, 44)
-	var x0 := rng.randi_range(3, W - length - 3)
-	for x in range(x0, x0 + length):
-		for dy in range(-2, 1):
-			_carve_free(x, y + dy)
-		if not g.is_solid(x, y + 1):
-			g.put(x, y + 1, Cell.HARD)
-		if not g.is_solid(x, y - 3):
-			g.put(x, y - 3, Cell.SOFT)
-	for x in range(x0 + 2, x0 + length - 1, 6):
-		data["entities"].append({"type": "beam", "cell": Vector2i(x, y - 1)})
-	for x in range(x0 + 5, x0 + length - 1, 12):
-		data["entities"].append({"type": "lamp", "cell": Vector2i(x, y - 2)})
-	data["entities"].append({"type": "crate", "cell": Vector2i(x0 + length / 2, y)})
-	data["rail"] = Rect2i(x0, y - 2, length, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +266,7 @@ func _lift_room() -> void:
 	data["entities"].append({"type": "lamp", "cell": Vector2i(29, 4)})
 	data["entities"].append({"type": "lamp", "cell": Vector2i(42, 4)})
 	data["entities"].append({"type": "sign", "cell": Vector2i(40, 9), "text": "SHAFT A"})
+	space.claim(Rect2i(x0, 0, 18, 12), "anchor", "lift_room")
 
 
 func _shaft() -> void:
@@ -261,6 +300,13 @@ func _shaft() -> void:
 		if not g.is_solid(x, bottom + 1):
 			g.put(x, bottom + 1, Cell.HARD)
 	data["shaft_bottom"] = Vector2i(sx - 6, bottom)
+	data["shaft_x"] = sx
+	space.claim(Rect2i(sx - 2, top, 5, bottom - top + 2), "anchor", "shaft")
+	space.claim(Rect2i(sx - 9, bottom - 3, 12, 5), "anchor", "shaft_landing")
+	var landings: Array = []
+	for y in range(top + 6, bottom, 7):
+		landings.append(y)
+	data["shaft_landings"] = landings
 	data["entities"].append({"type": "lamp", "cell": Vector2i(sx - 4, bottom - 2)})
 
 
@@ -275,54 +321,9 @@ func _relay_station() -> void:
 			reserved[Vector2i(x, y)] = true
 			no_feature[Vector2i(x, y)] = true
 	data["relay"] = Vector2i(x0 + 7, y_floor)
+	space.claim(Rect2i(x0 - 2, y_floor - 6, 18, 9), "anchor", "relay")
 	data["entities"].append({"type": "lift", "cell": Vector2i(x0 + 7, y_floor), "id": "relay"})
 	data["entities"].append({"type": "lamp", "cell": Vector2i(x0 + 1, y_floor - 4)})
-
-
-func _ruin_halls() -> void:
-	var halls: Array = []
-	var tries := 0
-	while halls.size() < 3 and tries < 60:
-		tries += 1
-		var w := rng.randi_range(11, 16)
-		var h := rng.randi_range(6, 8)
-		var x0 := rng.randi_range(4, W - w - 4)
-		var y0 := rng.randi_range(Balance.STRATUM_ROWS[2] + 3, H - 32)
-		var r := Rect2i(x0, y0, w, h)
-		var ok := true
-		for o in halls:
-			if (o as Rect2i).grow(4).intersects(r):
-				ok = false
-		if not ok:
-			continue
-		halls.append(r)
-		# alloy shell, interior air, two doorways
-		_rect_fill(x0, y0, w, h, Cell.ALLOY)
-		_rect_fill(x0 + 1, y0 + 1, w - 2, h - 2, Cell.AIR)
-		var fy := y0 + h - 2   # interior floor-level row (feet)
-		_rect_fill(x0, fy - 2, 1, 3, Cell.AIR)
-		_rect_fill(x0 + w - 1, fy - 2, 1, 3, Cell.AIR)
-		# carve approach tunnels outside both doorways so they open into the cave
-		_rect_fill(x0 - 3, fy - 2, 3, 3, Cell.AIR, 0, true)
-		_rect_fill(x0 + w, fy - 2, 3, 3, Cell.AIR, 0, true)
-		for x in range(x0 - 3, x0 + w + 3):
-			if not g.is_solid(x, fy + 1):
-				g.put(x, fy + 1, Cell.HARD)
-		# alloy pillars inside
-		if w >= 14:
-			_rect_fill(x0 + w / 2, y0 + 1, 1, 2, Cell.ALLOY)
-		var sentry_x := x0 + rng.randi_range(3, w - 4)
-		data["entities"].append({"type": "sentry", "cell": Vector2i(sentry_x, fy), "module": Vector2i(x0 + 1 if sentry_x > x0 + w / 2 else x0 + w - 2, y0 + 1)})
-		for y in range(y0, y0 + h):
-			for x in range(x0, x0 + w):
-				no_feature[Vector2i(x, y)] = true
-		# a little aetherite set into the shell exterior as the lure
-		for k in 3:
-			var ax := rng.randi_range(x0, x0 + w - 1)
-			var ay := y0 - 1
-			if g.get_mat(ax, ay) in [Cell.SOFT, Cell.HARD]:
-				g.put(ax, ay, Cell.HARD, Cell.ORE_AETHER)
-	data["halls"] = halls
 
 
 func _relic_chamber() -> void:
@@ -357,6 +358,7 @@ func _relic_chamber() -> void:
 			reserved[Vector2i(x, y)] = true
 			no_feature[Vector2i(x, y)] = true
 	data["relic_room"] = Rect2i(x0, y0, w, h)
+	space.claim(Rect2i(mini(x0, ax0) - 1, y0 - 1, w + 8, h + 2), "anchor", "relic")
 	data["door_cells"] = door_cells
 	data["door_outside"] = outside
 	data["door_left"] = door_left
@@ -374,12 +376,53 @@ func _relic_chamber() -> void:
 
 # ---------------------------------------------------------------------------
 func _set_pieces() -> void:
-	# 1) Fossil grotto in Dustworks behind a cracked wall
-	var gx := rng.randi_range(6, W - 22)
-	var gy := rng.randi_range(36, 56)
-	if absi(gx + 7 - 39) < 10:
-		gx = 6 if gx > 30 else W - 22
-	_rect_fill(gx - 1, gy - 1, 16, 9, Cell.HARD)
+	## Landmark pool. Each template claims its whole footprint through GenSpace
+	## (so nothing overlaps), is placed with the landmark RNG stream, and is joined
+	## to the route by a short passage sealed with its own kind of wall.
+	var pool: Array = [
+		["grotto", 0.75], ["camp", 0.7], ["vault", 0.7],
+	]
+	for entry in pool:
+		if land_rng.randf() > float(entry[1]):
+			continue
+		match entry[0]:
+			"grotto":
+				_lm_grotto()
+			"camp":
+				_lm_camp()
+			"vault":
+				_lm_vault()
+
+
+## Footprint for a landmark: free in GenSpace AND clear of the guaranteed
+## route and its supports (landmarks are placed after the route is carved).
+func _place_landmark(rw: int, rh: int, y_lo: int, y_hi: int, margin: int) -> Rect2i:
+	for attempt in 12:
+		var r := space.place(land_rng, rw, rh, y_lo, y_hi, margin)
+		if r.size.x == 0:
+			continue
+		var clear := true
+		for y in range(r.position.y - 1, r.end.y + 1):
+			for x in range(r.position.x - 1, r.end.x + 1):
+				var c := Vector2i(x, y)
+				if reserved.has(c) or support.has(c):
+					clear = false
+					break
+			if not clear:
+				break
+		if clear:
+			return r
+	return Rect2i()
+
+
+func _lm_grotto() -> void:
+	var r := _place_landmark(16, 9, 26, Balance.STRATUM_ROWS[1] - 8, 2)
+	if r.size.x == 0:
+		return
+	space.claim(r, "landmark", "grotto")
+	var gx := r.position.x + 1
+	var gy := r.position.y + 1
+	_rect_fill(gx - 1, gy - 1, 16, 9, Cell.HARD, 0, true)
 	_ellipse_air(gx + 7, gy + 3, 6.5, 3.2)
 	for k in range(0, 12):
 		var fx := gx + 1 + k
@@ -389,21 +432,37 @@ func _set_pieces() -> void:
 		if g.is_solid(gx + k, gy - 0):
 			g.put(gx + k, gy, Cell.SOFT, Cell.ORE_FOSSIL)
 	data["entities"].append({"type": "skull", "cell": Vector2i(gx + 3, gy + 5)})
-	data["grotto"] = Rect2i(gx - 1, gy - 1, 16, 9)
-	_mark_no_feature(Rect2i(gx - 1, gy - 1, 16, 9))
-	# 2) Spore vault: hard walls, cobalt-lined, supply cache inside
-	var vx := rng.randi_range(6, W - 16)
-	var vy := rng.randi_range(Balance.STRATUM_ROWS[1] + 20, Balance.STRATUM_ROWS[1] + 52)
-	_rect_fill(vx, vy, 11, 7, Cell.HARD)
-	_rect_fill(vx + 2, vy + 2, 7, 3, Cell.AIR)
+	data["grotto"] = r
+	_mark_no_feature(r)
+	data["landmarks"].append({"kind": "fossil_grotto", "rect": r})
+	_connect_secret(r, Cell.CRACKED)
+
+
+func _lm_vault() -> void:
+	var r := _place_landmark(11, 7, Balance.STRATUM_ROWS[1] + 14, Balance.STRATUM_ROWS[2] - 6, 2)
+	if r.size.x == 0:
+		return
+	space.claim(r, "landmark", "vault")
+	var vx := r.position.x
+	var vy := r.position.y
+	_rect_fill(vx, vy, 11, 7, Cell.HARD, 0, true)
+	_rect_fill(vx + 2, vy + 2, 7, 3, Cell.AIR, 0, true)
 	for x in range(vx + 2, vx + 9):
 		g.put(x, vy + 1, Cell.HARD, Cell.ORE_COBALT if x % 2 == 0 else Cell.ORE_NONE)
 	data["entities"].append({"type": "cache", "cell": Vector2i(vx + 5, vy + 4), "charges": 2, "repair": 40})
-	data["vault"] = Rect2i(vx, vy, 11, 7)
-	_mark_no_feature(Rect2i(vx, vy, 11, 7))
-	# 3) Collapsed miner camp: a room with a crumbling ceiling and a cache
-	var cx := rng.randi_range(5, 18) if rng.randf() < 0.5 else rng.randi_range(W - 30, W - 18)
-	var cy := rng.randi_range(18, 28)
+	data["vault"] = r
+	_mark_no_feature(r)
+	data["landmarks"].append({"kind": "cobalt_vault", "rect": r})
+	_connect_secret(r, Cell.HARD)
+
+
+func _lm_camp() -> void:
+	var r := _place_landmark(14, 9, 14, 40, 2)
+	if r.size.x == 0:
+		return
+	space.claim(r, "landmark", "camp")
+	var cx := r.position.x + 1
+	var cy := r.position.y + 4
 	_rect_fill(cx, cy, 12, 4, Cell.AIR)
 	_rect_fill(cx, cy + 4, 12, 1, Cell.HARD)
 	_rect_fill(cx + 3, cy - 3, 6, 2, Cell.LOOSE)
@@ -413,7 +472,9 @@ func _set_pieces() -> void:
 	data["entities"].append({"type": "lamp", "cell": Vector2i(cx + 6, cy), "color": "ffb347"})
 	data["entities"].append({"type": "sign", "cell": Vector2i(cx + 1, cy + 3), "text": "UNSTABLE"})
 	data["camp"] = Rect2i(cx, cy, 12, 5)
-	_mark_no_feature(Rect2i(cx - 1, cy - 4, 14, 9))
+	_mark_no_feature(r)
+	data["landmarks"].append({"kind": "miner_camp", "rect": r})
+	_connect_secret(Rect2i(cx, cy, 12, 5), Cell.AIR)
 
 
 func _mark_no_feature(r: Rect2i) -> void:
@@ -434,23 +495,459 @@ func _ellipse_air(cx: float, cy: float, rx: float, ry: float) -> void:
 # ---------------------------------------------------------------------------
 # Guaranteed route: shaft bottom -> relay station -> deep caves -> relic door.
 func _route() -> void:
+	## Guaranteed route: shaft bottom -> relay -> Spore Veins backbone chambers
+	## -> Engine backbone ruins -> one of several relic approaches -> door.
+	## Inside a backbone chamber its own (pre-checked) geometry carries the player
+	## from entry to exit, so the route takes on each chamber's character instead
+	## of being one long constructed corridor.
 	var relay: Vector2i = data["relay"]
 	var relay_entry := Vector2i(relay.x - 5 if relay.x > W / 2 else relay.x + 5, relay.y)
-	var pts: Array[Vector2i] = [data["shaft_bottom"], relay_entry]
-	var mid_y := rng.randi_range(Balance.STRATUM_ROWS[1] + 30, Balance.STRATUM_ROWS[2] - 6)
-	pts.append(Vector2i(rng.randi_range(8, W - 9), mid_y))
+	var pts: Array = [data["shaft_bottom"], relay_entry]
+	var prev: Vector2i = relay_entry
+	for c in chambers:
+		if not c["backbone"]:
+			continue
+		var a: Vector2i = c["entry"]
+		var b: Vector2i = c["exit"]
+		if prev.distance_squared_to(b) < prev.distance_squared_to(a):
+			var t := a
+			a = b
+			b = t
+		pts.append(["leg", a])
+		pts.append(["skip", b])
+		prev = b
 	var outside: Vector2i = data["door_outside"]
-	var stage := Vector2i(outside.x - 6 if data["door_left"] else outside.x + 6, outside.y)
-	stage.x = clampi(stage.x, 4, W - 5)
-	pts.append(Vector2i(stage.x, Balance.STRATUM_ROWS[2] + 4))
-	pts.append(stage)
-	pts.append(outside)
-	for i in range(pts.size() - 1):
-		_carve_between(pts[i], pts[i + 1])
-	# grotto and vault get a short side passage from the route, sealed by a weak wall
-	_connect_secret(data["grotto"], Cell.CRACKED)
-	_connect_secret(data["vault"], Cell.HARD)
-	_connect_secret(data["camp"], Cell.AIR)
+	var side := -1 if data["door_left"] else 1
+	var approach: String = ["maintenance_shaft", "gallery", "direct"][route_rng.randi_range(0, 2)]
+	data["relic_approach"] = approach
+	var tail: Array[Vector2i] = []
+	match approach:
+		"maintenance_shaft":
+			var sx := clampi(outside.x + side * 2, 4, W - 6)
+			tail = [Vector2i(sx, mini(prev.y, outside.y - 12)), Vector2i(sx, outside.y), outside]
+		"gallery":
+			var gx := clampi(outside.x + side * route_rng.randi_range(10, 16), 4, W - 6)
+			tail = [Vector2i(gx, prev.y), Vector2i(gx, outside.y), outside]
+		_:
+			tail = [outside]
+	var start: int = data["route"].size()
+	_build_leg_costs()
+	var cur: Vector2i = data["shaft_bottom"]
+	_carve_leg(cur, relay_entry)
+	cur = relay_entry
+	for p in pts.slice(2):
+		var kind: String = p[0]
+		var q: Vector2i = p[1]
+		if kind == "leg":
+			_carve_leg(cur, q)
+		cur = q
+	var tail_start: int = data["route"].size()
+	for q in tail:
+		_carve_leg(cur, q)
+		cur = q
+	# dress the final approach: ruin-built lining around the last stretch
+	if approach != "direct":
+		var lined := 0
+		for k in range(tail_start, data["route"].size()):
+			var rc: Vector2i = data["route"][k]
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, -1)]:
+				var n: Vector2i = rc + d
+				if g.is_solid(n.x, n.y) and not reserved.has(n) and writable(n.x, n.y) and g.get_mat(n.x, n.y) != Cell.ALLOY:
+					g.put(n.x, n.y, Cell.ALLOY)
+					no_feature[n] = true
+					lined += 1
+		data["approach_lined"] = lined
+	data["route_cells_main"] = data["route"].size() - start
+
+
+# ---------------------------------------------------------------------------
+# Route legs are found with A* over a cost field, then carved with the usual
+# corridor / ladder-shaft builders. Legs prefer existing open space, pay heavily
+# to pass through other chambers or landmarks (whose floors they would cut), and
+# penalise turns so they form long, readable segments.
+var _leg_cost := PackedFloat32Array()
+const LEG_TURN := 3.0
+const LEG_VERTICAL := 1.35
+const LEG_ROOM := 45.0
+
+
+func _build_leg_costs() -> void:
+	_leg_cost = PackedFloat32Array()
+	_leg_cost.resize(W * H)
+	var room := PackedByteArray()
+	room.resize(W * H)
+	for cl in space.claims:
+		if cl["kind"] == "anchor":
+			continue
+		# grow by 3: floors, basins and lips sit just outside the footprint
+		var r: Rect2i = (cl["rect"] as Rect2i).grow(3)
+		for y in range(maxi(0, r.position.y), mini(H, r.end.y)):
+			for x in range(maxi(0, r.position.x), mini(W, r.end.x)):
+				room[y * W + x] = 1
+	for y in H:
+		for x in W:
+			var i := y * W + x
+			if x < 3 or x >= W - 4 or y < 4 or y >= H - 7:
+				_leg_cost[i] = -1.0
+				continue
+			var cost := 1.0
+			var blocked := false
+			# corridor body (rows y-2..y) and the shaft's second column (x+1)
+			for dy in range(-2, 1):
+				for dx in [0, 1]:
+					var cx: int = x + dx
+					var cy: int = y + dy
+					if g.has_flag(cx, cy, Cell.F_PROTECTED) and g.is_solid(cx, cy):
+						blocked = true
+					elif g.is_solid(cx, cy):
+						cost += 0.25
+					if room[cy * W + cx] == 1:
+						cost += LEG_ROOM / 6.0
+			_leg_cost[i] = -1.0 if blocked else cost
+
+
+func _carve_leg(a: Vector2i, b: Vector2i) -> void:
+	var path := _leg_path(a, b)
+	if path.is_empty():
+		_carve_between(a, b)   # unreachable in the cost field: legacy staircase
+		return
+	# compress into straight runs and carve each with the classic builders
+	var i := 0
+	while i < path.size() - 1:
+		var p0: Vector2i = path[i]
+		var horizontal := path[i + 1].y == p0.y
+		var j := i + 1
+		while j + 1 < path.size() and ((path[j + 1].y == path[j].y) == horizontal):
+			j += 1
+		_carve_between_axis(p0, path[j], horizontal)
+		i = j
+
+
+func _carve_between_axis(a: Vector2i, b: Vector2i, horizontal: bool) -> void:
+	if horizontal:
+		var x := a.x
+		_carve_corridor(x, a.y)
+		while x != b.x:
+			x += signi(b.x - x)
+			_carve_corridor(x, a.y)
+		_ensure_floor(b.x, b.y)
+	else:
+		var y0 := mini(a.y, b.y)
+		var y1 := maxi(a.y, b.y)
+		for y in range(y0 - 2, y1 + 1):
+			_carve_cell(a.x, y)
+			_carve_cell(a.x + 1, y)
+		for y in range(y0, y1 + 1):
+			if not g.has_flag(a.x, y, Cell.F_PROTECTED):
+				g.put(a.x, y, Cell.LADDER)
+				g.set_flag(a.x, y, Cell.F_NO_RUBBLE)
+		_ensure_floor(b.x, b.y)
+
+
+func _leg_path(a: Vector2i, b: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var n := W * H
+	var best := PackedFloat32Array()
+	best.resize(n * 2)
+	best.fill(1e30)
+	var came := PackedInt32Array()
+	came.resize(n * 2)
+	came.fill(-1)
+	var heap: Array = []   # [f, state]
+	var start_i := a.y * W + a.x
+	var goal_i := b.y * W + b.x
+	for axis in 2:
+		best[start_i * 2 + axis] = 0.0
+		_heap_push(heap, [absi(a.x - b.x) + absi(a.y - b.y), start_i * 2 + axis])
+	var found := -1
+	var expansions := 0
+	while not heap.is_empty() and expansions < 40000:
+		var top: Array = _heap_pop(heap)
+		var st: int = top[1]
+		var idx := st >> 1
+		var axis := st & 1
+		var gcost := best[st]
+		if top[0] - (absi(idx % W - b.x) + absi(idx / W - b.y)) > gcost + 0.001:
+			continue
+		expansions += 1
+		if idx == goal_i:
+			found = st
+			break
+		var x := idx % W
+		var y := idx / W
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nx: int = x + d.x
+			var ny: int = y + d.y
+			if nx < 0 or ny < 0 or nx >= W or ny >= H:
+				continue
+			var ni := ny * W + nx
+			var near_end := absi(nx - b.x) + absi(ny - b.y) <= 3 or absi(nx - a.x) + absi(ny - a.y) <= 3
+			var cell_cost := _leg_cost[ni]
+			if cell_cost < 0.0 and not near_end:
+				continue
+			if near_end:
+				cell_cost = 1.0
+			var naxis := 0 if d.y == 0 else 1
+			var step := cell_cost * (LEG_VERTICAL if naxis == 1 else 1.0)
+			if naxis != axis:
+				step += LEG_TURN
+			var ns := ni * 2 + naxis
+			var ng := gcost + step
+			if ng < best[ns]:
+				best[ns] = ng
+				came[ns] = st
+				_heap_push(heap, [ng + absi(nx - b.x) + absi(ny - b.y), ns])
+	if found < 0:
+		return out
+	var s := found
+	while s >= 0:
+		var id := s >> 1
+		out.push_front(Vector2i(id % W, id / W))
+		s = came[s]
+	return out
+
+
+static func _heap_push(h: Array, item: Array) -> void:
+	h.append(item)
+	var i := h.size() - 1
+	while i > 0:
+		var p := (i - 1) / 2
+		if h[p][0] <= h[i][0]:
+			break
+		var t: Array = h[p]
+		h[p] = h[i]
+		h[i] = t
+		i = p
+
+
+static func _heap_pop(h: Array) -> Array:
+	var top: Array = h[0]
+	var last: Array = h.pop_back()
+	if not h.is_empty():
+		h[0] = last
+		var i := 0
+		while true:
+			var l := i * 2 + 1
+			var r := l + 1
+			var m := i
+			if l < h.size() and h[l][0] < h[m][0]:
+				m = l
+			if r < h.size() and h[r][0] < h[m][0]:
+				m = r
+			if m == i:
+				break
+			var t: Array = h[m]
+			h[m] = h[i]
+			h[i] = t
+			i = m
+	return top
+
+
+## Walls/floors that hold up the guaranteed route and backbone chamber floors.
+## Later destructive passes (branches, landmark passages) must not touch these.
+func _mark_supports() -> void:
+	support.clear()
+	for c in reserved.keys():
+		var b := Vector2i(c.x, c.y + 1)
+		if g.is_solid(b.x, b.y) or g.get_mat(b.x, b.y) == Cell.PLATFORM:
+			support[b] = true
+	for ch in chambers:
+		if not ch["backbone"]:
+			continue
+		var r: Rect2i = ch["rect"]
+		for y in range(r.position.y - 1, r.end.y + 3):
+			for x in range(r.position.x - 1, r.end.x + 1):
+				if g.is_solid(x, y) and not g.is_solid(x, y - 1):
+					support[Vector2i(x, y)] = true
+
+
+func _trace(tag: String) -> void:
+	if OS.get_environment("RD_TRACE") == "":
+		return
+	var bad: Array = []
+	for c in chambers:
+		if c["backbone"] and not (RouteCheck.can_reach(g, c["entry"], c["exit"]) and RouteCheck.can_reach(g, c["exit"], c["entry"])):
+			bad.append(c["arch"])
+	print("TRACE after ", tag, ": broken chambers ", bad)
+	if tag == "_route()":
+		var chars := {0: ".", 1: "s", 2: "H", 3: "o", 4: "A", 5: "#", 6: "g", 7: "c", 8: "L", 9: "="}
+		for c in chambers:
+			if c["arch"] != "cathedral":
+				continue
+			var rr: Rect2i = c["rect"]
+			print("entry ", c["entry"], " exit ", c["exit"], " rect ", rr)
+			for yy in range(rr.position.y - 3, rr.end.y + 4):
+				var line := ""
+				for xx in range(rr.position.x - 3, rr.end.x + 3):
+					var ch: String = chars[g.get_mat(xx, yy)]
+					if reserved.has(Vector2i(xx, yy)) and ch == ".":
+						ch = "r"
+					line += ch
+				print("   %3d %s" % [yy, line])
+
+
+func writable(x: int, y: int) -> bool:
+	if not g.in_bounds(x, y) or x < 2 or x >= W - 2 or y < 2 or y >= H - 6:
+		return false
+	return not g.has_flag(x, y, Cell.F_PROTECTED) and g.get_mat(x, y) != Cell.BEDROCK
+
+
+func tunnel_ok(x: int, y: int) -> bool:
+	if x < 3 or x >= W - 3 or y < 12 or y >= H - 8 or not writable(x, y):
+		return false
+	var c := Vector2i(x, y)
+	if reserved.has(c) or support.has(c):
+		return false
+	var m := g.get_mat(x, y)
+	return m != Cell.ALLOY and m != Cell.LADDER and m != Cell.PLATFORM
+
+
+# ---------------------------------------------------------------------------
+func _plan_chambers() -> void:
+	var planner := LayoutPlanner.new(self, topo)
+	chambers = planner.plan()
+	var halls: Array = []
+	for c in chambers:
+		carver.carve(c)
+		var r: Rect2i = c["rect"]
+		if c["arch"] == "ruin":
+			halls.append(r)
+			for sdef in c.get("sentries", []):
+				data["entities"].append({"type": "sentry", "cell": sdef["cell"], "module": sdef["module"]})
+			# aetherite set into the shell exterior as the lure
+			for k in 3:
+				var ax := topo.randi_range(r.position.x, r.end.x - 1)
+				if g.get_mat(ax, r.position.y - 1) in [Cell.SOFT, Cell.HARD]:
+					g.put(ax, r.position.y - 1, Cell.HARD, Cell.ORE_AETHER)
+		if c["arch"] in ["ruin", "works"]:
+			_mark_no_feature(r)
+	data["halls"] = halls
+	# each backbone chamber must carry the player between its anchors on its own
+	for c in chambers:
+		if not c["backbone"]:
+			continue
+		var a: Vector2i = c["entry"]
+		var b: Vector2i = c["exit"]
+		if RouteCheck.can_reach(g, a, b) and RouteCheck.can_reach(g, b, a):
+			continue
+		if OS.get_environment("RD_NOFIX") != "":
+			print("chamber fails: ", c["arch"], " entry ", a, " exit ", b, " a->b ", RouteCheck.can_reach(g, a, b), " b->a ", RouteCheck.can_reach(g, b, a))
+			var rs := RouteCheck.reachable(g, b)
+			var minx := 999
+			for k in rs.keys():
+				if k.y >= a.y - 3 and k.y <= a.y + 4:
+					minx = mini(minx, k.x)
+			print("  from exit: reached min x near floor ", minx, " count ", rs.size())
+			var chars := {0: ".", 1: "s", 2: "H", 3: "o", 4: "A", 5: "#", 6: "g", 7: "c", 8: "L", 9: "="}
+			var rr: Rect2i = c["rect"]
+			for yy in range(rr.position.y - 2, rr.end.y + 3):
+				var line := ""
+				for xx in range(rr.position.x - 2, rr.end.x + 2):
+					var ch: String = chars[g.get_mat(xx, yy)]
+					if Vector2i(xx, yy) == a:
+						ch = "A"
+					elif Vector2i(xx, yy) == b:
+						ch = "B"
+					line += ch
+				print("   %3d %s" % [yy, line])
+			continue
+		chamber_fixes += 1
+		c["fixed"] = true
+		_carve_between_straight(a, b)
+
+
+func _branches_and_loops() -> void:
+	## Optional structure: side chambers branch off the spine/route, a couple of
+	## loops give alternate ways round, all as organic tunnels.
+	var sx: int = data["shaft_x"]
+	var landings: Array = data["shaft_landings"]
+	var s0: Array = []
+	for c in chambers:
+		var r: Rect2i = c["rect"]
+		var centre := Vector2(r.get_center())
+		if c["stratum"] == 0:
+			s0.append(c)
+			# join the shaft at the nearest platform landing
+			var best_y: int = landings[0]
+			for ly in landings:
+				if absi(ly - r.get_center().y) < absi(best_y - r.get_center().y):
+					best_y = ly
+			var west := centre.x < sx
+			var mouth_x := sx - 2 if west else sx + 2
+			var anchor: Vector2i = c["entry"] if absf(c["entry"].x - mouth_x) < absf(c["exit"].x - mouth_x) else c["exit"]
+			carver.tunnel(Vector2(anchor) + Vector2(0.5, -0.5), Vector2(mouth_x + (-2 if west else 2), best_y - 1.5), 1.4, 1.9, 0.25)
+			# a clean walkable mouth onto the landing (feet row best_y - 1)
+			for k in range(0, 4):
+				var mx: int = mouth_x + (-k if west else k)
+				for dy in range(-3, 0):
+					if tunnel_ok(mx, best_y + dy):
+						g.put(mx, best_y + dy, Cell.AIR)
+				if not g.is_solid(mx, best_y) and tunnel_ok(mx, best_y):
+					g.put(mx, best_y, Cell.HARD)
+			branches += 1
+		elif not c["backbone"]:
+			# side chamber: tunnel to the nearest route cell
+			var best := Vector2i(-1, -1)
+			var bd := 1 << 30
+			for rc in data["route"]:
+				var d: int = absi(rc.x - int(centre.x)) + absi(rc.y - int(centre.y))
+				if d < bd:
+					bd = d
+					best = rc
+			if best.x >= 0:
+				var anchor2: Vector2i = c["entry"] if c["entry"].distance_squared_to(best) < c["exit"].distance_squared_to(best) else c["exit"]
+				carver.tunnel(Vector2(anchor2) + Vector2(0.5, -0.5), Vector2(best) + Vector2(0.5, -0.5), 1.3, 2.0, 0.3)
+				branches += 1
+	# loop in Dustworks: two side chambers linked to each other (and both to the shaft)
+	if s0.size() >= 2:
+		var a: Dictionary = s0[0]
+		var b: Dictionary = s0[1]
+		carver.tunnel(Vector2((a["rect"] as Rect2i).get_center()), Vector2((b["rect"] as Rect2i).get_center()), 1.3, 1.8, 0.35)
+		loops += 1
+	# loops between consecutive backbone chambers of the same stratum
+	var bb: Array = []
+	for c in chambers:
+		if c["backbone"]:
+			bb.append(c)
+	for i in range(bb.size() - 1):
+		if bb[i]["stratum"] != bb[i + 1]["stratum"]:
+			continue
+		var ra: Rect2i = bb[i]["rect"]
+		var rb: Rect2i = bb[i + 1]["rect"]
+		var pa := Vector2(ra.position.x + ra.size.x * topo.randf_range(0.2, 0.8), ra.position.y + 1.5)
+		var pb := Vector2(rb.position.x + rb.size.x * topo.randf_range(0.2, 0.8), rb.position.y + 1.5)
+		carver.tunnel(pa, pb, 1.2, 1.7, 0.4)
+		loops += 1
+
+
+## Cosmetic: give stretches of constructed route corridor an uneven natural
+## ceiling (never touching floors, supports or reserved cells).
+func _roughen_route() -> void:
+	var n := FastNoiseLite.new()
+	n.seed = int(data["seed"]) + 909
+	n.frequency = 0.15
+	for rc in data["route"]:
+		var above := Vector2i(rc.x, rc.y - 1)
+		if reserved.has(above) or not g.is_solid(above.x, above.y):
+			continue
+		var lift := int(round((n.get_noise_2d(rc.x, rc.y) + 0.2) * 2.0))
+		for k in range(0, lift):
+			var c := Vector2i(rc.x, rc.y - 1 - k)
+			if tunnel_ok(c.x, c.y) and g.is_solid(c.x, c.y) and g.get_mat(c.x, c.y) != Cell.ALLOY:
+				g.put(c.x, c.y, Cell.AIR)
+			else:
+				break
+
+
+func _summarise_plan() -> void:
+	var kinds: Dictionary = {}
+	var summary: Array = []
+	for c in chambers:
+		var key: String = c["arch"] + ("/" + c["variant"] if c.get("variant", "") != "" else "")
+		kinds[key] = true
+		summary.append({"id": c["id"], "arch": c["arch"], "variant": c.get("variant", ""), "stratum": c["stratum"], "rect": c["rect"], "backbone": c["backbone"], "fixed": c.get("fixed", false)})
+	data["plan"] = {"chambers": summary, "archetype_count": kinds.size(), "branches": branches, "loops": loops,
+		"chamber_fixes": chamber_fixes, "relic_approach": data.get("relic_approach", ""), "overlaps": space.overlaps()}
 
 
 func _carve_corridor(x: int, y: int) -> void:
@@ -548,6 +1045,8 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 				col_reserved = true
 		for dy in range(-2, 1):
 			var cc := Vector2i(x, fy + dy)
+			if support.has(cc):
+				continue
 			if not reserved.has(cc) or Cell.is_solid(g.get_mat(cc.x, cc.y)):
 				if g.get_mat(cc.x, cc.y) != Cell.LADDER and g.get_mat(cc.x, cc.y) != Cell.PLATFORM:
 					g.put(cc.x, cc.y, Cell.AIR)
@@ -567,9 +1066,11 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 		for xx in [x, x + 1]:
 			if g.has_flag(xx, y, Cell.F_PROTECTED) or g.get_mat(xx, y) == Cell.BEDROCK:
 				return
+			if support.has(Vector2i(xx, y)):
+				continue
 			if g.get_mat(xx, y) != Cell.LADDER and g.get_mat(xx, y) != Cell.PLATFORM:
 				g.put(xx, y, Cell.AIR)
-		if g.get_mat(x, y) != Cell.PLATFORM:
+		if g.get_mat(x, y) != Cell.PLATFORM and not support.has(Vector2i(x, y)):
 			g.put(x, y, Cell.LADDER)
 
 
@@ -607,7 +1108,21 @@ func _loose_ceilings() -> void:
 			placed += 1
 
 
+## Inside an anchor, a landmark, or a chamber the guaranteed route crosses.
+func _protected_space(c: Vector2i) -> bool:
+	var k := space.kind_at(c)
+	if k == "anchor" or k == "landmark":
+		return true
+	for ch in chambers:
+		if ch["backbone"] and (ch["rect"] as Rect2i).grow(1).has_point(c):
+			return true
+	return false
+
+
 func _free_region(cx: int, cy: int, rx: int, ry: int, need_solid: bool) -> bool:
+	# features may not intrude on any claimed footprint (rooms, landmarks, anchors)
+	if not space.fits(Rect2i(cx - rx, cy - ry, rx * 2 + 1, ry * 2 + 1), 0):
+		return false
 	for y in range(cy - ry, cy + ry + 1):
 		for x in range(cx - rx, cx + rx + 1):
 			if x < 3 or x >= W - 3 or y < 14 or y >= H - 8:
@@ -641,7 +1156,7 @@ func _hanging_boulders() -> void:
 			var ok := true
 			for yy in range(y + 1, y + 7):
 				for xx in range(x - 2, x + 3):
-					if g.is_solid(xx, yy) or reserved.has(Vector2i(xx, yy)) or no_feature.has(Vector2i(xx, yy)):
+					if g.is_solid(xx, yy) or reserved.has(Vector2i(xx, yy)) or no_feature.has(Vector2i(xx, yy)) or _protected_space(Vector2i(xx, yy)):
 						ok = false
 			if not ok:
 				continue
@@ -673,6 +1188,7 @@ func _geodes() -> void:
 		var ry := rng.randi_range(2, 4)
 		if not _free_region(cx, cy, rx + 1, ry + 1, false):
 			continue
+		space.claim(Rect2i(cx - rx - 1, cy - ry - 1, rx * 2 + 3, ry * 2 + 3), "feature", "geode%d" % made)
 		var kind := Cell.ORE_AETHER if cy > Balance.STRATUM_ROWS[2] else Cell.ORE_COBALT
 		for y in range(cy - ry - 1, cy + ry + 2):
 			for x in range(cx - rx - 1, cx + rx + 2):
@@ -710,6 +1226,7 @@ func _water_pockets() -> void:
 			var cy := rng.randi_range(lo, hi)
 			if not _free_region(cx, cy, rx + 2, ry + 2, true):
 				continue
+			space.claim(Rect2i(cx - rx - 2, cy - ry - 2, rx * 2 + 5, ry * 2 + 5), "water", "pocket%d" % pockets.size())
 			var cells: Array[Vector2i] = []
 			for y in range(cy - ry, cy + ry + 1):
 				for x in range(cx - rx, cx + rx + 1):
