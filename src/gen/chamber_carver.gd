@@ -235,9 +235,9 @@ func _cathedral(c: Dictionary) -> void:
 		for y in range(fy + 1, r.end.y + 1):
 			solid(x, y, Cell.HARD)
 	# sunken lake basin in the middle third of the floor
-	var b0 := r.position.x + r.size.x / 3
-	var b1 := r.end.x - r.size.x / 3
-	var depth := rng.randi_range(2, 3)
+	var b0 := r.position.x + r.size.x / 4 + 1
+	var b1 := r.end.x - r.size.x / 4 - 1
+	var depth := 3
 	var basin: Array[Vector2i] = []
 	for x in range(b0, b1):
 		var d := depth if (x > b0 and x < b1 - 1) else depth - 1

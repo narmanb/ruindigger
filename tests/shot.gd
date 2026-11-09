@@ -44,6 +44,20 @@ func _process(_d: float) -> void:
 	if frame == 20 and mine and args.has("at") and mine.get("data") != null:
 		var key: String = args["at"]
 		var c: Vector2i = mine.data[key] if mine.data.has(key) else Vector2i(10, 10)
+		if key.begins_with("lm:") or key.begins_with("ch:"):
+			var want := key.substr(3)
+			var pool: Array = mine.data.get("landmarks", []) if key.begins_with("lm:") else mine.data.get("plan", {}).get("chambers", [])
+			for item in pool:
+				if item.get("kind", item.get("arch", "")) == want:
+					var rr: Rect2i = item["rect"]
+					c = Vector2i(rr.position.x + rr.size.x / 2, rr.end.y - 1)
+					# stand on the first open cell above solid ground near the centre
+					for dy in range(-12, 12):
+						var t := Vector2i(c.x, c.y + dy)
+						if not mine.grid.is_solid(t.x, t.y) and not mine.grid.is_solid(t.x, t.y - 1) and mine.grid.is_solid(t.x, t.y + 1):
+							c = t
+							break
+					break
 		if key == "hall":
 			var r: Rect2i = mine.data["halls"][0]
 			c = Vector2i(r.position.x - 2, r.end.y - 2)

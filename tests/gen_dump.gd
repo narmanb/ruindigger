@@ -53,6 +53,16 @@ func _ready() -> void:
 	var reach := RouteCheck.reachable(g, d["door_outside"] if OS.get_cmdline_user_args().has("up") else d["spawn"], gen.door_open_cells())
 	for c in reach.keys():
 		img.set_pixelv(c, img.get_pixelv(c).lerp(Color(0.2, 1.0, 0.3), 0.6))
+	for a4 in OS.get_cmdline_user_args():
+		if a4.begins_with("routeband="):
+			var yy4 := a4.substr(10).split(",")
+			var rr: Array = d["route"]
+			var outs := PackedStringArray()
+			for i in rr.size():
+				var c4: Vector2i = rr[i]
+				if c4.y >= int(yy4[0]) and c4.y <= int(yy4[1]):
+					outs.append("%d:%d,%d%s" % [i, c4.x, c4.y, "" if g.get_mat(c4.x, c4.y) in [0, 8, 9] else "!m%d" % g.get_mat(c4.x, c4.y)])
+			print("route band: ", " ".join(outs))
 	if OS.get_cmdline_user_args().has("ascii"):
 		var first := Vector2i(-1, -1)
 		var order: Array = d["route"].duplicate()

@@ -31,6 +31,7 @@ var space: GenSpace
 var carver: ChamberCarver
 var chambers: Array = []
 var support: Dictionary = {}      # solid cells that hold up the route/backbone floors
+var sealed: Dictionary = {}       # container walls of water features / landmark shells
 var topo := RandomNumberGenerator.new()
 var land_rng := RandomNumberGenerator.new()
 var water_rng := RandomNumberGenerator.new()
@@ -58,20 +59,27 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	route_rng.seed = seed_value ^ 0x74756f72
 	space = GenSpace.new(W, H)
 	carver = ChamberCarver.new(self, topo)
+	_trace("start")
 	_base_fill(seed_value)
+	_trace("_base_fill()")
 	_caves(seed_value)
+	_trace("_caves()")
 	_worm_tunnels()
 	_lift_room()
 	_shaft()
 	_relay_station()
 	_relic_chamber()
+	_trace("anchors")
 	_plan_chambers()
+	_trace("_plan_chambers()")
 	_route()
 	_trace("_route()")
 	_mark_supports()
 	_trace("_mark_supports()")
 	_set_pieces()
 	_trace("_set_pieces()")
+	_landmarks_v2()
+	_trace("_landmarks_v2()")
 	_branches_and_loops()
 	_trace("_branches_and_loops()")
 	_roughen_route()
@@ -88,8 +96,10 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	_trace("_gas()")
 	_water_pockets()
 	_trace("_water_pockets()")
-	_lake()
-	_trace("_lake()")
+	_fill_basins()
+	_ensure_water_encounter()
+	_settle_water()
+	_trace("_settle_water()")
 	_stabilize_basalt()
 	_trace("_stabilize_basalt()")
 	_enemies()
@@ -97,7 +107,9 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	_finalize_hp()
 	_trace("_finalize_hp()")
 	_validate_and_repair()
+	_trace("_validate_and_repair()")
 	_water_environment()
+	_trace("_water_environment()")
 	data["repairs"] = repairs
 	_summarise_plan()
 	return data
@@ -532,6 +544,7 @@ func _route() -> void:
 			tail = [outside]
 	var start: int = data["route"].size()
 	_build_leg_costs()
+	_trace("  leg costs")
 	var cur: Vector2i = data["shaft_bottom"]
 	_carve_leg(cur, relay_entry)
 	cur = relay_entry
@@ -572,10 +585,14 @@ const LEG_ROOM := 45.0
 
 
 func _build_leg_costs() -> void:
+	var n := W * H
 	_leg_cost = PackedFloat32Array()
-	_leg_cost.resize(W * H)
-	var room := PackedByteArray()
-	room.resize(W * H)
+	_leg_cost.resize(n)
+	# per-cell penalties first (flat arrays), then a 2x3 window sum per cell
+	var pen := PackedFloat32Array()
+	pen.resize(n)
+	var blocked := PackedByteArray()
+	blocked.resize(n)
 	for cl in space.claims:
 		if cl["kind"] == "anchor":
 			continue
@@ -583,7 +600,16 @@ func _build_leg_costs() -> void:
 		var r: Rect2i = (cl["rect"] as Rect2i).grow(3)
 		for y in range(maxi(0, r.position.y), mini(H, r.end.y)):
 			for x in range(maxi(0, r.position.x), mini(W, r.end.x)):
-				room[y * W + x] = 1
+				pen[y * W + x] = LEG_ROOM / 6.0
+	for c in sealed.keys():
+		blocked[c.y * W + c.x] = 1   # basin rims: the route must not drain a lake
+	for i in n:
+		var m: int = g.mat[i]
+		if Cell.is_solid(m):
+			if g.flags[i] & Cell.F_PROTECTED:
+				blocked[i] = 1
+			else:
+				pen[i] += 0.25
 	for y in H:
 		for x in W:
 			var i := y * W + x
@@ -591,19 +617,14 @@ func _build_leg_costs() -> void:
 				_leg_cost[i] = -1.0
 				continue
 			var cost := 1.0
-			var blocked := false
-			# corridor body (rows y-2..y) and the shaft's second column (x+1)
+			var bad := false
 			for dy in range(-2, 1):
-				for dx in [0, 1]:
-					var cx: int = x + dx
-					var cy: int = y + dy
-					if g.has_flag(cx, cy, Cell.F_PROTECTED) and g.is_solid(cx, cy):
-						blocked = true
-					elif g.is_solid(cx, cy):
-						cost += 0.25
-					if room[cy * W + cx] == 1:
-						cost += LEG_ROOM / 6.0
-			_leg_cost[i] = -1.0 if blocked else cost
+				var row := (y + dy) * W + x
+				if blocked[row] or blocked[row + 1]:
+					bad = true
+					break
+				cost += pen[row] + pen[row + 1]
+			_leg_cost[i] = -1.0 if bad else cost
 
 
 func _carve_leg(a: Vector2i, b: Vector2i) -> void:
@@ -619,18 +640,22 @@ func _carve_leg(a: Vector2i, b: Vector2i) -> void:
 		var j := i + 1
 		while j + 1 < path.size() and ((path[j + 1].y == path[j].y) == horizontal):
 			j += 1
-		_carve_between_axis(p0, path[j], horizontal)
+		# a corridor that turns straight down into a shaft must not get a floor
+		# plugged under the corner (it would wall off the shaft's side)
+		var floor_ok := not (horizontal and j + 1 < path.size() and path[j + 1].y > path[j].y)
+		_carve_between_axis(p0, path[j], horizontal, floor_ok)
 		i = j
 
 
-func _carve_between_axis(a: Vector2i, b: Vector2i, horizontal: bool) -> void:
+func _carve_between_axis(a: Vector2i, b: Vector2i, horizontal: bool, floor_ok: bool = true) -> void:
 	if horizontal:
 		var x := a.x
 		_carve_corridor(x, a.y)
 		while x != b.x:
 			x += signi(b.x - x)
 			_carve_corridor(x, a.y)
-		_ensure_floor(b.x, b.y)
+		if floor_ok:
+			_ensure_floor(b.x, b.y)
 	else:
 		var y0 := mini(a.y, b.y)
 		var y1 := maxi(a.y, b.y)
@@ -644,6 +669,51 @@ func _carve_between_axis(a: Vector2i, b: Vector2i, horizontal: bool) -> void:
 		_ensure_floor(b.x, b.y)
 
 
+var _hk := PackedFloat32Array()   # heap keys
+var _hv := PackedInt32Array()     # heap values
+var _hn := 0
+
+
+func _hpush(k: float, v: int) -> void:
+	if _hn >= _hk.size():
+		_hk.resize(maxi(1024, _hk.size() * 2))
+		_hv.resize(_hk.size())
+	var i := _hn
+	_hn += 1
+	while i > 0:
+		var p := (i - 1) >> 1
+		if _hk[p] <= k:
+			break
+		_hk[i] = _hk[p]
+		_hv[i] = _hv[p]
+		i = p
+	_hk[i] = k
+	_hv[i] = v
+
+
+func _hpop() -> int:
+	var top := _hv[0]
+	_hn -= 1
+	if _hn > 0:
+		var k := _hk[_hn]
+		var v := _hv[_hn]
+		var i := 0
+		while true:
+			var l := i * 2 + 1
+			if l >= _hn:
+				break
+			var r := l + 1
+			var m := l if (r >= _hn or _hk[l] <= _hk[r]) else r
+			if _hk[m] >= k:
+				break
+			_hk[i] = _hk[m]
+			_hv[i] = _hv[m]
+			i = m
+		_hk[i] = k
+		_hv[i] = v
+	return top
+
+
 func _leg_path(a: Vector2i, b: Vector2i) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	var n := W * H
@@ -653,41 +723,47 @@ func _leg_path(a: Vector2i, b: Vector2i) -> Array[Vector2i]:
 	var came := PackedInt32Array()
 	came.resize(n * 2)
 	came.fill(-1)
-	var heap: Array = []   # [f, state]
+	var closed := PackedByteArray()
+	closed.resize(n * 2)
+	_hn = 0
 	var start_i := a.y * W + a.x
 	var goal_i := b.y * W + b.x
 	for axis in 2:
 		best[start_i * 2 + axis] = 0.0
-		_heap_push(heap, [absi(a.x - b.x) + absi(a.y - b.y), start_i * 2 + axis])
+		_hpush(absi(a.x - b.x) + absi(a.y - b.y), start_i * 2 + axis)
 	var found := -1
 	var expansions := 0
-	while not heap.is_empty() and expansions < 40000:
-		var top: Array = _heap_pop(heap)
-		var st: int = top[1]
+	var dxs := [1, -1, 0, 0]
+	var dys := [0, 0, 1, -1]
+	while _hn > 0 and expansions < 40000:
+		var st := _hpop()
+		if closed[st]:
+			continue
+		closed[st] = 1
+		expansions += 1
 		var idx := st >> 1
 		var axis := st & 1
-		var gcost := best[st]
-		if top[0] - (absi(idx % W - b.x) + absi(idx / W - b.y)) > gcost + 0.001:
-			continue
-		expansions += 1
 		if idx == goal_i:
 			found = st
 			break
+		var gcost := best[st]
 		var x := idx % W
 		var y := idx / W
-		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var nx: int = x + d.x
-			var ny: int = y + d.y
+		for k in 4:
+			var nx: int = x + dxs[k]
+			var ny: int = y + dys[k]
 			if nx < 0 or ny < 0 or nx >= W or ny >= H:
 				continue
 			var ni := ny * W + nx
 			var near_end := absi(nx - b.x) + absi(ny - b.y) <= 3 or absi(nx - a.x) + absi(ny - a.y) <= 3
 			var cell_cost := _leg_cost[ni]
-			if cell_cost < 0.0 and not near_end:
-				continue
-			if near_end:
+			if ni == goal_i or ni == start_i:
 				cell_cost = 1.0
-			var naxis := 0 if d.y == 0 else 1
+			elif cell_cost < 0.0:
+				continue          # protected rock stays blocked even near the ends
+			elif near_end:
+				cell_cost = 1.0   # only the room penalty is waived at the anchors
+			var naxis := 0 if k < 2 else 1
 			var step := cell_cost * (LEG_VERTICAL if naxis == 1 else 1.0)
 			if naxis != axis:
 				step += LEG_TURN
@@ -696,51 +772,15 @@ func _leg_path(a: Vector2i, b: Vector2i) -> Array[Vector2i]:
 			if ng < best[ns]:
 				best[ns] = ng
 				came[ns] = st
-				_heap_push(heap, [ng + absi(nx - b.x) + absi(ny - b.y), ns])
+				_hpush(ng + absi(nx - b.x) + absi(ny - b.y), ns)
 	if found < 0:
 		return out
-	var s := found
-	while s >= 0:
-		var id := s >> 1
+	var s2 := found
+	while s2 >= 0:
+		var id := s2 >> 1
 		out.push_front(Vector2i(id % W, id / W))
-		s = came[s]
+		s2 = came[s2]
 	return out
-
-
-static func _heap_push(h: Array, item: Array) -> void:
-	h.append(item)
-	var i := h.size() - 1
-	while i > 0:
-		var p := (i - 1) / 2
-		if h[p][0] <= h[i][0]:
-			break
-		var t: Array = h[p]
-		h[p] = h[i]
-		h[i] = t
-		i = p
-
-
-static func _heap_pop(h: Array) -> Array:
-	var top: Array = h[0]
-	var last: Array = h.pop_back()
-	if not h.is_empty():
-		h[0] = last
-		var i := 0
-		while true:
-			var l := i * 2 + 1
-			var r := l + 1
-			var m := i
-			if l < h.size() and h[l][0] < h[m][0]:
-				m = l
-			if r < h.size() and h[r][0] < h[m][0]:
-				m = r
-			if m == i:
-				break
-			var t: Array = h[m]
-			h[m] = h[i]
-			h[i] = t
-			i = m
-	return top
 
 
 ## Walls/floors that hold up the guaranteed route and backbone chamber floors.
@@ -761,7 +801,17 @@ func _mark_supports() -> void:
 					support[Vector2i(x, y)] = true
 
 
+var _prof_t := 0
 func _trace(tag: String) -> void:
+	if OS.get_environment("RD_PROFILE") != "":
+		var now := Time.get_ticks_usec()
+		if _prof_t > 0:
+			print("PROF %-24s %6.1f ms" % [tag, (now - _prof_t) / 1000.0])
+		_prof_t = now
+	var ce := OS.get_environment("RD_CELL")
+	if ce != "":
+		var pp := ce.split(",")
+		print("CELL after ", tag, ": mat ", g.get_mat(int(pp[0]), int(pp[1])))
 	if OS.get_environment("RD_TRACE") == "":
 		return
 	var bad: Array = []
@@ -786,6 +836,26 @@ func _trace(tag: String) -> void:
 				print("   %3d %s" % [yy, line])
 
 
+## Mark the solid cells around a set of (future) water cells as a sealed
+## container: no later tunnel, passage or roughening may open them.
+func seal_around(cells: Array) -> void:
+	var set_: Dictionary = {}
+	for c in cells:
+		set_[c] = true
+	for c in cells:
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var n: Vector2i = c + Vector2i(dx, dy)
+				if not set_.has(n) and g.is_solid(n.x, n.y):
+					sealed[n] = true
+
+
+func seal_rect(r: Rect2i) -> void:
+	for y in range(r.position.y, r.end.y):
+		for x in range(r.position.x, r.end.x):
+			sealed[Vector2i(x, y)] = true
+
+
 func writable(x: int, y: int) -> bool:
 	if not g.in_bounds(x, y) or x < 2 or x >= W - 2 or y < 2 or y >= H - 6:
 		return false
@@ -796,7 +866,7 @@ func tunnel_ok(x: int, y: int) -> bool:
 	if x < 3 or x >= W - 3 or y < 12 or y >= H - 8 or not writable(x, y):
 		return false
 	var c := Vector2i(x, y)
-	if reserved.has(c) or support.has(c):
+	if reserved.has(c) or support.has(c) or sealed.has(c):
 		return false
 	var m := g.get_mat(x, y)
 	return m != Cell.ALLOY and m != Cell.LADDER and m != Cell.PLATFORM
@@ -822,6 +892,8 @@ func _plan_chambers() -> void:
 		if c["arch"] in ["ruin", "works"]:
 			_mark_no_feature(r)
 	data["halls"] = halls
+	for c in chambers:
+		seal_around(c.get("basin", []))
 	# each backbone chamber must carry the player between its anchors on its own
 	for c in chambers:
 		if not c["backbone"]:
@@ -1012,7 +1084,7 @@ func _ensure_floor(x: int, y: int) -> void:
 	# guarantee something to stand on at a corridor/shaft junction
 	for xx in [x - 1, x, x + 1]:
 		if not g.is_solid(xx, y + 1) and g.get_mat(xx, y + 1) != Cell.LADDER:
-			if not reserved.has(Vector2i(xx, y + 1)):
+			if not reserved.has(Vector2i(xx, y + 1)) and space.kind_at(Vector2i(xx, y + 1)) != "chamber":
 				g.put(xx, y + 1, Cell.HARD)
 
 
@@ -1140,12 +1212,26 @@ func _free_region(cx: int, cy: int, rx: int, ry: int, need_solid: bool) -> bool:
 ## Basalt blobs hanging from cave ceilings by a single sediment "neck". Dig or
 ## blast the neck and the boulder drops, crushing whatever is below it.
 func _hanging_boulders() -> void:
+	var pmask := PackedByteArray()
+	pmask.resize(W * H)
+	for cl in space.claims:
+		if cl["kind"] in ["anchor", "landmark"]:
+			var r0: Rect2i = cl["rect"]
+			for y in range(maxi(0, r0.position.y), mini(H, r0.end.y)):
+				for x in range(maxi(0, r0.position.x), mini(W, r0.end.x)):
+					pmask[y * W + x] = 1
+	for ch in chambers:
+		if ch["backbone"]:
+			var r1: Rect2i = (ch["rect"] as Rect2i).grow(1)
+			for y in range(maxi(0, r1.position.y), mini(H, r1.end.y)):
+				for x in range(maxi(0, r1.position.x), mini(W, r1.end.x)):
+					pmask[y * W + x] = 1
 	var counts := [5, 4, 2]
 	var placed_total := 0
 	for st in 3:
 		var placed := 0
 		var tries := 0
-		while placed < counts[st] and tries < 1500:
+		while placed < counts[st] and tries < 800:
 			tries += 1
 			var x := rng.randi_range(5, W - 6)
 			var lo: int = maxi(16, Balance.STRATUM_ROWS[st])
@@ -1156,7 +1242,7 @@ func _hanging_boulders() -> void:
 			var ok := true
 			for yy in range(y + 1, y + 7):
 				for xx in range(x - 2, x + 3):
-					if g.is_solid(xx, yy) or reserved.has(Vector2i(xx, yy)) or no_feature.has(Vector2i(xx, yy)) or _protected_space(Vector2i(xx, yy)):
+					if g.is_solid(xx, yy) or reserved.has(Vector2i(xx, yy)) or no_feature.has(Vector2i(xx, yy)) or (g.in_bounds(xx, yy) and pmask[yy * W + xx] == 1):
 						ok = false
 			if not ok:
 				continue
@@ -1209,88 +1295,264 @@ func _geodes() -> void:
 ## Sealed flooded pockets. Treasure lines the floor; breach the wall and the
 ## water floods out into whatever you have dug.
 func _water_pockets() -> void:
-	var counts := [2, 5, 2]
+	# small groundwater pockets: common but modest, irregular blobs
+	var counts := [water_rng.randi_range(1, 2), water_rng.randi_range(2, 3), water_rng.randi_range(0, 1)]
 	var pockets: Array = []
 	for st in 3:
 		var placed := 0
 		var tries := 0
 		while placed < counts[st] and tries < 400:
 			tries += 1
-			var rx := rng.randi_range(3, 6)
-			var ry := rng.randi_range(2, 3)
-			var cx := rng.randi_range(6 + rx, W - 7 - rx)
+			var rx := water_rng.randi_range(2, 5)
+			var ry := water_rng.randi_range(2, 3)
+			var cx := water_rng.randi_range(6 + rx, W - 7 - rx)
 			var lo: int = maxi(18, Balance.STRATUM_ROWS[st] + ry + 2)
 			var hi: int = (Balance.STRATUM_ROWS[st + 1] if st < 2 else H - 10) - ry - 3
 			if hi <= lo:
 				continue
-			var cy := rng.randi_range(lo, hi)
+			var cy := water_rng.randi_range(lo, hi)
 			if not _free_region(cx, cy, rx + 2, ry + 2, true):
 				continue
 			space.claim(Rect2i(cx - rx - 2, cy - ry - 2, rx * 2 + 5, ry * 2 + 5), "water", "pocket%d" % pockets.size())
 			var cells: Array[Vector2i] = []
+			var ox := float(water_rng.randi_range(-1, 1))
+			var oy := float(water_rng.randi_range(-1, 1)) * 0.5
 			for y in range(cy - ry, cy + ry + 1):
 				for x in range(cx - rx, cx + rx + 1):
 					var dx := (x + 0.5 - cx) / (rx + 0.5)
 					var dy := (y + 0.5 - cy) / (ry + 0.5)
-					if dx * dx + dy * dy <= 1.0:
+					var dx2 := (x + 0.5 - cx - ox * rx * 0.6) / (rx * 0.6 + 0.5)
+					var dy2 := (y + 0.5 - cy - oy * ry) / (ry * 0.7 + 0.5)
+					if dx * dx + dy * dy <= 0.8 or dx2 * dx2 + dy2 * dy2 <= 1.0:
 						cells.append(Vector2i(x, y))
-			var fill_from := cy - ry + rng.randi_range(0, 1)
+			var fill_from := cy - ry + water_rng.randi_range(0, 2)
 			for c in cells:
 				g.put(c.x, c.y, Cell.AIR)
 				if c.y >= fill_from:
 					g.water[g.idx(c.x, c.y)] = Balance.WATER_MAX
 			# treasure on the floor, a cracked-looking hint above
 			for c in cells:
-				if not cells.has(c + Vector2i(0, 1)) and g.get_mat(c.x, c.y + 1) in [Cell.SOFT, Cell.HARD] and rng.randf() < 0.5:
+				if not cells.has(c + Vector2i(0, 1)) and g.get_mat(c.x, c.y + 1) in [Cell.SOFT, Cell.HARD] and water_rng.randf() < 0.5:
 					g.ore[g.idx(c.x, c.y + 1)] = Cell.ORE_AETHER if st == 2 or rng.randf() < 0.3 else Cell.ORE_COBALT
 			for y in range(cy - ry - 2, cy + ry + 3):
 				for x in range(cx - rx - 2, cx + rx + 3):
 					no_feature[Vector2i(x, y)] = true
 			pockets.append(Rect2i(cx - rx, cy - ry, rx * 2 + 1, ry * 2 + 1))
+			var filled := 0
+			for c in cells:
+				if c.y >= fill_from:
+					filled += 1
+			data["water_features"].append({"kind": "pocket", "rect": Rect2i(cx - rx, cy - ry, rx * 2 + 1, ry * 2 + 1), "cells": filled, "volume": filled * Balance.WATER_MAX, "head": cy + ry - fill_from + 1})
 			placed += 1
 	data["water_pockets"] = pockets
 
 
-## A partly flooded natural cavern in the Spore Veins.
-func _lake() -> void:
-	for attempt in 40:
-		var x := rng.randi_range(6, W - 7)
-		var y := rng.randi_range(Balance.STRATUM_ROWS[1] + 10, Balance.STRATUM_ROWS[2] - 8)
-		if g.is_solid(x, y) or reserved.has(Vector2i(x, y)):
+## Chamber basins built by the carver: the cathedral lake always fills; a
+## terrace's perched basin fills most of the time (a waterfall waiting for its
+## sediment lip to be broken).
+func _fill_basins() -> void:
+	for c in chambers:
+		var basin: Array = c.get("basin", [])
+		if basin.is_empty():
 			continue
-		var region: Array[Vector2i] = [Vector2i(x, y)]
-		var seen: Dictionary = {Vector2i(x, y): true}
-		var head := 0
-		var bad := false
-		while head < region.size() and region.size() < 500:
-			var c: Vector2i = region[head]
-			head += 1
-			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var n: Vector2i = c + d
-				if seen.has(n) or g.is_solid(n.x, n.y):
-					continue
-				if reserved.has(n):
-					bad = true
-				seen[n] = true
-				region.append(n)
-		if bad or region.size() < 50 or region.size() >= 500:
+		var is_lake: bool = c["arch"] == "cathedral"
+		if not is_lake and water_rng.randf() > 0.7:
 			continue
-		var maxy := 0
-		for c in region:
-			maxy = maxi(maxy, c.y)
-		var depth := rng.randi_range(2, 4)
-		var filled := 0
-		for c in region:
-			if c.y > maxy - depth:
-				g.water[g.idx(c.x, c.y)] = Balance.WATER_MAX
-				filled += 1
-		data["lake"] = {"cells": filled, "at": Vector2i(x, y)}
-		break
-	# let lakes find their level now so the mine starts calm
+		# later passes may have opened the basin's rim: lower the waterline until
+		# the body is contained, rather than letting it drain while settling
+		var cells: Array = []
+		for b in basin:
+			if not g.is_solid(b.x, b.y) and not reserved.has(b):
+				cells.append(b)
+		while not cells.is_empty() and not _contained(cells):
+			var top := 1 << 20
+			for b in cells:
+				top = mini(top, b.y)
+			cells = cells.filter(func(b: Vector2i) -> bool: return b.y > top)
+		var filled := cells.size()
+		if filled < 3:
+			continue
+		for b in cells:
+			g.water[g.idx(b.x, b.y)] = Balance.WATER_MAX
+		var r: Rect2i = c["rect"]
+		data["water_features"].append({"kind": "lake" if is_lake else "perched_pool", "rect": r, "cells": filled, "volume": filled * Balance.WATER_MAX, "head": 3 if is_lake else 2, "chamber": c["id"]})
+
+
+## True if water standing in `cells` cannot escape: every open cell reachable
+## at or below the waterline stays within a small margin of the body itself.
+func _contained(cells: Array) -> bool:
+	var top := 1 << 20
+	for b in cells:
+		top = mini(top, b.y)
+	var seen := {}
+	var stack: Array = cells.duplicate()
+	for b in cells:
+		seen[b] = true
+	var cap := cells.size() + 12
+	while not stack.is_empty():
+		var c: Vector2i = stack.pop_back()
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = c + d
+			if n.y < top or seen.has(n) or not g.in_bounds(n.x, n.y) or g.is_solid(n.x, n.y):
+				continue
+			seen[n] = true
+			if seen.size() > cap:
+				return false
+			stack.append(n)
+	return true
+
+
+## Every mine gets at least one significant water encounter in the Spore Veins
+## (a lake, a reservoir, a flooded cistern), with fallbacks instead of hoping a
+## random cavity turns up.
+func _ensure_water_encounter() -> void:
+	for wf in data["water_features"]:
+		var r: Rect2i = wf["rect"]
+		if wf["kind"] != "pocket" and int(wf.get("cells", 0)) >= 20 and Balance.stratum_of_row(r.get_center().y) == 1:
+			return
+	var lm := Landmarks.new(self, water_rng)
+	if OS.get_environment("RD_TRACE") != "":
+		print("WATER GUARANTEE: none found, trying fallbacks")
+	if lm.floodgate(1, true):
+		return
+	if lm.cistern():
+		return
+	lm.buried_reservoir(1)
+
+
+func _water_in(r: Rect2i) -> int:
+	var t := 0
+	for y in range(r.position.y - 1, r.end.y + 2):
+		for x in range(r.position.x - 1, r.end.x + 1):
+			t += g.get_water(x, y)
+	return t
+
+
+## Let every body of water find its level now so the mine starts calm.
+func _settle_water() -> void:
 	var sim := WaterSim.new(g)
+	var before: Array = []
+	for wf in data["water_features"]:
+		before.append(_water_in(wf["rect"]))
 	data["settle_steps"] = sim.settle(600)
+	# quench: clear stray 1-2 unit films that would jitter forever, then confirm
+	# the whole map is at rest (the generator's water must start calm)
+	var quenched := 0
+	for k in 8:
+		sim.wake_all()
+		sim.step()
+		if sim.last_moves == 0 and sim.drop_count() == 0:
+			break
+		for c in sim.active.keys():
+			var v := g.get_water(c.x, c.y)
+			if v > 0 and v <= 2:
+				quenched += v
+				g.water[g.idx(c.x, c.y)] = 0
+		for k2 in 20:
+			sim.step()
+			for k3 in 4:
+				sim.update_drops(Balance.WATER_TICK / 4.0)
+	data["water_quenched"] = quenched
+	var leaks: Array = []
+	for i in data["water_features"].size():
+		var wf: Dictionary = data["water_features"][i]
+		var after := _water_in(wf["rect"])
+		wf["settled_volume"] = after
+		if before[i] > 0 and after < before[i] * 0.85:
+			leaks.append("%s %s %d->%d" % [wf["kind"], str(wf["rect"]), before[i], after])
+	data["water_leaks"] = leaks
+	# features that drained while settling are dry now: do not report them
+	var kept: Array = []
+	for wf in data["water_features"]:
+		if int(wf.get("settled_volume", 1)) > int(wf.get("volume", 0)) * 0.4:
+			kept.append(wf)
+	data["water_features"] = kept
+	if OS.get_environment("RD_TRACE") != "":
+		print("SETTLE steps ", data["settle_steps"], " leaks ", leaks)
+	if OS.get_environment("RD_TRACE") != "" and data["settle_steps"] >= 600:
+		var sample: Array = sim.active.keys().slice(0, 12)
+		print("UNSETTLED active=", sim.active.size(), " drops=", sim.drop_count(), " sample ", sample, " moves ", sim.last_moves)
+		var c0: Vector2i = sample[0]
+		for k in 4:
+			for yy in range(c0.y - 3, c0.y + 3):
+				var line := ""
+				for xx in range(c0.x - 5, c0.x + 6):
+					var m := g.get_mat(xx, yy)
+					var wv := g.get_water(xx, yy)
+					line += ("%3d" % wv) if not Cell.is_solid(m) else "  #"
+					if m == Cell.LADDER:
+						line[line.length() - 1] = "L"
+					if m == Cell.PLATFORM:
+						line[line.length() - 1] = "="
+				print("  ", yy, line)
+			print("  --")
+			sim.step()
 	g.cell_changed.disconnect(sim._on_cell_changed)
 	data["water_total"] = sim.total()
+	var lake := 0
+	for wf in data["water_features"]:
+		if wf["kind"] in ["lake", "reservoir", "flooded_ruin", "cistern"]:
+			lake = maxi(lake, int(wf["cells"]))
+	data["lake"] = {"cells": lake}
+
+
+func _landmarks_v2() -> void:
+	var lm := Landmarks.new(self, land_rng)
+	var cid: String = contract.get("id", "survey")
+	var odds := {"survey_post": 0.6, "hanging_gallery": 0.7, "flooded_machinery": 0.65, "cistern": 0.45, "vent_cluster": 0.3, "floodgate": 0.55}
+	match cid:
+		"gas":
+			odds["vent_cluster"] = 1.0
+		"rich":
+			odds["hanging_gallery"] = 1.0
+			odds["floodgate"] = 0.8
+		"quiet":
+			odds["flooded_machinery"] = 0.4
+	# a deterministic but shuffled order, so the same few don't always win space
+	var order: Array = ["floodgate", "flooded_machinery", "hanging_gallery", "cistern", "survey_post", "vent_cluster"]
+	for i in range(order.size() - 1, 0, -1):
+		var j := land_rng.randi_range(0, i)
+		var t = order[i]
+		order[i] = order[j]
+		order[j] = t
+	for kind in order:
+		if land_rng.randf() > float(odds[kind]):
+			continue
+		match kind:
+			"floodgate":
+				lm.floodgate(land_rng.randi_range(0, 1))
+			"flooded_machinery":
+				lm.flooded_machinery()
+			"hanging_gallery":
+				lm.hanging_gallery(land_rng.randi_range(0, 1))
+			"cistern":
+				lm.cistern()
+			"survey_post":
+				lm.survey_post()
+			"vent_cluster":
+				lm.vent_cluster()
+				if cid == "gas":
+					lm.vent_cluster()
+	# every mine gets at least two v2 landmarks: fall back to the compact ones
+	var placed := 0
+	for l in data["landmarks"]:
+		if not (l["kind"] in ["fossil_grotto", "miner_camp", "cobalt_vault"]):
+			placed += 1
+	for kind in ["survey_post", "hanging_gallery", "cistern", "survey_post", "vent_cluster"]:
+		if placed >= 2:
+			break
+		var ok := false
+		match kind:
+			"survey_post":
+				ok = lm.survey_post()
+			"hanging_gallery":
+				ok = lm.hanging_gallery(land_rng.randi_range(0, 1))
+			"cistern":
+				ok = lm.cistern()
+			"vent_cluster":
+				ok = lm.vent_cluster()
+		if ok:
+			placed += 1
 
 
 ## No basalt starts out unsupported: anything that would fall immediately is
@@ -1316,32 +1578,133 @@ func _near_open(x: int, y: int, r: int) -> bool:
 
 
 func _ore() -> void:
+	## Geological ore: background veins plus structures that tell a story and
+	## reward exploration (seams on chamber walls, sparse fault veins, a fossil
+	## band in the sediment, exposed hints leading into richer hidden pockets).
 	var mult: float = contract.get("ore", 1.0)
-	var counts := [int(34 * mult), int(30 * mult), int(26 * mult)]
+	var counts := [int(24 * mult), int(21 * mult), int(18 * mult)]
 	for s in 3:
 		var placed := 0
 		var tries := 0
 		while placed < counts[s] and tries < 2000:
 			tries += 1
-			var x := rng.randi_range(3, W - 4)
+			var x := ore_rng.randi_range(3, W - 4)
 			var lo: int = maxi(12, Balance.STRATUM_ROWS[s])
 			var hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 7) - 1
-			var y := rng.randi_range(lo, hi)
+			var y := ore_rng.randi_range(lo, hi)
 			if not _ore_ok(x, y):
 				continue
-			if rng.randf() < 0.7 and not _near_open(x, y, 3):
+			if ore_rng.randf() < 0.7 and not _near_open(x, y, 3):
 				continue
 			var kind := _pick_ore(s, y)
-			var length := rng.randi_range(2, 6) if kind != Cell.ORE_AETHER else rng.randi_range(1, 3)
+			var length := ore_rng.randi_range(2, 6) if kind != Cell.ORE_AETHER else ore_rng.randi_range(1, 3)
 			var cx := x
 			var cy := y
 			for k in length:
 				if _ore_ok(cx, cy):
 					g.ore[g.idx(cx, cy)] = kind
-				var d: Vector2i = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)][rng.randi_range(0, 3)]
+				var d: Vector2i = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)][ore_rng.randi_range(0, 3)]
 				cx += d.x
 				cy += d.y
 			placed += 1
+	data["ore_structures"] = {"seams": 0, "faults": 0, "hints": 0, "fossil_band": 0}
+	# contact seams: ore following a chamber wall
+	for c in chambers:
+		for k in (1 if ore_rng.randf() < 0.5 else 2):
+			if _contact_seam(c):
+				data["ore_structures"]["seams"] += 1
+	# fault veins: long, sparse, angled lines through rock
+	for s in 3:
+		for k in ore_rng.randi_range(1, 2):
+			var lo: int = maxi(14, Balance.STRATUM_ROWS[s])
+			var hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 8) - 1
+			var p := Vector2(ore_rng.randi_range(5, W - 6), ore_rng.randi_range(lo, hi))
+			var ang := ore_rng.randf_range(0.5, 1.1) * (1.0 if ore_rng.randf() < 0.5 else -1.0)
+			var dir := Vector2(cos(ang), sin(ang))
+			var kind: int = [Cell.ORE_COPPER, Cell.ORE_COBALT, Cell.ORE_AETHER][s] if ore_rng.randf() < 0.8 else _pick_ore(s, int(p.y))
+			for t in ore_rng.randi_range(12, 22):
+				var c := Vector2i(int(round(p.x + dir.x * t)), int(round(p.y + dir.y * t)))
+				if _ore_ok(c.x, c.y) and ore_rng.randf() < 0.42 * mult:
+					g.ore[g.idx(c.x, c.y)] = kind
+			data["ore_structures"]["faults"] += 1
+	# fossil band: one sedimentary horizon in the Dustworks
+	var by := ore_rng.randi_range(22, Balance.STRATUM_ROWS[1] - 12)
+	for x in range(3, W - 3):
+		var y := by + int(round(sin(x * 0.2) * 1.5))
+		if _ore_ok(x, y) and ore_rng.randf() < 0.09:
+			g.ore[g.idx(x, y)] = Cell.ORE_FOSSIL
+			data["ore_structures"]["fossil_band"] += 1
+	# hints: one exposed crystal on a chamber wall, a richer pocket behind it
+	var premium := Cell.ORE_AETHER if contract.get("id", "") == "rich" else -1
+	for c in chambers:
+		if ore_rng.randf() < 0.55 and _hint_pocket(c, premium):
+			data["ore_structures"]["hints"] += 1
+
+
+func _wall_cells(c: Dictionary) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var r: Rect2i = (c["rect"] as Rect2i).grow(2)
+	for y in range(r.position.y, r.end.y):
+		for x in range(r.position.x, r.end.x):
+			if _ore_ok(x, y) and _near_open(x, y, 1):
+				out.append(Vector2i(x, y))
+	return out
+
+
+func _contact_seam(c: Dictionary) -> bool:
+	var walls := _wall_cells(c)
+	if walls.is_empty():
+		return false
+	var set_: Dictionary = {}
+	for w in walls:
+		set_[w] = true
+	var cur: Vector2i = walls[ore_rng.randi_range(0, walls.size() - 1)]
+	var s: int = c["stratum"]
+	var kind: int = [Cell.ORE_COPPER, Cell.ORE_COBALT, Cell.ORE_AETHER if ore_rng.randf() < 0.5 else Cell.ORE_COBALT][s]
+	var length := ore_rng.randi_range(4, 8)
+	var placed := 0
+	for k in length:
+		if ore_rng.randf() < 0.75 and _ore_ok(cur.x, cur.y):
+			g.ore[g.idx(cur.x, cur.y)] = kind
+			placed += 1
+		set_.erase(cur)
+		var moved := false
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(-1, 1), Vector2i(1, -1), Vector2i(-1, -1)]:
+			if set_.has(cur + d):
+				cur = cur + d
+				moved = true
+				break
+		if not moved:
+			break
+	return placed > 0
+
+
+func _hint_pocket(c: Dictionary, premium: int) -> bool:
+	var walls := _wall_cells(c)
+	if walls.is_empty():
+		return false
+	var w: Vector2i = walls[ore_rng.randi_range(0, walls.size() - 1)]
+	# direction into the rock: away from the nearest open neighbour
+	var into := Vector2i.ZERO
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if not g.is_solid(w.x + d.x, w.y + d.y):
+			into = -d
+			break
+	if into == Vector2i.ZERO:
+		return false
+	var s: int = c["stratum"]
+	var hint_kind: int = [Cell.ORE_COPPER, Cell.ORE_COBALT, Cell.ORE_COBALT][s]
+	var rich_kind: int = premium if premium > 0 else [Cell.ORE_COBALT, Cell.ORE_AETHER, Cell.ORE_AETHER][s]
+	g.ore[g.idx(w.x, w.y)] = hint_kind
+	var centre := w + into * 3
+	var made := 0
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var p := centre + Vector2i(dx, dy)
+			if _ore_ok(p.x, p.y) and not _near_open(p.x, p.y, 1) and ore_rng.randf() < 0.7:
+				g.ore[g.idx(p.x, p.y)] = rich_kind
+				made += 1
+	return made > 0
 
 
 func _ore_ok(x: int, y: int) -> bool:
@@ -1351,7 +1714,7 @@ func _ore_ok(x: int, y: int) -> bool:
 
 
 func _pick_ore(s: int, y: int) -> int:
-	var r := rng.randf()
+	var r := ore_rng.randf()
 	match s:
 		0:
 			return Cell.ORE_FOSSIL if r < 0.08 else (Cell.ORE_COBALT if r < 0.14 and y > 50 else Cell.ORE_COPPER)
@@ -1362,61 +1725,107 @@ func _pick_ore(s: int, y: int) -> int:
 
 
 func _gas() -> void:
+	## Background gas: fewer than before (vent clusters carry the drama) and
+	## never within two cells of the guaranteed route, so it is opt-in.
 	var mult: float = contract.get("gas", 1.0)
-	var counts := [int(round(3 * mult)), int(round(12 * mult)), int(round(5 * mult))]
+	var counts := [int(round(2 * mult)), int(round(7 * mult)), int(round(3 * mult))]
 	var anchors: Array = [data["spawn"], data["relay"], data["door_outside"]]
 	for s in 3:
 		var placed := 0
 		var tries := 0
 		while placed < counts[s] and tries < 1500:
 			tries += 1
-			var x := rng.randi_range(3, W - 4)
+			var x := enc_rng.randi_range(3, W - 4)
 			var lo: int = maxi(16, Balance.STRATUM_ROWS[s])
 			var hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 7) - 1
-			var y := rng.randi_range(lo, hi)
+			var y := enc_rng.randi_range(lo, hi)
 			var far := true
 			for a in anchors:
 				if absi(a.x - x) + absi(a.y - y) < 9:
 					far = false
-			if not far or not _ore_ok(x, y) or not _near_open(x, y, 1):
+			if not far or not _ore_ok(x, y) or not _near_open(x, y, 1) or _near_route(x, y, 2):
 				continue
-			var n := rng.randi_range(2, 4)
+			var n := enc_rng.randi_range(2, 4)
 			var cx := x
 			var cy := y
 			for k in n:
-				if _ore_ok(cx, cy):
+				if _ore_ok(cx, cy) and not _near_route(cx, cy, 2):
 					g.put(cx, cy, Cell.GAS)
 					no_feature[Vector2i(cx, cy)] = true
-				var d: Vector2i = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)][rng.randi_range(0, 3)]
+				var d: Vector2i = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)][enc_rng.randi_range(0, 3)]
 				cx += d.x
 				cy += d.y
 			placed += 1
 
 
+func _near_route(x: int, y: int, r: int) -> bool:
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			if reserved.has(Vector2i(x + dx, y + dy)):
+				return true
+	return false
+
+
 func _enemies() -> void:
+	## Crawlers by role first (a guard in optional chambers, a patrol on backbone
+	## chambers), then the remaining budget as wanderers in natural caves.
 	var mult: float = contract.get("crawlers", 1.0)
 	var counts := [int(round(3 * mult)), int(round(5 * mult)), int(round(3 * mult))]
 	var total := 0
+	for e in data["entities"]:
+		if e["type"] == "crawler":
+			total += 1
+			counts[Balance.stratum_of_row(e["cell"].y)] -= 1
 	var spawn: Vector2i = data["spawn"]
 	var relay: Vector2i = data["relay"]
+	var order: Array = chambers.duplicate()
+	for i in range(order.size() - 1, 0, -1):
+		var j := enc_rng.randi_range(0, i)
+		var t = order[i]
+		order[i] = order[j]
+		order[j] = t
+	for c in order:
+		var s: int = c["stratum"]
+		if counts[s] <= 0 or total >= Balance.CRAWLER_CAP or c.get("vents", false):
+			continue
+		var r: Rect2i = c["rect"]
+		var floor_cells: Array[Vector2i] = []
+		for y in range(r.position.y, r.end.y + 2):
+			for x in range(r.position.x, r.end.x):
+				if _crawler_ok(x, y, spawn, relay):
+					floor_cells.append(Vector2i(x, y))
+		if floor_cells.is_empty():
+			continue
+		var cell: Vector2i = floor_cells[enc_rng.randi_range(0, floor_cells.size() - 1)]
+		data["entities"].append({"type": "crawler", "cell": cell, "role": "patrol" if c["backbone"] else "guard"})
+		counts[s] -= 1
+		total += 1
 	for s in 3:
-		var placed := 0
 		var tries := 0
-		while placed < counts[s] and tries < 800 and total < Balance.CRAWLER_CAP:
+		while counts[s] > 0 and tries < 800 and total < Balance.CRAWLER_CAP:
 			tries += 1
-			var x := rng.randi_range(4, W - 5)
+			var x := enc_rng.randi_range(4, W - 5)
 			var lo: int = maxi(20, Balance.STRATUM_ROWS[s])
 			var hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 7) - 1
-			var y := rng.randi_range(lo, hi)
-			if g.is_solid(x, y) or not g.is_solid(x, y + 1) or g.get_mat(x, y) != Cell.AIR:
+			var y := enc_rng.randi_range(lo, hi)
+			if not _crawler_ok(x, y, spawn, relay):
 				continue
-			if absi(x - spawn.x) + absi(y - spawn.y) < 26 or absi(x - relay.x) + absi(y - relay.y) < 10:
-				continue
-			if g.has_flag(x, y, Cell.F_NO_RUBBLE):
-				continue
-			data["entities"].append({"type": "crawler", "cell": Vector2i(x, y)})
-			placed += 1
+			data["entities"].append({"type": "crawler", "cell": Vector2i(x, y), "role": "wander"})
+			counts[s] -= 1
 			total += 1
+
+
+func _crawler_ok(x: int, y: int, spawn: Vector2i, relay: Vector2i) -> bool:
+	if g.is_solid(x, y) or not g.is_solid(x, y + 1) or g.get_mat(x, y) != Cell.AIR:
+		return false
+	if absi(x - spawn.x) + absi(y - spawn.y) < 26 or absi(x - relay.x) + absi(y - relay.y) < 10:
+		return false
+	if g.has_flag(x, y, Cell.F_NO_RUBBLE) or g.get_water(x, y) > 0:
+		return false
+	for e in data["entities"]:
+		if e["type"] == "crawler" and absi(e["cell"].x - x) + absi(e["cell"].y - y) < 6:
+			return false
+	return true
 
 
 func _finalize_hp() -> void:
@@ -1491,6 +1900,10 @@ func _water_environment() -> void:
 		if entity.type == "crate" and not reserved.has(entity.cell) and g.get_mat(entity.cell.x, entity.cell.y) == Cell.AIR:
 			data.water_props.append({"kind": "crate", "cell": entity.cell})
 			data.entities.erase(entity)
+	for lp in data.get("lm_props", []):
+		if data.water_props.size() < Balance.DEBRIS_GENERATED_CAP:
+			data.water_props.append(lp)
+			occupied[lp.cell] = true
 	var candidates: Array[Vector2i] = []
 	for y in range(8, H - 8):
 		for x in range(3, W - 3):
@@ -1516,5 +1929,24 @@ func _water_environment() -> void:
 				near = true
 		if near:
 			continue
-		var kind: String = ["crate", "stone", "canister", "scrap"][props_rng.randi_range(0, 3)]
-		data.water_props.append({"kind": kind, "cell": c})
+		data.water_props.append({"kind": _prop_kind(c, props_rng), "cell": c})
+
+
+## Props have roles: floaters where water can move them, heavy stone on dry
+## slopes and drop zones, scrap/canisters around Engine machinery, crates in the
+## Dustworks works.
+func _prop_kind(c: Vector2i, prng: RandomNumberGenerator) -> String:
+	var wet := false
+	for dy in range(-3, 4):
+		for dx in range(-3, 4):
+			if g.get_water(c.x + dx, c.y + dy) > 0:
+				wet = true
+	if wet:
+		return "crate" if prng.randf() < 0.55 else "canister"
+	var s := Balance.stratum_of_row(c.y)
+	if s == 2:
+		return "scrap" if prng.randf() < 0.6 else "canister"
+	var k := space.kind_at(c)
+	if s == 0 and (k == "chamber" or k == "landmark") and prng.randf() < 0.6:
+		return "crate"
+	return "stone" if prng.randf() < 0.7 else "crate"

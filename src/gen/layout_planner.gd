@@ -30,17 +30,26 @@ func _init(generator: MineGenerator, r: RandomNumberGenerator) -> void:
 	space = generator.space
 
 
-func _pick(s: int) -> String:
+## Weighted pick; archetypes already used in this stratum are three times less
+## likely, so a mine rarely repeats one shape while others go unused.
+func _pick(s: int, used: Array = []) -> String:
 	var opts: Array = ARCH[s]
 	var total := 0
 	for o in opts:
-		total += int(o[1])
+		total += int(o[1]) * (1 if _has_arch(used, o[0]) else 3)
 	var roll := rng.randi_range(1, total)
 	for o in opts:
-		roll -= int(o[1])
+		roll -= int(o[1]) * (1 if _has_arch(used, o[0]) else 3)
 		if roll <= 0:
 			return o[0]
 	return opts[0][0]
+
+
+func _has_arch(list: Array, arch: String) -> bool:
+	for c in list:
+		if c["arch"] == arch:
+			return true
+	return false
 
 
 func _size(arch: String, s: int, variant: String) -> Vector2i:
@@ -83,7 +92,7 @@ func plan() -> Array:
 	var tries := 0
 	while s0.size() < 3 and tries < 12:
 		tries += 1
-		var c := _try(_pick(0), 0, 14, Balance.STRATUM_ROWS[1] - 10)
+		var c := _try(_pick(0, s0), 0, 14, Balance.STRATUM_ROWS[1] - 10)
 		if not c.is_empty():
 			s0.append(c)
 	# Spore Veins: maybe a cathedral first (it needs the most room)
@@ -96,7 +105,7 @@ func plan() -> Array:
 	var want1 := rng.randi_range(3, 4) + (1 if s1.is_empty() else 0)
 	while s1.size() < want1 and tries < 16:
 		tries += 1
-		var c1 := _try(_pick(1), 1, Balance.STRATUM_ROWS[1] + 12, Balance.STRATUM_ROWS[2] - 4)
+		var c1 := _try(_pick(1, s1), 1, Balance.STRATUM_ROWS[1] + 12, Balance.STRATUM_ROWS[2] - 4)
 		if not c1.is_empty():
 			s1.append(c1)
 	# Forgotten Engine ruins, varied arrangements

@@ -334,9 +334,14 @@ func step() -> void:
 					continue
 				var ln := grid.get_water(nx, y)
 				var diff := lv - ln
-				var drop_off := _open(nx, y + 1) and grid.get_water(nx, y + 1) < Balance.WATER_MAX
+				var below_n := grid.get_water(nx, y + 1)
+				# a lone unit only spills into genuinely empty space below; this stops
+				# single-unit films from flip-flopping at the rim of a near-full pool
+				var drop_off := _open(nx, y + 1) and (below_n == 0 if lv == 1 else below_n < Balance.WATER_MAX)
 				var mv2 := 0
-				if d.x == run_dir and not drop_off and ln <= lv and ln < Balance.WATER_MAX:
+				if d.x == run_dir and not drop_off and lv >= 2 and ln <= lv and ln < Balance.WATER_MAX and not _open(nx, y + 1):
+					# sheet flow runs only along a floor (receiver also on solid), so
+					# it keeps flowing the same way instead of being levelled back
 					mv2 = mini(maxi(1, (lv + 1) / 2), Balance.WATER_MAX - ln)
 				elif drop_off and ln < Balance.WATER_MAX:
 					# the neighbour pours away below: water runs over the lip

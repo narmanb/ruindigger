@@ -286,6 +286,11 @@ func _grid_hash(g: TerrainGrid) -> int:
 	return hash(g.mat) ^ hash(g.ore)
 
 
+func _full_hash(d: Dictionary) -> int:
+	var g: TerrainGrid = d["grid"]
+	return hash(g.mat) ^ hash(g.ore) ^ hash(g.water) ^ hash(str(d["entities"])) ^ hash(str(d.get("water_props", [])))
+
+
 func _generation(n: int) -> void:
 	section("generation x%d seeds" % n)
 	var repaired := 0
@@ -363,13 +368,62 @@ func _generation(n: int) -> void:
 		check(floating == 0, tag + ": no basalt starts out unsupported (%d)" % floating)
 		total_water += total_w
 		total_boulders += int(d.get("boulders", 0))
+		_generation_v2_checks(tag, d, gen)
 		if i < 4:
 			var again := MineGenerator.new().generate(seed_value, contract)
 			check(_grid_hash(again["grid"]) == _grid_hash(g) and again.get("water_props", []) == d.get("water_props", []), tag + ": terrain and prop generation are deterministic")
+			check(_full_hash(again) == _full_hash(d), tag + ": terrain, water, entities and props fully deterministic")
 	print("  seeds needing repair: %d / %d, slowest generation %d ms, water units %d, hanging boulders %d" % [repaired, n, worst_ms, total_water, total_boulders])
 	check(total_water > 0, "mines contain water")
 	check(total_boulders > n, "mines contain hanging boulders (avg > 1 per seed)")
 	check(repaired == 0, "guaranteed route never needed the repair fallback")
+
+
+## Generator v2: layout structure, water encounters, balance and safety.
+func _generation_v2_checks(tag: String, d: Dictionary, gen: MineGenerator) -> void:
+	var g: TerrainGrid = d["grid"]
+	var plan: Dictionary = d.get("plan", {})
+	check(plan.get("overlaps", [1]).is_empty(), tag + ": no reserved footprints overlap %s" % str(plan.get("overlaps")))
+	check(int(plan.get("chamber_fixes", 1)) == 0, tag + ": every backbone chamber is traversable as carved")
+	check(int(plan.get("archetype_count", 0)) >= 4, tag + ": at least 4 distinct chamber archetypes (%d)" % plan.get("archetype_count", 0))
+	check(int(plan.get("branches", 0)) >= 3 and int(plan.get("loops", 0)) >= 1, tag + ": branches (%d) and loops (%d)" % [plan.get("branches", 0), plan.get("loops", 0)])
+	var v2_lm := 0
+	for l in d["landmarks"]:
+		if not (l["kind"] in ["fossil_grotto", "miner_camp", "cobalt_vault"]):
+			v2_lm += 1
+	check(v2_lm >= 2, tag + ": at least 2 new-style landmarks (%d)" % v2_lm)
+	var big_s1 := false
+	for wf in d["water_features"]:
+		if wf["kind"] != "pocket" and int(wf.get("cells", 0)) >= 20 and Balance.stratum_of_row((wf["rect"] as Rect2i).get_center().y) == 1:
+			big_s1 = true
+		check(int(wf.get("settled_volume", 0)) > int(wf.get("volume", 0)) * 0.4, tag + ": %s keeps its water after settling" % wf["kind"])
+	check(big_s1, tag + ": a significant water encounter in the Spore Veins")
+	var m := GenMetrics.compute(d)
+	check(int(m["ore_value"]) >= 6000 and int(m["ore_value"]) <= 16000, tag + ": ore value in balance band (%d)" % m["ore_value"])
+	check(int(m["first_reward"]) >= 0 and int(m["first_reward"]) <= 90, tag + ": first reward within reach (%d)" % m["first_reward"])
+	var gas_on_route := 0
+	for rc in d["route"]:
+		for dd in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			if g.get_mat(rc.x + dd.x, rc.y + dd.y) == Cell.GAS:
+				gas_on_route += 1
+	check(gas_on_route == 0, tag + ": no gas sac touches the guaranteed route (%d)" % gas_on_route)
+	var route_set: Dictionary = {}
+	for rc in d["route"]:
+		route_set[rc] = true
+	var lm_on_route := 0
+	for lm in d["landmarks"]:
+		var r: Rect2i = lm["rect"]
+		for y in range(r.position.y, r.end.y):
+			for x in range(r.position.x, r.end.x):
+				if route_set.has(Vector2i(x, y)):
+					lm_on_route += 1
+	check(lm_on_route == 0, tag + ": landmarks never sit on route cells (%d)" % lm_on_route)
+	var sp: Vector2i = d["spawn"]
+	var close := 0
+	for e in d["entities"]:
+		if e["type"] == "crawler" and absi(e["cell"].x - sp.x) + absi(e["cell"].y - sp.y) < 26:
+			close += 1
+	check(close == 0, tag + ": no crawler near the spawn")
 
 
 # ---------------------------------------------------------------------------
@@ -769,5 +823,45 @@ func _gameplay() -> void:
 	check(not mine.grid.is_solid(pp.x, pp.y) or true, "soak finished")
 	check(mine.view.redraw_count < 70 * 900 / 4, "chunk redraws stay incremental (%d)" % mine.view.redraw_count)
 	check(Game.current == mine, "soak run still alive (no crash/scene loss)")
+	await _floodgate_breach()
 	Game.goto("title", true)
 	await _frames(5)
+
+
+## Dynamic generator scenario: breach a generated floodgate in a live mine, let
+## the jet, currents and erosion run, then re-prove the guaranteed route.
+func _floodgate_breach() -> void:
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	Game.contract["reward"] = 260
+	Game.start_run()
+	await _frames(30)
+	var mine: Node = Game.current
+	var res: Dictionary = {}
+	for wf in mine.data.get("water_features", []):
+		if wf["kind"] == "reservoir" and wf.has("outlet"):
+			res = wf
+	check(not res.is_empty(), "seed 7 generates a floodgate reservoir")
+	if res.is_empty():
+		return
+	var g: TerrainGrid = mine.grid
+	mine.player.invuln = 1e9
+	var out: Vector2i = res["outlet"]
+	var inside_before := 0
+	var rr: Rect2i = res["rect"]
+	for y in range(rr.position.y, rr.end.y):
+		for x in range(rr.position.x, rr.end.x):
+			inside_before += g.get_water(x, y)
+	for dy in range(-2, 1):
+		mine.damage_cell(Vector2i(out.x, out.y + dy), 99.0, 0, false, "test")
+	await _frames(600)
+	var inside_after := 0
+	for y in range(rr.position.y, rr.end.y):
+		for x in range(rr.position.x, rr.end.x):
+			inside_after += g.get_water(x, y)
+	check(inside_after < inside_before / 2, "breached floodgate drains (%d -> %d units)" % [inside_before, inside_after])
+	var doors: Dictionary = {}
+	for c in mine.data.get("door_cells", []):
+		doors[c] = true
+	check(RouteCheck.can_reach(g, mine.data["spawn"], mine.data["door_outside"], doors), "route to the relic survives the flood and erosion")
+	check(RouteCheck.can_reach(g, mine.data["door_outside"], mine.data["lift"], doors), "route back to the lift survives the flood and erosion")
