@@ -5,6 +5,9 @@ extends Node
 var args := {}
 var frame := 0
 var target := 90
+var wall_times: Array[float] = []
+var physics_times: Array[float] = []
+var previous_us := 0
 
 
 func _ready() -> void:
@@ -27,6 +30,12 @@ func _ready() -> void:
 
 func _process(_d: float) -> void:
 	frame += 1
+	if args.has("profile"):
+		var now := Time.get_ticks_usec()
+		if frame > 30 and previous_us > 0:
+			wall_times.append((now - previous_us) / 1000.0)
+			physics_times.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
+		previous_us = now
 	var mine: Node = Game.current
 	if frame == 20 and mine and mine.get("player") != null and args.has("teleport"):
 		var p: PackedStringArray = args["teleport"].split(",")
@@ -83,6 +92,12 @@ func _process(_d: float) -> void:
 				for x in range(ox - 10, ox):
 					g.set_water(x, y, Balance.WATER_MAX)
 		mine.water.wake_all()
+		if args.has("physics"):
+			mine.debris.spawn_prop("crate", g.cell_center(Vector2i(ox - 5, oy - 3)))
+			mine.debris.spawn_prop("canister", g.cell_center(Vector2i(ox - 8, oy - 2)))
+			mine.debris.spawn_prop("stone", g.cell_center(Vector2i(ox + 5, oy + 5)))
+			for x in range(ox + 2, ox + 5):
+				g.set_mat(x, oy + 5, Cell.SOFT)
 		mine.player.global_position = Vector2((ox + 8) * 16, (oy + 10) * 16 - 14)
 		mine.player.invuln = 999.0
 		mine.camera.reset_smoothing()
@@ -108,6 +123,13 @@ func _process(_d: float) -> void:
 		if not ov.is_empty():
 			mine.player.input_override = ov
 	if frame == target:
+		if args.has("profile") and not wall_times.is_empty():
+			wall_times.sort()
+			physics_times.sort()
+			var p95 := mini(wall_times.size() - 1, int(wall_times.size() * 0.95))
+			print("GL software scene: frame median %.2f ms, p95 %.2f ms; physics median %.2f ms, p95 %.2f ms" % [wall_times[wall_times.size() / 2], wall_times[p95], physics_times[physics_times.size() / 2], physics_times[p95]])
+			if mine and mine.has_method("water_diagnostics"):
+				print("WATER DIAGNOSTICS: ", mine.water_diagnostics(), "; total erosion calls: ", mine.erosion.total_edits)
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(args.get("out", "/tmp/claude-0/shot.png"))
 		get_tree().quit()

@@ -19,10 +19,13 @@ var drop_vol := PackedInt32Array()
 var drop_src := PackedInt32Array()   # emitting cell index: lets the renderer join a stream
 var splashes: Array[Vector2] = []   # landing points this frame (for FX)
 var deposits := 0
+var motion := WaterMotion.new()
+var pressure: WaterPressure
 
 
 func _init(g: TerrainGrid) -> void:
 	grid = g
+	pressure = WaterPressure.new(g)
 	grid.cell_changed.connect(_on_cell_changed)
 
 
@@ -33,6 +36,41 @@ func total() -> int:
 	for v in drop_vol:
 		t += v
 	return t
+
+
+## Momentum flux at a point; rock masks stale history after terrain lands.
+func sample_flow(pos: Vector2) -> Vector2:
+	var c := grid.world_to_cell(pos)
+	return Vector2.ZERO if grid.is_solid(c.x, c.y) else motion.sample(c)
+
+
+## Cross-section average: a one-cell jet touches only part of a tall body.
+func sample_contact(pos: Vector2, half: Vector2) -> Vector2:
+	var sum := Vector2.ZERO
+	for oy in [-0.75, 0.0, 0.75]:
+		for ox in [-0.65, 0.65]:
+			sum += sample_flow(pos + Vector2(half.x * ox, half.y * oy))
+	return sum / 6.0
+
+
+## Geometric immersion: a partial cell occupies its lower portion only.
+func immersion(pos: Vector2, half: Vector2) -> float:
+	var wet := 0.0
+	for oy in [-0.75, 0.0, 0.75]:
+		for ox in [-0.65, 0.65]:
+			var p := pos + Vector2(half.x * ox, half.y * oy)
+			var c := grid.world_to_cell(p)
+			var level := float(grid.get_water(c.x, c.y)) / Balance.WATER_MAX
+			if not grid.is_solid(c.x, c.y) and level > 0.0 and p.y >= (c.y + 1.0 - level) * Balance.CELL:
+				wet += 1.0
+	return wet / 6.0
+
+
+func _transfer_flow(a: Vector2i, b: Vector2i, amount: int) -> void:
+	var velocity := Vector2(b - a) * (Balance.CELL / Balance.WATER_TICK)
+	var f := float(amount) / Balance.WATER_MAX * 0.5
+	motion.record(a, velocity, f)
+	motion.record(b, velocity, f)
 
 
 func drop_count() -> int:
@@ -58,6 +96,7 @@ func _open(x: int, y: int) -> bool:
 
 
 func _on_cell_changed(x: int, y: int, _old: int, new_m: int) -> void:
+	pressure.surfaces.clear()
 	if Cell.is_solid(new_m):
 		var v := grid.get_water(x, y)
 		if v > 0:
@@ -97,7 +136,7 @@ func _emit(x: int, y: int, amount: int) -> void:
 	elif rw > lw + 2:
 		vx = -38.0
 	var cx := x * 16.0 + 8.0
-	var left := amount
+	var left := mini(amount, (Balance.WATER_MAX_DROPS - drop_count()) * Balance.WATER_DROP_UNITS)
 	while left > 0:
 		var v := mini(Balance.WATER_DROP_UNITS, left)
 		left -= v
@@ -110,49 +149,96 @@ func _emit(x: int, y: int, amount: int) -> void:
 		drop_src.append(y * grid.w + x)
 
 
+func _emit_jet(c: Vector2i, side: int, amount: int, speed: float) -> void:
+	var p := Vector2((c.x + (1 if side > 0 else 0)) * Balance.CELL + side * 0.5, (c.y + 0.5) * Balance.CELL)
+	var left := amount
+	while left > 0:
+		var units := mini(Balance.WATER_DROP_UNITS, left)
+		left -= units
+		drop_pos.append(p + Vector2(0, randf_range(-2.0, 2.0)))
+		drop_vel.append(Vector2(side * speed, randf_range(-6.0, 6.0)))
+		drop_vol.append(units)
+		drop_src.append(grid.idx(c.x, c.y))
+	motion.record(c, Vector2(side * speed, 0), float(amount) / Balance.WATER_MAX * 0.5)
+	motion.record(c + Vector2i(side, 0), Vector2(side * speed, 0), float(amount) / Balance.WATER_MAX)
+	pressure.jets += 1
+	pressure.discharge += amount
+
+
 func update_drops(delta: float) -> void:
 	splashes.clear()
-	var i := 0
-	while i < drop_pos.size():
+	var i := drop_count() - 1
+	while i >= 0:
 		var p := drop_pos[i]
 		var v := drop_vel[i]
+		if grid.solid_at(p):
+			# Falling terrain may overwrite a droplet between frames. Displace
+			# only into an immediate open neighbour, never through solid rock.
+			var origin := grid.world_to_cell(p)
+			var displaced := false
+			for d in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
+				var n: Vector2i = origin + d
+				if _open(n.x, n.y):
+					p = grid.cell_center(n)
+					v = Vector2.ZERO
+					displaced = true
+					break
+			if not displaced:
+				lost += drop_vol[i]  # same explicit squeeze policy as grid water
+				_remove_drop(i)
+				i -= 1
+				continue
 		v.y = minf(v.y + Balance.WATER_DROP_GRAVITY * delta, Balance.WATER_DROP_MAX_FALL)
-		var np := p + v * delta
-		# sideways into rock: stop drifting
-		var side := grid.world_to_cell(Vector2(np.x, p.y))
-		if grid.is_solid(side.x, side.y):
-			np.x = p.x
-			v.x = 0.0
-		var c := grid.world_to_cell(np)
+		var distance := v.length() * delta
+		var samples := maxi(1, ceili(distance / Balance.WATER_DROP_SWEEP))
+		var dt := delta / samples
 		var land := Vector2i(-1, -1)
-		if grid.is_solid(c.x, c.y):
-			land = grid.world_to_cell(p)          # hit a floor: settle in the last open cell
-		elif grid.get_water(c.x, c.y) >= Balance.WATER_MAX / 3:
-			land = c                               # plunged into a pool
-		elif grid.is_solid(c.x, c.y + 1) and np.y > c.y * 16.0 + 12.0:
-			land = c                               # reached the floor of this cell
+		for k in samples:
+			var np := p + v * dt
+			var c := grid.world_to_cell(np)
+			if grid.is_solid(c.x, c.y):
+				land = grid.world_to_cell(p)
+				break
+			p = np
+			motion.record(c, v, float(drop_vol[i]) / Balance.WATER_MAX * dt / Balance.WATER_TICK)
+			if grid.get_water(c.x, c.y) >= Balance.WATER_MAX / 3 or (grid.is_solid(c.x, c.y + 1) and p.y > c.y * 16.0 + 12.0):
+				land = c
+				break
 		if land.x >= 0:
-			_deposit(land, drop_vol[i])
-			if randf() < 0.35:
-				splashes.append(np)
-			drop_pos.remove_at(i)
-			drop_vel.remove_at(i)
-			drop_vol.remove_at(i)
-			drop_src.remove_at(i)
-			continue
-		drop_pos[i] = np
-		drop_vel[i] = v
-		i += 1
+			var remaining := _deposit(land, drop_vol[i])
+			if remaining == 0:
+				if randf() < 0.35:
+					splashes.append(p)
+				_remove_drop(i)
+			else:
+				# An obstructed full column retains overflow in its droplets until
+				# a connected cell has room. No water vanishes at a landing.
+				drop_vol[i] = remaining
+				drop_pos[i] = p
+				drop_vel[i] = Vector2.ZERO
+		else:
+			drop_pos[i] = p
+			drop_vel[i] = v
+		i -= 1
 
 
-func _deposit(c: Vector2i, vol: int) -> void:
+func _remove_drop(i: int) -> void:
+	# Keep emission order: the existing renderer connects successive droplets.
+	drop_pos.remove_at(i)
+	drop_vel.remove_at(i)
+	drop_vol.remove_at(i)
+	drop_src.remove_at(i)
+
+
+func _deposit(c: Vector2i, vol: int) -> int:
 	deposits += 1
-	var cell := c
-	var guard := 0
-	while vol > 0 and guard < 24:
-		guard += 1
+	var queue: Array[Vector2i] = [c]
+	var seen: Dictionary = {c: true}
+	var i := 0
+	while vol > 0 and i < queue.size():
+		var cell := queue[i]
+		i += 1
 		if not _open(cell.x, cell.y):
-			cell.y -= 1
 			continue
 		var room := Balance.WATER_MAX - grid.get_water(cell.x, cell.y)
 		var mv := mini(room, vol)
@@ -160,11 +246,19 @@ func _deposit(c: Vector2i, vol: int) -> void:
 			grid.set_water(cell.x, cell.y, grid.get_water(cell.x, cell.y) + mv)
 			vol -= mv
 			wake(cell.x, cell.y)
-		cell.y -= 1
-	lost += vol
+		if vol > 0:
+			# Only contiguous open neighbours, never past a rock ceiling/wall.
+			for d in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT]:
+				var n: Vector2i = cell + d
+				if not seen.has(n) and queue.size() < Balance.WATER_DEPOSIT_BUDGET and _open(n.x, n.y):
+					seen[n] = true
+					queue.append(n)
+	return vol
 
 
 func step() -> void:
+	motion.advance(Balance.WATER_TICK)
+	pressure.begin_step()
 	if active.is_empty():
 		last_moves = 0
 		return
@@ -191,10 +285,25 @@ func step() -> void:
 		if lv <= 0 or not _open(x, y):
 			continue
 		var changed := false
+		# Head-driven free outflow. Remove the exact emitted volume first.
+		for side in ([-1, 1] if flip else [1, -1]):
+			var speed := pressure.outlet_speed(c, side)
+			if speed <= 0.0:
+				continue
+			var slots := Balance.WATER_MAX_DROPS - drop_count()
+			var out := mini(mini(lv, Balance.WATER_JET_DISCHARGE), slots * Balance.WATER_DROP_UNITS)
+			if out <= 0:
+				continue
+			lv -= out
+			grid.set_water(x, y, lv)
+			_emit_jet(c, side, out, speed)
+			changed = true
+			moves += out
 		# 1) fall: into open air as droplets, into water cell-to-cell
 		if _open(x, y + 1) and grid.get_water(x, y + 1) == 0 and drop_pos.size() < Balance.WATER_MAX_DROPS:
-			var out := mini(lv, Balance.WATER_EMIT_PER_TICK)
+			var out := mini(mini(lv, Balance.WATER_EMIT_PER_TICK), (Balance.WATER_MAX_DROPS - drop_count()) * Balance.WATER_DROP_UNITS)
 			_emit(x, y, out)
+			_transfer_flow(c, c + Vector2i.DOWN, out)
 			lv -= out
 			grid.set_water(x, y, lv)
 			changed = true
@@ -204,6 +313,7 @@ func step() -> void:
 			if below < Balance.WATER_MAX:
 				var mv := mini(lv, Balance.WATER_MAX - below)
 				grid.set_water(x, y + 1, below + mv)
+				_transfer_flow(c, c + Vector2i.DOWN, mv)
 				lv -= mv
 				grid.set_water(x, y, lv)
 				changed = true
@@ -217,6 +327,8 @@ func step() -> void:
 			if run_dir != 0:
 				sides = [Vector2i(run_dir, 0), Vector2i(-run_dir, 0)]
 			for d in sides:
+				if lv <= 0:
+					break
 				var nx: int = x + d.x
 				if not _open(nx, y):
 					continue
@@ -234,6 +346,7 @@ func step() -> void:
 					mv2 = maxi(1, diff / 2)
 				if mv2 > 0:
 					grid.set_water(nx, y, ln + mv2)
+					_transfer_flow(c, Vector2i(nx, y), mv2)
 					lv -= mv2
 					grid.set_water(x, y, lv)
 					changed = true

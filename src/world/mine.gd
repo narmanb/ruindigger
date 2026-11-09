@@ -19,6 +19,10 @@ var entity_root: Node2D
 var gas: Hazards.GasSystem
 var collapse: Hazards.Collapse
 var water: WaterSim
+var debris: Debris
+var erosion: WaterErosion
+var _water_fx_t := 0.0
+var _water_fx_cursor := 0
 var hud: Node
 var pause_menu: Node
 var enemies: Array = []
@@ -45,6 +49,7 @@ func _ready() -> void:
 	_build_world()
 	_spawn_entities()
 	_spawn_player()
+	_spawn_water_props()
 	_build_ui()
 	grid.cell_changed.connect(_on_cell_changed)
 	Audio.play("lift_ding")
@@ -72,6 +77,11 @@ func _build_world() -> void:
 	add_child(view)
 	view.setup(grid, glow_root)
 	water = WaterSim.new(grid)
+	debris = Debris.new()
+	debris.mine = self
+	add_child(debris)
+	debris.setup(grid, water, seed_value)
+	erosion = WaterErosion.new(grid, water, damage_cell)
 	var water_view := WaterRenderer.new()
 	add_child(water_view)
 	water_view.setup(grid, water, self)
@@ -212,10 +222,16 @@ func _spawn_entities() -> void:
 					enemies.append(m)
 
 
+func _spawn_water_props() -> void:
+	for spec in data.get("water_props", []):
+		debris.spawn_prop(spec.kind, grid.cell_center(spec.cell))
+
+
 func _spawn_player() -> void:
 	player = Player.new()
 	player.mine = self
 	player.grid = grid
+	player.water = water
 	var sp: Vector2i = data["spawn"]
 	player.position = Vector2(sp.x * C + 8, (sp.y + 1) * C - Player.HALF.y - 0.5)
 	add_child(player)
@@ -238,10 +254,47 @@ func _build_ui() -> void:
 func _physics_process(delta: float) -> void:
 	if water:
 		water.update(delta)
+		erosion.update(delta)
+		_water_feedback(delta)
 		for sp in water.splashes:
 			fx.splash(sp)
 			if randf() < 0.2:
 				Audio.play_at("step", sp, -14.0, 0.4, 0.05)
+
+
+func _water_feedback(delta: float) -> void:
+	_water_fx_t -= delta
+	if _water_fx_t > 0.0 or player == null:
+		return
+	_water_fx_t = Balance.WATER_FX_TICK
+	for c in erosion.wear_points:
+		var pos := grid.cell_center(c)
+		if pos.distance_to(player.global_position) < Balance.WATER_FX_RADIUS:
+			fx.chips(pos, Vector2.DOWN, Cell.debris_color(grid.get_mat(c.x, c.y), grid.get_stratum(c.x, c.y)))
+	var cells: Array = water.motion.cells.keys()
+	if cells.is_empty():
+		return
+	var shown := 0
+	_water_fx_cursor %= cells.size()
+	for k in mini(cells.size(), Balance.EROSION_SCAN_BUDGET):
+		var c: Vector2i = cells[(_water_fx_cursor + k) % cells.size()]
+		var pos := grid.cell_center(c)
+		var flow := water.sample_flow(pos)
+		if flow.length() < Balance.WATER_FX_MIN_FLOW or pos.distance_to(player.global_position) > Balance.WATER_FX_RADIUS:
+			continue
+		# Surface flecks/spray follow real momentum, using existing pooled FX.
+		fx.spray(pos, flow.normalized())
+		shown += 1
+		if shown >= Balance.WATER_FX_BUDGET:
+			break
+	_water_fx_cursor += Balance.EROSION_SCAN_BUDGET
+
+
+func water_diagnostics() -> Dictionary:
+	return {"active_cells": water.active.size(), "droplets": water.drop_count(), "motion_cells": water.motion.cells.size(),
+		"pressure_work": water.pressure.work, "jets": water.pressure.jets, "discharge": water.pressure.discharge,
+		"props": debris.props.size(), "fragments": debris.fragments.size(), "erosion_faces": erosion.exposure.size(),
+		"erosion_edits": erosion.last_edits, "water_lost": water.lost}
 
 
 func _process(delta: float) -> void:
@@ -343,6 +396,7 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 	var m := grid.get_mat(c.x, c.y)
 	var res := grid.damage(c.x, c.y, amount, tier, ignore_tier)
 	if res["broken"]:
+		debris.on_broken(c, m, source)
 		var pos := grid.cell_center(c)
 		var s := grid.get_stratum(c.x, c.y)
 		fx.burst(pos, Cell.debris_color(m, s))
@@ -385,6 +439,7 @@ func drill_cell(c: Vector2i, amount: float, tier: int, by: Player) -> void:
 
 
 func drill_enemies(r: Rect2, dmg: float, by: Player) -> void:
+	debris.drill_rect(r, dmg)
 	for e in enemies:
 		if is_instance_valid(e) and e.hit_rect().intersects(r):
 			e.hit(dmg, by.global_position)
@@ -424,6 +479,7 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 		if pd < r + 6.0:
 			var self_dmg := Balance.CHARGE_SELF_DAMAGE if cause == "charge" else ent_dmg * 0.55
 			player.take_damage(self_dmg * lerpf(1.0, 0.4, pd / (r + 6.0)), pos, "own charge" if cause == "charge" else "gas ignition")
+	debris.blast(pos, r)
 	noise(pos, 16.0)
 	if ignite:
 		gas.ignite_near(pos, r)

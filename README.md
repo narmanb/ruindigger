@@ -118,6 +118,15 @@ xvfb-run -a godot --path . --rendering-driver opengl3 res://tests/shot.tscn -- s
 cd tools/assetgen && python3 gen_tiles.py && python3 gen_sprites.py && python3 gen_bg.py && python3 gen_audio.py
 ```
 
+### Water physics expansion
+
+The feature branch adds hydraulic-head-driven side jets, directional currents,
+sustained material-aware erosion, bounded drilling fragments and buoyant props.
+The original liquid renderer is preserved. See [implementation, budgets, test
+commands and limitations](docs/water-physics.md). The `physics` suite runs with
+all existing suites; a focused `suite=water_live` checks actual prop buoyancy and
+normal erosion rewards in a live mine.
+
 ### Android
 The `Android` preset exports an arm64-v8a debug APK (`com.ruindigger.game`,
 no gradle build, no permissions, no ads, no network).

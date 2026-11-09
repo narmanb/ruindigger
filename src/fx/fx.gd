@@ -187,6 +187,10 @@ func splash(pos: Vector2) -> void:
 	_emit("splash", pos, Color(1, 1, 1), Vector2.UP)
 
 
+func spray(pos: Vector2, direction: Vector2) -> void:
+	_emit("splash", pos, Color(0.8, 0.95, 1.0), direction)
+
+
 func chips(pos: Vector2, dir: Vector2, color: Color) -> void:
 	_emit("chips", pos, color, dir)
 

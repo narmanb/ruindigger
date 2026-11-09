@@ -121,6 +121,79 @@ const WATER_MAX_DROPS := 900        # beyond this, falling water moves cell-to-c
 const WATER_DROP_GRAVITY := 820.0
 const WATER_DROP_MAX_FALL := 420.0
 
+# --- Moving water: shared momentum and bounded head approximation ---
+const WATER_FLOW_MEMORY := 0.16
+const WATER_FLOW_CELL_CAP := 4096
+const WATER_FLOW_MAX := 300.0
+const WATER_PRESSURE_BUDGET := 512
+const WATER_PRESSURE_REGION := 256
+const WATER_PRESSURE_MIN_FILL := 48
+const WATER_PRESSURE_FREE_HEAD := 1.25  # shallow spills have no pressure jet
+const WATER_JET_HEAD_SPEED := 88.0
+const WATER_JET_MAX_SPEED := 360.0
+const WATER_JET_DISCHARGE := 28
+const WATER_DEPOSIT_BUDGET := 24
+const WATER_DROP_SWEEP := 4.0          # max travel per collision sample (px)
+
+const WATER_PLAYER_DRIFT_GAIN := 0.65
+const WATER_PLAYER_DRIFT_MAX := 120.0
+const WATER_PLAYER_SMOOTH := 7.0
+const WATER_GROUND_RESISTANCE := 0.45
+const WATER_GRIP_RESISTANCE := 0.2
+const WATER_CRAWLER_THRESHOLD := 80.0
+const WATER_CRAWLER_DRAG := 0.4
+
+# --- Bounded drilling debris and meaningful physics props ---
+const DEBRIS_FRAGMENT_CAP := 96
+const DEBRIS_PROP_CAP := 24
+const DEBRIS_GENERATED_CAP := 12
+const DEBRIS_LIFETIME := 90.0
+const DEBRIS_FADE := 5.0
+const DEBRIS_CHANCE := {1: 0.28, 2: 0.46, 3: 0.55, 4: 0.18, 7: 0.38}
+const DEBRIS_LARGE_CHANCE := 0.12
+const DEBRIS_SCATTER := 48.0
+const DEBRIS_HOP := 65.0
+const DEBRIS_LIGHT_DRAG := 240.0
+const DEBRIS_STONE_DRAG := 80.0
+const DEBRIS_WET_GRAVITY := 0.14
+const DEBRIS_BOUNCE := 0.2
+const DEBRIS_FRICTION := 160.0
+const PROP_AIR_DAMP := 0.25
+const PROP_SPIN_DAMP := 2.0
+const PROP_FRICTION := 0.65
+const PROP_BOUNCE := 0.12
+const PROP_MAX_SPEED := 380.0
+const PROP_MAX_SPIN := 8.0
+const PROP_WAKE_ACCEL := 12.0
+const PROP_HIT_SPEED := 100.0
+const PROP_MAX_DAMAGE := 12.0
+const PROP_DAMAGE_SCALE := 0.025
+const PROP_HIT_GRACE := 0.65
+const PROP_BLAST_IMPULSE := 240.0
+const WATER_PROPS := {
+	"crate": {"mass": 0.7, "buoyancy": 1.65, "drag": 4.0, "hp": 2.0, "half": Vector2(6, 6)},
+	"canister": {"mass": 0.9, "buoyancy": 1.35, "drag": 3.0, "hp": 3.0, "half": Vector2(4, 6)},
+	"stone": {"mass": 4.0, "buoyancy": 0.18, "drag": 0.9, "hp": 4.0, "half": Vector2(5, 4)},
+	"scrap": {"mass": 3.0, "buoyancy": 0.08, "drag": 0.7, "hp": 3.0, "half": Vector2(5, 3)},
+}
+
+# --- Sustained exposed-face erosion ---
+const EROSION_TICK := 0.12
+const EROSION_SCAN_BUDGET := 384
+const EROSION_FACE_CAP := 512
+const EROSION_EDIT_BUDGET := 4
+const EROSION_FLOW_THRESHOLD := 32.0
+const EROSION_FLOW_SCALE := 100.0
+const EROSION_MAX_STRENGTH := 2.0
+const EROSION_WARMUP := 1.8
+const EROSION_RECOVERY := 0.25
+const EROSION_DPS := 0.3
+const EROSION_MATERIAL := {1: 1.0, 3: 1.7, 7: 0.55}
+const WATER_FX_TICK := 0.18
+const WATER_FX_MIN_FLOW := 60.0
+const WATER_FX_RADIUS := 360.0
+const WATER_FX_BUDGET := 3
+
 # --- Unsupported basalt ---
 const BOULDER_MAX_CELLS := 36       # bigger basalt masses are treated as bedded in
 const BOULDER_TELEGRAPH := 0.7

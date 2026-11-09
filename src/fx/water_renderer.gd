@@ -289,18 +289,19 @@ class FieldDrawer extends Node2D:
 			var p: Vector2 = sim.drop_pos[i]
 			if not view_rect.grow(16.0).has_point(p):
 				continue
-			var src: int = sim.drop_src[i] % r.grid.w   # join per column
+			var v: Vector2 = sim.drop_vel[i]
+			var sideways := absf(v.x) > absf(v.y)
+			var src: int = sim.drop_src[i] + r.grid.w if sideways else sim.drop_src[i] % r.grid.w
 			var rad0 := BLOB_R * (0.62 + 0.38 * clampf(float(sim.drop_vol[i]) / float(Balance.WATER_DROP_UNITS), 0.0, 1.5))
 			if last.has(src):
 				var q: Vector2 = last[src][0]
 				var seg := q - p
 				var dist := seg.length()
-				if dist > 1.0 and dist < 48.0 and seg.y > 0.0 and absf(seg.x) < 12.0:
+				if dist > 1.0 and dist < 48.0 and ((seg.y > 0.0 and absf(seg.x) < 12.0) or (sideways and seg.x * v.x > 0.0 and absf(seg.y) < 12.0)):
 					var br := minf(rad0, float(last[src][1])) * 0.85
 					draw_set_transform((p + q) * 0.5, seg.angle() - PI * 0.5, Vector2(1.0, (dist * 0.5 + br) / br))
 					draw_texture_rect(blob, Rect2(-br, -br, br * 2.0, br * 2.0), false)
 			last[src] = [p, rad0]
-			var v: Vector2 = sim.drop_vel[i]
 			# small trickles draw as thin threads, full pours as thick ribbons
 			var rad := BLOB_R * (0.62 + 0.38 * clampf(float(sim.drop_vol[i]) / float(Balance.WATER_DROP_UNITS), 0.0, 1.5))
 			var stretch := 1.5 + clampf(v.length() / 160.0, 0.0, 2.0)

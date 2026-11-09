@@ -37,8 +37,23 @@ func section(n: String) -> void:
 func _run() -> void:
 	var suite: String = args.get("suite", "all")
 	var t0 := Time.get_ticks_msec()
+	if suite == "water_live":
+		Game.contract = Game.contract_offers[0]
+		Game.contract["seed"] = 7
+		Game.start_run()
+		await _frames(5)
+		await load("res://tests/water_physics.gd").integration(self, Game.current)
+		Game.goto("title", true)
+		await _frames(5)
 	if suite in ["all", "terrain"]:
 		_terrain()
+	if suite in ["all", "physics"]:
+		load("res://tests/water_physics.gd").run(self)
+		load("res://tests/water_physics.gd").characters(self)
+		load("res://tests/water_physics.gd").props(self)
+		load("res://tests/water_physics.gd").erosion(self)
+		load("res://tests/water_physics.gd").stress(self)
+		load("res://tests/water_physics.gd").review_regressions(self)
 	if suite in ["all", "save"]:
 		_save()
 	if suite in ["all", "gen"]:
@@ -289,6 +304,20 @@ func _generation(n: int) -> void:
 		if int(d["repairs"]) > 0:
 			repaired += 1
 		check(d["valid"], tag + ": validated route spawn->relic->lift")
+		check(d.has("water_props") and d["water_props"].size() > 0, tag + ": modest environmental physics props placed")
+		var props_safe := true
+		for prop in d.get("water_props", []):
+			var pc: Vector2i = prop.cell
+			if g.is_solid(pc.x, pc.y) or gen.reserved.has(pc) or g.get_mat(pc.x, pc.y) != Cell.AIR:
+				props_safe = false
+		check(props_safe and d.get("water_props", []).size() <= 12, tag + ": props clear rock and reserved access with bounded count")
+		var erosion_safe := true
+		for rc in gen.reserved:
+			if not g.has_flag(rc.x, rc.y, Cell.F_WATER_SAFE):
+				erosion_safe = false
+			if Cell.supports(g.get_mat(rc.x, rc.y + 1)) and not g.has_flag(rc.x, rc.y + 1, Cell.F_WATER_SAFE):
+				erosion_safe = false
+		check(erosion_safe, tag + ": guaranteed standing route and supports are erosion-safe")
 		var sp: Vector2i = d["spawn"]
 		check(RouteCheck.body_ok(g, sp.x, sp.y) and Cell.supports(g.get_mat(sp.x, sp.y + 1)), tag + ": spawn is open and standing")
 		var doors := gen.door_open_cells()
@@ -336,7 +365,7 @@ func _generation(n: int) -> void:
 		total_boulders += int(d.get("boulders", 0))
 		if i < 4:
 			var again := MineGenerator.new().generate(seed_value, contract)
-			check(_grid_hash(again["grid"]) == _grid_hash(g), tag + ": generation is deterministic")
+			check(_grid_hash(again["grid"]) == _grid_hash(g) and again.get("water_props", []) == d.get("water_props", []), tag + ": terrain and prop generation are deterministic")
 	print("  seeds needing repair: %d / %d, slowest generation %d ms, water units %d, hanging boulders %d" % [repaired, n, worst_ms, total_water, total_boulders])
 	check(total_water > 0, "mines contain water")
 	check(total_boulders > n, "mines contain hanging boulders (avg > 1 per seed)")
@@ -690,6 +719,7 @@ func _gameplay() -> void:
 	await _frames(10)
 	check(pl.submerged(), "player is submerged in the pool")
 	check(pl.velocity.y <= Balance.WATER_MAX_FALL + 1.0, "water slows the player's fall (vy %.0f)" % pl.velocity.y)
+	await load("res://tests/water_physics.gd").integration(self, mine)
 	# --- relic + extraction end cleanly
 	Game.run["cargo"] = {1: 3}
 	mine.relic.take()

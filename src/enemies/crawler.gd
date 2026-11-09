@@ -43,6 +43,7 @@ var mat: ShaderMaterial
 var up_dir := Vector2.UP
 var hitstun := 0.0
 var windup := 0.0
+var water_travel := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -158,7 +159,36 @@ func _physics_process(delta: float) -> void:
 						pl.take_damage(Balance.CRAWLER_DAMAGE, global_position, "burrow crawler")
 						Audio.play_at("crawler_bite", global_position)
 	_step(delta)
+	_current(delta)
 	_visual()
+
+
+func _current(delta: float) -> void:
+	if mine.get("water") == null:
+		return
+	var flow: Vector2 = mine.water.sample_contact(global_position, Vector2(6, 5))
+	if flow.length() < Balance.WATER_CRAWLER_THRESHOLD:
+		water_travel = water_travel.move_toward(Vector2.ZERO, Balance.CELL * delta)
+		return
+	water_travel += flow * Balance.WATER_CRAWLER_DRAG * minf(delta, Balance.WATER_TICK)
+	var d := Vector2i.ZERO
+	if absf(water_travel.x) >= Balance.CELL:
+		d.x = 1 if water_travel.x > 0 else -1
+	elif absf(water_travel.y) >= Balance.CELL:
+		d.y = 1 if water_travel.y > 0 else -1
+	if d == Vector2i.ZERO:
+		return
+	water_travel = Vector2.ZERO
+	var n := cell + d
+	if grid.is_solid(n.x, n.y):
+		return
+	cell = n
+	next_cell = n
+	move_t = 1.0
+	path.clear()
+	repath_t = 0.0
+	windup = 0.0
+	global_position = grid.cell_center(n)
 
 
 func _arrived() -> bool:

@@ -49,6 +49,7 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	_enemies()
 	_finalize_hp()
 	_validate_and_repair()
+	_water_environment()
 	data["repairs"] = repairs
 	return data
 
@@ -950,3 +951,53 @@ func _carve_between_straight(a: Vector2i, b: Vector2i) -> void:
 		if not g.has_flag(b.x, y, Cell.F_PROTECTED):
 			g.put(b.x, y, Cell.LADDER)
 	_ensure_floor(b.x, b.y)
+
+
+## Final non-destructive pass with its own RNG: adding scenery never changes
+## ore, enemies, water or route generation for an existing seed.
+func _water_environment() -> void:
+	var props_rng := RandomNumberGenerator.new()
+	props_rng.seed = int(data.seed) ^ 0x50524f50
+	data["water_props"] = []
+	# Reserve route standing surfaces as well as its open body cells. This is a
+	# separate flag: drilling remains possible, moving water cannot undercut it.
+	for c in reserved:
+		g.set_flag(c.x, c.y, Cell.F_WATER_SAFE)
+		if Cell.supports(g.get_mat(c.x, c.y + 1)):
+			g.set_flag(c.x, c.y + 1, Cell.F_WATER_SAFE)
+	var occupied: Dictionary = {}
+	for entity in data.entities:
+		occupied[entity.cell] = true
+	# Upgrade a suitable camp's existing decorative crate rather than duplicating
+	# it. Some seeds carve the route through it; those keep their old decoration.
+	for entity in data.entities.duplicate():
+		if entity.type == "crate" and not reserved.has(entity.cell) and g.get_mat(entity.cell.x, entity.cell.y) == Cell.AIR:
+			data.water_props.append({"kind": "crate", "cell": entity.cell})
+			data.entities.erase(entity)
+	var candidates: Array[Vector2i] = []
+	for y in range(8, H - 8):
+		for x in range(3, W - 3):
+			var c := Vector2i(x, y)
+			if g.get_mat(x, y) != Cell.AIR or reserved.has(c) or no_feature.has(c) or occupied.has(c):
+				continue
+			if g.has_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE | Cell.F_WATER_SAFE):
+				continue
+			if not Cell.supports(g.get_mat(x, y + 1)) and g.get_water(x, y) < Balance.WATER_MAX / 2:
+				continue
+			var near_reserved := false
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					if reserved.has(c + Vector2i(dx, dy)) or occupied.has(c + Vector2i(dx, dy)):
+						near_reserved = true
+			if not near_reserved:
+				candidates.append(c)
+	while not candidates.is_empty() and data.water_props.size() < Balance.DEBRIS_GENERATED_CAP:
+		var c: Vector2i = candidates.pop_at(props_rng.randi_range(0, candidates.size() - 1))
+		var near := false
+		for prop in data.water_props:
+			if Vector2(prop.cell - c).length() < 3.0:
+				near = true
+		if near:
+			continue
+		var kind: String = ["crate", "stone", "canister", "scrap"][props_rng.randi_range(0, 3)]
+		data.water_props.append({"kind": kind, "cell": c})

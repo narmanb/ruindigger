@@ -11,6 +11,8 @@ const C := 16
 
 var mine: Node = null                # Mine scene (grid, fx, entities)
 var grid: TerrainGrid
+var water: WaterSim
+var water_drift := Vector2.ZERO
 
 # stats (from upgrades)
 var max_hp := 100.0
@@ -161,6 +163,7 @@ func _physics_process(delta: float) -> void:
 	wall_lock = maxf(0.0, wall_lock - delta)
 	_hurt_t = maxf(0.0, _hurt_t - delta)
 	_blocked_msg_t = maxf(0.0, _blocked_msg_t - delta)
+	_update_current(delta)
 	var ax := _axis()
 	var ay := _aim_y()
 	if absf(ax) < 0.25:
@@ -231,6 +234,18 @@ func _physics_process(delta: float) -> void:
 	_animate(delta, ax)
 
 
+func _update_current(delta: float) -> void:
+	var target := Vector2.ZERO
+	if water:
+		target = water.sample_contact(global_position, HALF) * Balance.WATER_PLAYER_DRIFT_GAIN
+		if on_ladder or (drilling and _touching_solid()):
+			target *= Balance.WATER_GRIP_RESISTANCE
+		elif is_on_floor():
+			target *= Balance.WATER_GROUND_RESISTANCE
+		target = target.limit_length(Balance.WATER_PLAYER_DRIFT_MAX)
+	water_drift = water_drift.lerp(target, 1.0 - exp(-delta * Balance.WATER_PLAYER_SMOOTH))
+
+
 func submerged() -> bool:
 	if grid == null:
 		return false
@@ -255,18 +270,19 @@ func _move_normal(delta: float, ax: float, on_floor: bool) -> void:
 	var target := ax * Balance.RUN_SPEED
 	if drilling and on_floor and drill_dir.y != 0:
 		target *= 0.15
+	target += water_drift.x
 	var accel := Balance.GROUND_ACCEL if on_floor else Balance.AIR_ACCEL
 	if wall_lock > 0.0:
 		accel *= 0.15
 	if absf(ax) > 0.0:
 		velocity.x = move_toward(velocity.x, target, accel * delta)
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, (Balance.GROUND_FRICTION if on_floor else Balance.AIR_ACCEL * 0.7) * delta)
+		velocity.x = move_toward(velocity.x, water_drift.x, (Balance.GROUND_FRICTION if on_floor else Balance.AIR_ACCEL * 0.7) * delta)
 	# gravity
 	var grav := Balance.GRAVITY
 	if velocity.y > 0.0:
 		grav *= 1.15
-	velocity.y = minf(velocity.y + grav * delta, Balance.MAX_FALL)
+	velocity.y = minf(velocity.y + (grav + water_drift.y * Balance.WATER_PLAYER_SMOOTH) * delta, Balance.MAX_FALL + maxf(0.0, water_drift.y))
 	# wall slide
 	var wall_dir := _wall_dir()
 	var sliding := not on_floor and wall_dir != 0 and signi(int(ax)) == wall_dir and velocity.y > 0.0
@@ -306,9 +322,9 @@ func _move_normal(delta: float, ax: float, on_floor: bool) -> void:
 
 
 func _swim(delta: float, ax: float) -> void:
-	velocity.x = move_toward(velocity.x, ax * Balance.RUN_SPEED * Balance.WATER_SPEED, Balance.AIR_ACCEL * delta)
-	velocity.y = minf(velocity.y + Balance.GRAVITY * Balance.WATER_GRAVITY * delta, Balance.WATER_MAX_FALL)
-	velocity.y = move_toward(velocity.y, 0.0, 120.0 * delta)
+	velocity.x = move_toward(velocity.x, ax * Balance.RUN_SPEED * Balance.WATER_SPEED + water_drift.x, Balance.AIR_ACCEL * delta)
+	velocity.y = minf(velocity.y + (Balance.GRAVITY * Balance.WATER_GRAVITY + water_drift.y * Balance.WATER_PLAYER_SMOOTH) * delta, Balance.WATER_MAX_FALL + maxf(0.0, water_drift.y))
+	velocity.y = move_toward(velocity.y, water_drift.y, 120.0 * delta)
 	jet_ready = true
 	if buffer > 0.0 or (_pressed("jump") and velocity.y > -40.0):
 		buffer = 0.0
