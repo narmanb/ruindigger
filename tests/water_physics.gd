@@ -327,6 +327,13 @@ static func integration(t: Node, mine: Node) -> void:
 	t.check(g.get_mat(c.x, c.y) == Cell.AIR and int(Game.run.get("ore_mined", 0)) == before + 1, "live erosion uses normal mining rewards exactly once (mat %d, hp %.2f, mined %d -> %d, exposure %s)" % [g.get_mat(c.x, c.y), g.hp_frac(c.x, c.y), before, int(Game.run.get("ore_mined", 0)), mine.erosion.exposure.get(c, 0)])
 	# A closed flooded room exercises actual Godot rigid bodies and localized
 	# terrain collisions, in addition to the force-level buoyancy unit checks.
+	# The fixture overwrites a fixed area, so evict whatever the generator put
+	# there (a ruin sentry or crawler would block the prop spawn points).
+	var room := Rect2(Vector2(43, 175) * Balance.CELL, Vector2(14, 13) * Balance.CELL)
+	for e in mine.enemies.duplicate():
+		if is_instance_valid(e) and room.has_point(e.global_position):
+			mine.enemies.erase(e)
+			e.queue_free()
 	for y in range(175, 188):
 		for x in range(43, 57):
 			g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE | Cell.F_WATER_SAFE, false)

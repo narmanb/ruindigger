@@ -13,11 +13,7 @@ extends RefCounted
 ## The planner only chooses footprints and roles; ChamberCarver gives shape and
 ## MineGenerator carves connections and validates the result.
 
-const ARCH := {
-	0: [["works", 3], ["hall", 3], ["terraces", 2], ["fissure", 1]],
-	1: [["terraces", 3], ["hall", 2], ["fissure", 2]],
-	2: [["ruin", 1]],
-}
+var ARCH: Dictionary = Balance.GEN_ARCH_WEIGHTS
 
 var gen: MineGenerator
 var rng: RandomNumberGenerator
@@ -97,7 +93,7 @@ func plan() -> Array:
 			s0.append(c)
 	# Spore Veins: maybe a cathedral first (it needs the most room)
 	var s1: Array = []
-	if rng.randf() < 0.55:
+	if rng.randf() < Balance.GEN_CATHEDRAL_CHANCE:
 		var cat := _try("cathedral", 1, Balance.STRATUM_ROWS[1] + 12, Balance.STRATUM_ROWS[2] - 4)
 		if not cat.is_empty():
 			s1.append(cat)

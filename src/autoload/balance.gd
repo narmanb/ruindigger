@@ -235,6 +235,21 @@ const STRATUM_ROWS := [2, 72, 142]  # row where each stratum begins
 const STRATUM_NAMES := ["DUSTWORKS", "SPORE VEINS", "FORGOTTEN ENGINE"]
 const METERS_PER_CELL := 2.0
 
+# --- generation v2 -----------------------------------------------------------
+# chamber archetype weights per stratum (LayoutPlanner); used archetypes are
+# down-weighted x3 so a mine rarely repeats one shape
+const GEN_ARCH_WEIGHTS := {
+	0: [["works", 3], ["hall", 3], ["terraces", 2], ["fissure", 1]],
+	1: [["terraces", 3], ["hall", 2], ["fissure", 2]],
+	2: [["ruin", 1]],
+}
+const GEN_CATHEDRAL_CHANCE := 0.55
+# base odds of each optional landmark (contracts adjust them in MineGenerator)
+const GEN_LANDMARK_ODDS := {"survey_post": 0.6, "hanging_gallery": 0.7, "flooded_machinery": 0.65, "cistern": 0.45, "vent_cluster": 0.3, "floodgate": 0.55}
+const GEN_MIN_LANDMARKS := 2
+# a basin's flood may reach this many cells beyond the body before it counts as leaking
+const GEN_BASIN_LEAK_SLACK := 12
+
 const CONTRACTS := [
 	{"id": "survey", "name": "STANDARD SURVEY", "desc": "Recover the relic. Balanced seams and threats.",
 		"ore": 1.0, "crawlers": 1.0, "gas": 1.0, "bonus": 1.0},

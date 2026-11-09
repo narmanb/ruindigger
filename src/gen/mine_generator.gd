@@ -1388,7 +1388,7 @@ func _contained(cells: Array) -> bool:
 	var stack: Array = cells.duplicate()
 	for b in cells:
 		seen[b] = true
-	var cap := cells.size() + 12
+	var cap := cells.size() + Balance.GEN_BASIN_LEAK_SLACK
 	while not stack.is_empty():
 		var c: Vector2i = stack.pop_back()
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
@@ -1499,7 +1499,7 @@ func _settle_water() -> void:
 func _landmarks_v2() -> void:
 	var lm := Landmarks.new(self, land_rng)
 	var cid: String = contract.get("id", "survey")
-	var odds := {"survey_post": 0.6, "hanging_gallery": 0.7, "flooded_machinery": 0.65, "cistern": 0.45, "vent_cluster": 0.3, "floodgate": 0.55}
+	var odds: Dictionary = Balance.GEN_LANDMARK_ODDS.duplicate()
 	match cid:
 		"gas":
 			odds["vent_cluster"] = 1.0
@@ -1539,7 +1539,7 @@ func _landmarks_v2() -> void:
 		if not (l["kind"] in ["fossil_grotto", "miner_camp", "cobalt_vault"]):
 			placed += 1
 	for kind in ["survey_post", "hanging_gallery", "cistern", "survey_post", "vent_cluster"]:
-		if placed >= 2:
+		if placed >= Balance.GEN_MIN_LANDMARKS:
 			break
 		var ok := false
 		match kind:

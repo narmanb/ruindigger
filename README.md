@@ -101,17 +101,20 @@ missing result line. Use `GODOT=/path/to/godot`, `TEST_TIMEOUT=<s>` and
 | `terrain` | water conservation, levelling, flow through a breach and displacement; boulder anchoring rules; hit counts by material and drill tier, alloy and bedrock immunity, protected cells, ore paying out exactly once, dirty-chunk locality (1 chunk normally, exactly 4 on a corner), edge masks, interior depth, JSON round-trip, grid line-of-sight |
 | `save` | progress round-trip, a corrupt file falling back to defaults, hostile values clamped, purchases, settings sanitising |
 | `ui` | touch buttons never overlap each other or the HUD across 5 aspect ratios × 3 button scales |
-| `gen` | 60 seeds × all contracts: validated route spawn→relic door→lift and depths→relay **without digging**, open standing spawn, no sealed pockets, protected alloy relic shell, crawlers never in rock and under the cap, no ore in protected cells, generated water at rest, no basalt starting unsupported, determinism, zero repair fallbacks |
-| `game` | live mine: player lands safely; drilling down removes the floor and the player drops into the hole; ore collected; the same cell never pays twice; collision rebuilt; blasts spare alloy and bedrock but clear sediment; rubble is telegraphed and never lands inside the player; the gas warning comes before the cloud and a blast ignites it; crawler investigates noise, chases on sight, never enters rock, loses interest, is stunned by rubble; sentry warns, fires, goes dormant, dies when its power module dies; upward drilling reaches the ceiling; the drill kills a crawler within a second, with at most one bite taken; cutting a boulder's neck drops it onto a crawler; a broken dam floods; the player swims; extraction banks credits; a new run starts clean; death banks nothing; 900-frame random-input soak |
+| `gen` | 60 seeds × all contracts: validated route spawn→relic door→lift and depths→relay **without digging**, open standing spawn, no sealed pockets, protected alloy relic shell, crawlers never in rock and under the cap, no ore in protected cells, generated water at rest, no basalt starting unsupported, full-grid determinism, zero repair fallbacks; v2: no footprint overlaps, ≥4 archetypes, branches and loops, ≥2 landmarks off the route, a contained Spore Veins water body, ore budget, no gas by the route, no crawler near spawn |
+| `game` | live mine: player lands safely; drilling down removes the floor and the player drops into the hole; ore collected; the same cell never pays twice; collision rebuilt; blasts spare alloy and bedrock but clear sediment; rubble is telegraphed and never lands inside the player; the gas warning comes before the cloud and a blast ignites it; crawler investigates noise, chases on sight, never enters rock, loses interest, is stunned by rubble; sentry warns, fires, goes dormant, dies when its power module dies; upward drilling reaches the ceiling; the drill kills a crawler within a second, with at most one bite taken; cutting a boulder's neck drops it onto a crawler; a broken dam floods; a breached floodgate drains and the route survives; the player swims; extraction banks credits; a new run starts clean; death banks nothing; 900-frame random-input soak |
 
 Last local run (Linux, Godot 4.6.3, headless):
-`terrain 30/30, save 11/11, ui 15/15, gen 1252/1252 (0 repairs), game 50/50`.
+`terrain 32/32, physics 49/49, save 11/11, ui 17/17, gen 2512/2512 (0 repairs), game 58/58`.
+Generation sweep: `gen_report seeds=125` → 500/500 valid, 0 repaired.
 
 Other tools:
 
 ```bash
 # colour-coded PNG of a generated mine (+ reachability overlay)
 godot --headless res://tests/gen_dump.tscn -- seed=123 out=/tmp/map.png
+# generation sweep: every seed x contract, metrics min/mean/max, CSV
+godot --headless res://tests/gen_report.tscn -- seeds=125 out=/tmp/report.csv
 # in-game screenshot harness (needs a display, e.g. xvfb-run)
 xvfb-run -a godot --path . --rendering-driver opengl3 res://tests/shot.tscn -- screen=mine seed=7 frames=120 out=/tmp/s.png
 # regenerate all art + audio (Python 3, numpy, Pillow)
@@ -154,14 +157,14 @@ verifies a debug APK and a Linux build and uploads both as workflow artifacts.
 src/
   autoload/   balance.gd (all tuning) settings.gd progress.gd (save) audio.gd input_setup.gd game.gd (screen flow + run state)
   terrain/    cell.gd (material ids) terrain_grid.gd (authoritative model) terrain_view.gd (chunk rendering + physics)
-  gen/        mine_generator.gd route_check.gd (traversal proof + pocket check)
+  gen/        mine_generator.gd gen_space.gd layout_planner.gd chamber_carver.gd landmarks.gd gen_metrics.gd route_check.gd
   player/     player.gd
   enemies/    crawler.gd sentry.gd (+ power module, bolts) grid_path.gd
   hazards/    hazards.gd (charges, gas system, ceiling collapse)
   world/      mine.gd (run scene + shared rules) entities.gd (pickups, lifts, relic, door, caches, lamps) outpost.gd
   ui/         hud.gd minimap.gd touch_controls.gd pause_menu.gd settings_panel.gd title_screen.gd results_screen.gd ui_kit.gd
   fx/         fx.gd (pooled particles + flash lights) shaders, sprite_db.gd
-tests/        test_runner.gd, gen_dump.gd, shot.gd
+tests/        test_runner.gd, gen_dump.gd, gen_report.gd, shot.gd
 tools/        run_tests.sh, configure_android_editor.sh, assetgen/*.py
 ```
 
@@ -185,29 +188,24 @@ arrays, and serialises to JSON. `TerrainView` derives everything else from it:
   `CanvasModulate` darkness, so they read as light sources. Real `PointLight2D`s
   are used sparingly: the headlamp, lamps, lifts, the relic and explosions.
 
-**Generation** (`MineGenerator`) is seeded and order-sensitive:
-1. base rock and wavy strata boundaries
-2. stratum-specific caves, cellular-automata smoothing, and filling tiny pockets,
-   then random-walk worm tunnels and an abandoned rail tunnel with timber and
-   lamps
-3. the protected lift room, then the timber shaft with a ladder and platforms
-4. the relay lift station
-5. alloy ruin halls with sentries and power modules
-6. the relic chamber: a protected alloy shell with one door and a protected
-   approach
-7. set pieces: the fossil grotto behind a cracked wall, the cobalt vault, and the
-   collapsed miner camp
-8. the guaranteed route, carved **after** every destructive pass, with ladder
-   shafts and plank bridges over caves; secret passages never overwrite route
-   cells
-9. loose ceilings, hanging basalt boulders, ore, crystal geodes, gas, sealed
-   flooded treasure pockets and a Spore Veins lake (pre-settled with the water
-   sim), never on the route; then any basalt that would start unsupported is
-   turned into sediment
-10. crawlers
-11. validation with `RouteCheck` (walk, fall, 3-cell jump, ladders, platforms;
-    no digging, jet or wall jump) in both directions. A repair pass exists but
-    the 60-seed sweep asserts it is never needed.
+**Generation** (`MineGenerator`, v2) is seeded and order-sensitive. See
+[docs/generation-v2.md](docs/generation-v2.md) for the design, metrics and
+before/after numbers.
+1. strata-specific base rock, light background caves, worm tunnels
+2. anchors claim footprints in `GenSpace`: lift room, timber shaft, relay,
+   relic chamber
+3. `LayoutPlanner` picks 8–11 chambers (works, hall, terraces, fissure,
+   cathedral, ruin variants) with roles; `ChamberCarver` shapes them
+4. the guaranteed route: A* legs through the backbone chambers, carved **after**
+   every destructive pass, then one of three relic approaches
+5. route supports are marked; set pieces and `Landmarks` (floodgate, flooded
+   machinery, hanging gallery, survey post, vent cluster, cistern) claim space
+6. branches and loops as organic tunnels that never touch route cells,
+   supports or sealed container walls
+7. loose ceilings, boulders, geological ore, geodes, gas, water pockets, basin
+   fills (contained), a guaranteed Spore Veins water encounter, water settle
+8. basalt stabilisation, role-based crawlers, validation with `RouteCheck` in
+   both directions (the sweep asserts 0 repairs), props, plan summary + metrics
 
 **Collapse rule.** When a cell opens, the cell directly above it is checked. A
 LOOSE cell with nothing below it is queued with a 0.75 s telegraph, then becomes

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+- Generation v2 (see `docs/generation-v2.md`). Mines are planned: 8–11 chambers in distinct shapes (timber works, halls, slumped terraces, fissures with rope ladders, a cathedral with a lake, twin and stacked alloy ruins). The route runs through some of them, and the rest are optional side caverns linked by branches and loops.
+- New landmarks: floodgate reservoir (breach the outlet to flood the chamber below), flooded machinery, hanging gallery of loose boulders, survey post, gas vent cluster, twin cistern. Every mine has a meaningful water encounter in the Spore Veins.
+- Geological ore: chamber-wall seams, fault veins, a fossil band, and hint cells that lead into richer pockets. Crawlers are placed by role (guards, patrols, wanderers).
+- Water features are sealed and their basins checked for leaks, so the mine starts calm. Generation never needs its repair fallback across a 500-combo sweep.
+- Tools: `tests/gen_report.tscn` sweep + metrics, richer `gen_dump` overlays, screenshot harness `at=lm:<kind>` / `at=ch:<archetype>`.
+
 ## 0.3.1
 - Fix: the settings panel opened off-screen (top-left) on both the title screen and the pause menu. It now centres itself and shrinks its list on short screens. The pause layout hides while settings is open. A regression test was added.
 - Water: puddles on a floor run toward the nearest edge and pour over it quickly, instead of dribbling for seconds. Lip cells over a drop draw as a stream attached to the pool, not a hanging lump. Droplets from the same spout are bridged, so thin trickles draw as one continuous thread. Faster pours (24 units per tick).

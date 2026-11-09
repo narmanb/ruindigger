@@ -22,8 +22,14 @@ Never hand-edit `assets/gen` or `assets/sfx`.
   `Node`-typed `mine` refs or untyped arrays need explicit types.
 - `MineGenerator` pass order is load-bearing (see its header). After touching it,
   run `./tools/run_tests.sh` and keep "seeds needing repair: 0". The route is
-  carved after destructive passes, and later passes must respect `reserved` and
-  `no_feature`.
+  carved after destructive passes, and later passes must respect `reserved`,
+  `no_feature`, `support` (cells holding up route floors) and `sealed` (water
+  container walls). Rooms/landmarks claim footprints in `GenSpace` before carving;
+  new tunnels go through `tunnel_ok`. Each system uses its own RNG stream
+  (`topo`, `land_rng`, `water_rng`, `ore_rng`, `enc_rng`, `route_rng`).
+- Generation sweep: `godot --headless res://tests/gen_report.tscn -- seeds=125`
+  must report "invalid or repaired: 0". Debug a seed with `gen_dump ... norepair
+  ascii [up]` and `RD_CELL=x,y` / `RD_PROFILE=1` (see docs/generation-v2.md).
 - Player input for tests goes through `player.input_override` (keys:
   `x`, `y`, `drill`, `jump`, `jump_just`, `charge_just`, ...).
 - Headless runs print "ObjectDB instances leaked at exit" when a suite quits with a
