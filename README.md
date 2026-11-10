@@ -21,13 +21,14 @@ SIL Open Font License fonts (see *Credits*).
 
 | Action | Keyboard | Gamepad | Touch |
 |---|---|---|---|
-| Move | A / D, arrows | Left stick, D-pad | Left floating joystick |
-| Aim drill up/down | W / S | Stick up/down | Push the joystick up/down |
+| Move | A / D, arrows | Left stick, D-pad | Floating stick, fixed stick or d-pad (Settings) |
+| Aim drill up/down | W / S | Stick up/down | Push the stick or d-pad up/down |
 | Jump / air jet / wall jump | Space, Z | A | JUMP |
 | Drill (hold) | J, X, Shift | RB / RT | DRILL (hold) |
 | Throw charge | K, C (hold down to drop at your feet) | LB / LT | CHARGE |
-| Interact (lift, relic, cache) | E, F | Y / X | USE (shown when something is in reach) |
-| Pause / map | Esc, P / M, Tab | Start / Back | II button |
+| Interact (lift, relic, cache) | E, F | Y | USE (shown when something is in reach) |
+| Raise a Rubble Ladder | L, Q | X | LADDER |
+| Pause / map | Esc, P / M, Tab | Start / Back | II button / tap the minimap |
 
 * **Drill** hits only the cells touching your body (with aim assist and corner
   brackets that show the targets). It builds **heat**; when the heat bar fills, the
@@ -60,14 +61,29 @@ SIL Open Font License fonts (see *Credits*).
 * **Loose rubble** (pale gravel) falls once whatever holds it up is removed. It
   shakes and drops dust first, then falls: it stuns and damages anything
   underneath, and lands as diggable rubble.
-* **Extract** at the surface lift, or at the relay lift in the Spore Veins once
-  you have reached and activated it. If you die or abandon the run, your
+* **Rubble Ladder:** breaking rock fills the SCAF meter. LADDER spends it to
+  raise a ladder from your feet straight up to the first solid block, however
+  far that is (2 energy to start, 1 per cell). Below the Dustworks most ladders
+  are gone: drill your own way down and build your own way back. Cracked rock
+  marks where the route continues.
+* **The world:** the Dustworks and Spore Veins sit above a bedrock shelf you
+  cannot break. Travel to its far-west or far-east end to find the way down. West
+  leads to the Drowned Aqueducts, east to the Crystal Hollows. Both end in the
+  Forgotten Engine vault, where the relic is.
+* **Map:** tap the minimap (or press M) for the full survey map. Pinch or use
+  the wheel to zoom, drag to scroll, tap a landmark to read its name. The game
+  pauses while it is open.
+* **Settings:** camera zoom, movement control (floating stick, fixed stick,
+  d-pad), stick size and dead zone, button size and opacity, and a layout
+  editor where you drag every control where you want it.
+* **Extract** at the surface lift, or at a relay lift (one in the Spore Veins,
+  one at each wing entrance) once you have reached and activated it. If you die or abandon the run, your
   unbanked cargo is lost. Upgrades always persist.
 
 ### The loop
 1. **Outpost**: walk to the *Upgrade Terminal*, the *Contract Board*, the
    *Supply Locker* (buy extra charges) and the *Lift*.
-2. **Mine**: three strata. Each has its own palette, terrain, background props,
+2. **Mine**: five zones. Each has its own palette, terrain, background props,
    lighting and ambient track.
    * **Dustworks**: ochre sediment, timber shaft, roots, fossils, an unstable
      miner camp and a fossil grotto behind a cracked wall.
@@ -100,13 +116,16 @@ missing result line. Use `GODOT=/path/to/godot`, `TEST_TIMEOUT=<s>` and
 |---|---|
 | `terrain` | water conservation, levelling, flow through a breach and displacement; boulder anchoring rules; hit counts by material and drill tier, alloy and bedrock immunity, protected cells, ore paying out exactly once, dirty-chunk locality (1 chunk normally, exactly 4 on a corner), edge masks, interior depth, JSON round-trip, grid line-of-sight |
 | `save` | progress round-trip, a corrupt file falling back to defaults, hostile values clamped, purchases, settings sanitising |
-| `ui` | touch buttons never overlap each other or the HUD across 5 aspect ratios × 3 button scales |
-| `gen` | 60 seeds × all contracts: validated route spawn→relic door→lift and depths→relay **without digging**, open standing spawn, no sealed pockets, protected alloy relic shell, crawlers never in rock and under the cap, no ore in protected cells, generated water at rest, no basalt starting unsupported, full-grid determinism, zero repair fallbacks; v2: no footprint overlaps, ≥4 archetypes, branches and loops, ≥2 landmarks off the route, a contained Spore Veins water body, ore budget, no gas by the route, no crawler near spawn |
-| `game` | live mine: player lands safely; drilling down removes the floor and the player drops into the hole; ore collected; the same cell never pays twice; collision rebuilt; blasts spare alloy and bedrock but clear sediment; rubble is telegraphed and never lands inside the player; the gas warning comes before the cloud and a blast ignites it; crawler investigates noise, chases on sight, never enters rock, loses interest, is stunned by rubble; sentry warns, fires, goes dormant, dies when its power module dies; upward drilling reaches the ceiling; the drill kills a crawler within a second, with at most one bite taken; cutting a boulder's neck drops it onto a crawler; a broken dam floods; a breached floodgate drains and the route survives; the player swims; extraction banks credits; a new run starts clean; death banks nothing; 900-frame random-input soak |
+| `ui` | touch controls never overlap each other or the HUD across 5 aspect ratios × 3 scales × 3 movement modes; d-pad maps 8 directions; floating stick spawns under the finger and only in its zone; two-finger move + jump; layout editor drags and resets; settings panel centred |
+| `gen` | 60 seeds, contracts rotating: dig-first guarantee via `DigCheck` (relic door reachable and the way back within the fairness budgets, both wing gates reachable, zero softlock traps), the Dustworks shaft walkable without digging, the bedrock shelf unbreakable except at its two gates, nothing placed in the bedrock between zones, every lift on a solid protected floor, the two wings measurably different, open standing spawn, no sealed pockets, protected alloy relic shell, crawlers never in rock and under the cap, no ore in protected cells, generated water at rest, no basalt starting unsupported, full-grid determinism, zero repair fallbacks; plus the v2 structure checks (no footprint overlaps, ≥4 archetypes, branches and loops, landmarks off the route, a contained Spore Veins water body, ore budget, no gas by the route, no crawler near spawn) |
+| `game` | live mine: player lands safely; drilling down removes the floor and the player drops into the hole; ore collected; the same cell never pays twice; collision rebuilt; blasts spare alloy and bedrock but clear sediment; rubble is telegraphed and never lands inside the player; the gas warning comes before the cloud and a blast ignites it; crawler investigates noise, chases on sight, never enters rock, loses interest, is stunned by rubble; sentry warns, fires, goes dormant, dies when its power module dies; upward drilling reaches the ceiling; the drill kills a crawler within a second, with at most one bite taken; cutting a boulder's neck drops it onto a crawler; a broken dam floods; a breached floodgate drains and the route survives with no new traps; a Rubble Ladder fills a shaft to the ceiling, builds partially when energy is short and costs nothing where a ladder already stands; the full-screen map pauses, clamps zoom and pan; camera zoom follows the setting; the player swims; extraction banks credits; a new run starts clean; death banks nothing; 900-frame random-input soak |
 
-Last local run (Linux, Godot 4.6.3, headless):
-`terrain 32/32, physics 49/49, save 11/11, ui 17/17, gen 2512/2512 (0 repairs), game 58/58`.
-Generation sweep: `gen_report seeds=125` → 500/500 valid, 0 repaired.
+Last local run (Linux, Godot 4.6.3, headless), 0.5.0 work in progress:
+`gen 3803 passed, 4 failed (0 repairs)`. The other suites last passed one commit
+earlier (`terrain 32/32, physics 49/49, save 15/15, ui 63/63, game 77/77,
+water_live 4/4`) and have not been rerun since. See
+[docs/PHASE4_HANDOFF.md](docs/PHASE4_HANDOFF.md) for the failing checks and what
+remains.
 
 Other tools:
 
@@ -157,7 +176,7 @@ verifies a debug APK and a Linux build and uploads both as workflow artifacts.
 src/
   autoload/   balance.gd (all tuning) settings.gd progress.gd (save) audio.gd input_setup.gd game.gd (screen flow + run state)
   terrain/    cell.gd (material ids) terrain_grid.gd (authoritative model) terrain_view.gd (chunk rendering + physics)
-  gen/        mine_generator.gd gen_space.gd layout_planner.gd chamber_carver.gd landmarks.gd gen_metrics.gd route_check.gd
+  gen/        mine_generator.gd gen_space.gd layout_planner.gd chamber_carver.gd landmarks.gd gen_metrics.gd route_check.gd dig_check.gd
   player/     player.gd
   enemies/    crawler.gd sentry.gd (+ power module, bolts) grid_path.gd
   hazards/    hazards.gd (charges, gas system, ceiling collapse)
@@ -188,9 +207,12 @@ arrays, and serialises to JSON. `TerrainView` derives everything else from it:
   `CanvasModulate` darkness, so they read as light sources. Real `PointLight2D`s
   are used sparingly: the headlamp, lamps, lifts, the relic and explosions.
 
-**Generation** (`MineGenerator`, v2) is seeded and order-sensitive. See
-[docs/generation-v2.md](docs/generation-v2.md) for the design, metrics and
-before/after numbers.
+**Generation** (`MineGenerator`, v3) is seeded and order-sensitive. See
+[docs/generation-v3.md](docs/generation-v3.md) for the 0.5 world shape, the
+dig-first route and the `DigCheck` fairness model, and
+[docs/generation-v2.md](docs/generation-v2.md) for the planner, chambers,
+landmarks and water rules. The pass list below is the v2 core; v3 adds the zone
+table, the shelf gates, the split route and dig-aware validation.
 1. strata-specific base rock, light background caves, worm tunnels
 2. anchors claim footprints in `GenSpace`: lift room, timber shaft, relay,
    relic chamber
@@ -306,6 +328,10 @@ device:
 * No music beyond the four generated ambient drones. Audio is synthesised and
   intentionally lo-fi.
 * No mid-run save: a run is a single session. Upgrades and settings persist.
+* Generating the larger 0.5 world takes about 1 s on desktop (was 0.6 s) and
+  runs on the main thread. Phone loading time has not been measured.
+* The dig-first fairness check (`DigCheck`) is a conservative model, not a
+  formal proof. See `docs/generation-v3.md` for what it does and does not cover.
 
 ## Credits
 * Code, pixel art, audio and design were written for this project, and the

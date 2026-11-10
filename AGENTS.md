@@ -27,6 +27,17 @@ Never hand-edit `assets/gen` or `assets/sfx`.
   container walls). Rooms/landmarks claim footprints in `GenSpace` before carving;
   new tunnels go through `tunnel_ok`. Each system uses its own RNG stream
   (`topo`, `land_rng`, `water_rng`, `ore_rng`, `enc_rng`, `route_rng`).
+- The world is five zones laid out in `Balance` (`ZONE_RECTS`, `CORE_X0/X1`, shelf
+  and vault rows). Zone id == the stratum stored per cell: use
+  `grid.get_stratum(x, y)`, never row maths. Per-zone budgets are the `GEN_*`
+  arrays indexed by zone. Bedrock outside the zones is protected and claimed as
+  `void` in `GenSpace`; never place anything there.
+- Fairness is `DigCheck` (dig-aware), not no-dig `RouteCheck`: every mine must be
+  completable within `FAIR_DIG_BUDGET_*`, reach both wing gates, and have zero
+  traps (`DigCheck.traps`). Unbreakable-walled shafts need ledges or a ladder.
+- Art for a new zone means new ramps/textures in `tools/assetgen/gen_tiles.py`
+  (atlas slots must match `TerrainView.block_index`), `gen_bg.py` and an ambience
+  line in `gen_audio.py` (append after existing lines so old files stay identical).
 - Generation sweep: `godot --headless res://tests/gen_report.tscn -- seeds=125`
   must report "invalid or repaired: 0". Debug a seed with `gen_dump ... norepair
   ascii [up]` and `RD_CELL=x,y` / `RD_PROFILE=1` (see docs/generation-v2.md).

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 (in progress, not released: see docs/PHASE4_HANDOFF.md)
+- **Wider world.** The Dustworks and Spore Veins now sit above an unbreakable bedrock shelf. Trek to its far-west or far-east end to descend: west into the Drowned Aqueducts (flooded stone channels, floodgates, cisterns), east into the Crystal Hollows (tall cracks, geodes, hanging shards). Both wings meet in the Forgotten Engine vault, where the relic is. A lift station waits at each wing entrance.
+- **Dig-first.** Below the Dustworks most generated ladders are gone. Route sections are bare drops, plank scaffolds or plugs of cracked rock you drill through.
+- **Rubble Ladder.** Breaking rock fills a scaffold meter; LADDER raises a ladder from your feet up to the first solid block. New Scaffold Hopper upgrade.
+- **Fairness.** A new dig-aware check proves every mine can be finished with starting gear, that both wings are reachable, and that there is no spot you cannot climb out of. It found and fixed real trap pockets.
+- **Camera** zooms in (1.4× by default, adjustable 1.0–1.8×) and looks ahead of you.
+- **Touch controls:** floating stick, fixed stick or 8-way d-pad; stick size and dead zone; a layout editor to drag every control anywhere.
+- **Full-screen map:** tap the minimap for a paused survey map with pinch/wheel zoom, panning, zone names and landmark names.
+- Fix: the Spore Veins relay lift could be left hanging in mid-air when a route shaft cut through its floor (7.5% of mines). Lift floors are now protected, and a test checks every lift.
+- New generated art and ambience for both new biomes.
+
 ## 0.4.0
 - Generation v2 (see `docs/generation-v2.md`). Mines are planned: 8–11 chambers in distinct shapes (timber works, halls, slumped terraces, fissures with rope ladders, a cathedral with a lake, twin and stacked alloy ruins). The route runs through some of them, and the rest are optional side caverns linked by branches and loops.
 - New landmarks: floodgate reservoir (breach the outlet to flood the chamber below), flooded machinery, hanging gallery of loose boulders, survey post, gas vent cluster, twin cistern. Every mine has a meaningful water encounter in the Spore Veins.

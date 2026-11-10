@@ -291,7 +291,7 @@ const GEN_ARCH_WEIGHTS := {
 # per-zone generation budgets, indexed by zone id
 #                       dust spore engine aqueduct crystal
 const GEN_CHAMBERS :=     [3,   4,    3,     3,       3]
-const GEN_CAVE_THRESH :=  [0.4, 0.33, 0.52,  0.42,    0.36]
+const GEN_CAVE_THRESH :=  [0.4, 0.36, 0.56,  0.5,     0.44]
 const GEN_HARD_THRESH :=  [0.28, 0.12, -0.02, 0.2,    0.0]
 const GEN_LOOSE :=        [14,  10,   5,     5,       26]
 const GEN_BOULDERS :=     [5,   4,    2,     1,       5]
@@ -317,14 +317,14 @@ const GEN_BASIN_LEAK_SLACK := 12
 #   plug   - cracked rock left in place: drill down, ladder back up your own bore
 const GEN_SHAFT_STYLE := {
 	0: [1.0, 0.0, 0.0, 0.0],
-	1: [0.05, 0.2, 0.3, 0.45],
-	2: [0.0, 0.15, 0.3, 0.55],
-	3: [0.0, 0.25, 0.3, 0.45],
-	4: [0.0, 0.1, 0.4, 0.5],
+	1: [0.05, 0.2, 0.25, 0.5],
+	2: [0.0, 0.15, 0.25, 0.6],
+	3: [0.0, 0.2, 0.2, 0.6],
+	4: [0.0, 0.1, 0.35, 0.55],
 }
-const GEN_CORRIDOR_PLUG_CHANCE := 0.8   # per plug opportunity below the Dustworks
+const GEN_CORRIDOR_PLUG_CHANCE := 0.9   # per plug opportunity below the Dustworks
 const GEN_CORRIDOR_PLUG_LEN := [3, 7]
-const GEN_CORRIDOR_PLUG_SPACING := 12   # corridor cells per plug opportunity
+const GEN_CORRIDOR_PLUG_SPACING := 9   # corridor cells per plug opportunity
 # fairness budget (DigCheck seconds with the Mk.I drill, no ladder energy)
 const FAIR_DIG_BUDGET_DOWN := 150.0
 const FAIR_DIG_BUDGET_UP := 200.0     # way out, using Rubble Ladders

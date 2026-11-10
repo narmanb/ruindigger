@@ -2174,8 +2174,25 @@ func _unbreakable(x: int, y: int) -> bool:
 ## Rubble Ladders raised where rock is in reach), inside the fairness budget,
 ## in both directions. The no-ladder numbers are kept as diagnostics.
 func _dig_valid() -> bool:
-	var dc := DigCheck.new(g, door_open_cells())
-	var from_spawn := dc.costs_from(data["spawn"])
+	var dc: DigCheck
+	var from_spawn: PackedFloat32Array
+	var clean := false
+	# audit for softlock traps (places you can get into but never out of) and
+	# seal any that turn up; re-audit, since sealing changes the terrain
+	for round in 3:
+		dc = DigCheck.new(g, door_open_cells())
+		dc.allow_ladder = true
+		from_spawn = dc.costs_from(data["spawn"])
+		var escape := dc.escape_set(data["lift"])
+		var sealed_n := _seal_traps(from_spawn, escape)
+		if sealed_n == 0:
+			clean = true
+			break
+		if sealed_n < 0:
+			break   # a trap on the route itself: cannot be sealed, needs repair
+		data["traps_sealed"] = int(data.get("traps_sealed", 0)) + sealed_n
+	if not clean:
+		return false
 	var outside: Vector2i = data["door_outside"]
 	data["dig_down_s"] = GenMetrics._near(dc, from_spawn, outside)
 	# every wing entrance must be reachable on the way down
@@ -2184,7 +2201,6 @@ func _dig_valid() -> bool:
 		if GenMetrics._near(dc, from_spawn, gate["lift"]) < 0.0:
 			gates_ok = false
 	# the way out may use Rubble Ladders (priced in seconds, see DigCheck)
-	dc.allow_ladder = true
 	var with_ladder := dc.costs_from(outside)
 	data["climb_up_s"] = GenMetrics._near(dc, with_ladder, data["lift"])
 	data["climb_relay_s"] = GenMetrics._near(dc, with_ladder, data["relay"])
@@ -2192,6 +2208,33 @@ func _dig_valid() -> bool:
 	return gates_ok and data["dig_down_s"] >= 0.0 and data["dig_down_s"] <= Balance.FAIR_DIG_BUDGET_DOWN \
 		and data["climb_up_s"] >= 0.0 and data["climb_up_s"] <= Balance.FAIR_DIG_BUDGET_UP \
 		and data["dig_relic_s"] >= 0.0 and data["climb_relay_s"] >= 0.0
+
+
+## Turn every trap cell into part of the unbreakable wall beside it. Returns the
+## number of cells sealed, 0 when there are no traps, -1 if one cannot be sealed.
+func _seal_traps(from_spawn: PackedFloat32Array, escape: PackedByteArray) -> int:
+	var n := 0
+	for i in W * H:
+		if from_spawn[i] >= DigCheck.UNREACHED or escape[i] == 1:
+			continue
+		var c := Vector2i(i % W, i / W)
+		if reserved.has(c) or g.has_flag(c.x, c.y, Cell.F_PROTECTED):
+			return -1
+		var alloy := false
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(2, 0), Vector2i(-2, 0)]:
+			if g.get_mat(c.x + d.x, c.y + d.y) == Cell.ALLOY:
+				alloy = true
+		g.put(c.x, c.y, Cell.ALLOY if alloy else Cell.BEDROCK)
+		g.water[i] = 0
+		g.ore[i] = 0
+		no_feature[c] = true
+		n += 1
+	if n > 0:
+		# nothing may be left standing inside a cell that was just sealed
+		for e in data["entities"].duplicate():
+			if e["type"] == "crawler" and g.is_solid(e["cell"].x, e["cell"].y):
+				data["entities"].erase(e)
+	return n
 
 
 func _validate_and_repair() -> void:
