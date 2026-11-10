@@ -121,27 +121,35 @@ by unbreakable material are still caught.
 ## Measured results
 
 Linux desktop, Godot 4.6.3 headless. Sweeps use `tests/gen_report.tscn`.
+The v0.5.0 column is the 500-combination sweep measured on 2026-11-10;
+v0.4.0 values are historical measurements.
 
 | Metric (mean) | v0.4.0 (72×214) | v0.5.0 (128×236) |
 |---|---|---|
-| Combos valid / repaired | 500 / 0 | see README for the final sweep |
+| Combos valid / repaired | 500 / 0 | 500 / 0 |
 | Softlock trap cells | not audited (the audit did not exist) | 0 |
-| Ladder cells below the Dustworks | 176 | 99, of which 34 are the two gate shafts |
-| Deep route needing digging | 0% | 15% |
-| Dig time, spawn → relic door | 31 s | 39 s |
-| Time, relic door → surface (with ladders) | – | 76 s |
-| Chambers / landmarks | 9.5 / 5.7 | 15.4 / 9.9 |
-| Ore value | 10,733 | 17,800 |
-| Generation time | 590 ms | 1,020 ms (max 1,200 ms) |
+| Ladder cells below the Dustworks | 176 | 97.53 (including gate shafts) |
+| Deep route needing digging | 0% | 13.66% |
+| Dig time, spawn → relic door | 31 s | 37.69 s |
+| Time, relic door → surface (with ladders) | – | 74.76 s |
+| Chambers / landmarks | 9.5 / 5.7 | 15.48 / 10.21 |
+| Ore value | 10,733 | 17,981.87 |
+| Generation time | 590 ms | 1,019.06 ms (max 2,512 ms) |
+
+Two combinations exceeded 1,500 ms: seed 515735/survey (2,512 ms) and
+572950/rich (2,427 ms). Separate `RD_PROFILE=1` reruns took 2,600 and 2,489 ms;
+water settling was the largest phase at 1,582.6 ms (485 steps) and 1,516.5 ms
+(309 steps), respectively. Both remained valid with zero repairs. No generation
+budgets or settling limits were changed.
 
 Per unit of deep area the ladder density fell by roughly 85–90%: the deep
 world is about 3.3× larger and has fewer than half the ladder cells once the
 authored gate shafts are set aside. The raw count missed the plan's "80% fewer
 cells" target, because the world grew.
 
-Live physics step on the larger world, in the flooded Aqueducts: median
-1.4 ms, p95 1.8 ms. Render time was not measurable (software GL in the build
-sandbox). **Nothing was measured on a phone.**
+Earlier live physics measurements on the larger world, in the flooded Aqueducts:
+median 1.4 ms, p95 1.8 ms. Render time was not measurable (software GL in the
+build sandbox). **Nothing was measured on a phone.**
 
 ## Limitations
 
