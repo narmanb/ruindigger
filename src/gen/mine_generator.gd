@@ -327,7 +327,11 @@ func _relay_station() -> void:
 	var left := rng.randf() < 0.5
 	var x0 := 6 + rng.randi_range(0, 6) if left else W - 22 - rng.randi_range(0, 6)
 	_rect_fill(x0, y_floor - 5, 14, 6, Cell.AIR, Cell.F_NO_RUBBLE)
-	_rect_fill(x0, y_floor + 1, 14, 1, Cell.HARD)
+	# the station floor is part of the structure: protected and a support, so no
+	# route shaft, branch tunnel or blast can leave the lift cage hanging
+	_rect_fill(x0, y_floor + 1, 14, 1, Cell.HARD, Cell.F_PROTECTED)
+	for x in range(x0, x0 + 14):
+		support[Vector2i(x, y_floor + 1)] = true
 	for y in range(y_floor - 5, y_floor + 1):
 		for x in range(x0, x0 + 14):
 			reserved[Vector2i(x, y)] = true

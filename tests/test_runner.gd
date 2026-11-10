@@ -392,6 +392,19 @@ func _generation_v2_checks(tag: String, d: Dictionary, gen: MineGenerator) -> vo
 		if not (l["kind"] in ["fossil_grotto", "miner_camp", "cobalt_vault"]):
 			v2_lm += 1
 	check(v2_lm >= 2, tag + ": at least 2 new-style landmarks (%d)" % v2_lm)
+	# every lift stands on a solid, protected floor with headroom (no floating cages)
+	for e in d["entities"]:
+		if e["type"] != "lift":
+			continue
+		var lc: Vector2i = e["cell"]
+		var floor_ok := true
+		for x in range(lc.x - 2, lc.x + 3):
+			if not g.is_solid(x, lc.y + 1) or not g.has_flag(x, lc.y + 1, Cell.F_PROTECTED):
+				floor_ok = false
+			for y in range(lc.y - 2, lc.y + 1):
+				if g.is_solid(x, y):
+					floor_ok = false
+		check(floor_ok, tag + ": lift '%s' has a solid protected floor and headroom" % e["id"])
 	var big_s1 := false
 	for wf in d["water_features"]:
 		if wf["kind"] != "pocket" and int(wf.get("cells", 0)) >= 20 and Balance.stratum_of_row((wf["rect"] as Rect2i).get_center().y) == 1:
