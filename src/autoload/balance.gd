@@ -262,6 +262,23 @@ const GEN_LANDMARK_ODDS := {"survey_post": 0.6, "hanging_gallery": 0.7, "flooded
 const GEN_MIN_LANDMARKS := 2
 # a basin's flood may reach this many cells beyond the body before it counts as leaking
 const GEN_BASIN_LEAK_SLACK := 12
+# --- dig-first routes (below the Dustworks the player cuts their own way) ---
+# how a vertical route section is built, by stratum: [ladder, ledges, open, plug]
+#   ladder - old 2-wide shaft with a full ladder (authored, tutorial zone)
+#   ledges - open shaft with plank scaffolds one jump apart
+#   open   - bare drop: jump down, come back with a Rubble Ladder or by digging
+#   plug   - cracked rock left in place: drill down, ladder back up your own bore
+const GEN_SHAFT_STYLE := {
+	0: [1.0, 0.0, 0.0, 0.0],
+	1: [0.05, 0.2, 0.3, 0.45],
+	2: [0.0, 0.15, 0.3, 0.55],
+}
+const GEN_CORRIDOR_PLUG_CHANCE := 0.8   # per plug opportunity below the Dustworks
+const GEN_CORRIDOR_PLUG_LEN := [3, 7]
+const GEN_CORRIDOR_PLUG_SPACING := 12   # corridor cells per plug opportunity
+# fairness budget (DigCheck seconds with the Mk.I drill, no ladder energy)
+const FAIR_DIG_BUDGET_DOWN := 150.0
+const FAIR_DIG_BUDGET_UP := 200.0     # way out, using Rubble Ladders
 
 const CONTRACTS := [
 	{"id": "survey", "name": "STANDARD SURVEY", "desc": "Recover the relic. Balanced seams and threats.",

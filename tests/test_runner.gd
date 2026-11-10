@@ -301,6 +301,7 @@ func _generation(n: int) -> void:
 	var worst_ms := 0
 	var total_water := 0
 	var total_boulders := 0
+	var total_deep_ladders := 0
 	for i in n:
 		var seed_value := 1000 + i * 7919
 		var contract: Dictionary = Balance.CONTRACTS[i % Balance.CONTRACTS.size()]
@@ -330,9 +331,21 @@ func _generation(n: int) -> void:
 		var sp: Vector2i = d["spawn"]
 		check(RouteCheck.body_ok(g, sp.x, sp.y) and Cell.supports(g.get_mat(sp.x, sp.y + 1)), tag + ": spawn is open and standing")
 		var doors := gen.door_open_cells()
-		check(RouteCheck.can_reach(g, sp, d["door_outside"], doors), tag + ": relic door reachable without digging")
-		check(RouteCheck.can_reach(g, d["relic"], d["lift"], doors), tag + ": lift reachable from the relic without digging")
-		check(RouteCheck.can_reach(g, d["door_outside"], d["relay"], doors), tag + ": relay lift reachable from the depths")
+		# dig-first guarantee: completable with the starting drill and Rubble
+		# Ladders, inside the fairness budget, and no place you cannot leave
+		check(RouteCheck.can_reach(g, sp, d["shaft_bottom"], doors), tag + ": the Dustworks shaft is walkable without digging (tutorial zone)")
+		check(float(d["dig_down_s"]) >= 0.0 and float(d["dig_down_s"]) <= Balance.FAIR_DIG_BUDGET_DOWN, tag + ": relic door reachable by digging within budget (%.0f s)" % d["dig_down_s"])
+		check(float(d["climb_up_s"]) >= 0.0 and float(d["climb_up_s"]) <= Balance.FAIR_DIG_BUDGET_UP, tag + ": lift reachable from the relic within budget (%.0f s)" % d["climb_up_s"])
+		check(float(d["dig_relic_s"]) >= 0.0 and float(d["climb_relay_s"]) >= 0.0, tag + ": relic and relay lift reachable from the door")
+		var dig := DigCheck.new(g, doors)
+		var traps := dig.traps(sp, d["lift"])
+		check(traps.is_empty(), tag + ": no softlock traps (%d, e.g. %s)" % [traps.size(), str(traps.slice(0, 3))])
+		var deep_ladders := 0
+		for yy in range(Balance.STRATUM_ROWS[1], g.h):
+			for xx in g.w:
+				if g.get_mat(xx, yy) == Cell.LADDER:
+					deep_ladders += 1
+		total_deep_ladders += deep_ladders
 		var pockets := RouteCheck.sealed_pockets(g, sp, doors)
 		check(pockets.is_empty(), tag + ": no sealed pockets (%d)" % pockets.size())
 		var room: Rect2i = d["relic_room"]
@@ -381,6 +394,7 @@ func _generation(n: int) -> void:
 	check(total_water > 0, "mines contain water")
 	check(total_boulders > n, "mines contain hanging boulders (avg > 1 per seed)")
 	check(repaired == 0, "guaranteed route never needed the repair fallback")
+	check(total_deep_ladders / float(n * Balance.CONTRACTS.size()) < 60.0, "few generated ladders below the Dustworks (%.1f cells per mine)" % (total_deep_ladders / float(n * Balance.CONTRACTS.size())))
 
 
 ## Generator v2: layout structure, water encounters, balance and safety.
@@ -1067,5 +1081,8 @@ func _floodgate_breach() -> void:
 	var doors: Dictionary = {}
 	for c in mine.data.get("door_cells", []):
 		doors[c] = true
-	check(RouteCheck.can_reach(g, mine.data["spawn"], mine.data["door_outside"], doors), "route to the relic survives the flood and erosion")
-	check(RouteCheck.can_reach(g, mine.data["door_outside"], mine.data["lift"], doors), "route back to the lift survives the flood and erosion")
+	var dig := DigCheck.new(g, doors)
+	dig.allow_ladder = true
+	check(dig.cost(mine.data["spawn"], mine.data["door_outside"]) >= 0.0, "route to the relic survives the flood and erosion")
+	check(dig.cost(mine.data["door_outside"], mine.data["lift"]) >= 0.0, "route back to the lift survives the flood and erosion")
+	check(dig.traps(mine.data["spawn"], mine.data["lift"]).is_empty(), "the flood and erosion create no softlock traps")

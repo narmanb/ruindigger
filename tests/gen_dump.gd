@@ -22,6 +22,7 @@ func _ready() -> void:
 		pass
 	print(d.get("diag_0"), d.get("diag_1"))
 	print("boulders=", d.get("boulders"), " geodes=", d.get("geodes"), " pockets=", d.get("water_pockets", []).size(), " lake=", d.get("lake"), " settle=", d.get("settle_steps"), " stabilized=", d.get("basalt_stabilized"), " water=", d.get("water_total"))
+	print("DIGVALS ", d.get("dig_down_s"), " relay ", d.get("dig_relay_s"), " up ", d.get("dig_up_s"), " relic ", d.get("dig_relic_s"), " climb ", d.get("climb_up_s"))
 	print("generated in %d ms, valid=%s repairs=%d" % [Time.get_ticks_msec() - t0, d["valid"], d["repairs"]])
 	var g: TerrainGrid = d["grid"]
 	var img := Image.create(g.w, g.h, false, Image.FORMAT_RGBA8)

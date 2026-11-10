@@ -48,7 +48,47 @@ static func compute(data: Dictionary) -> Dictionary:
 	m["landmarks"] = data.get("landmarks", []).size()
 	m["water_features"] = data.get("water_features", []).size()
 	m["gen_ms"] = data.get("gen_ms", 0)
+	# dig-first traversal (DigCheck: starting drill, no ladder energy)
+	var dc := DigCheck.new(g, doors)
+	var from_spawn := dc.costs_from(data["spawn"])
+	m["dig_down_s"] = _near(dc, from_spawn, data["door_outside"])
+	m["dig_up_s"] = dc.cost(data["door_outside"], data["lift"])
+	m["climb_up_s"] = data.get("climb_up_s", -1.0)
+	dc.allow_ladder = true
+	var ok := dc.escape_set(data["lift"])
+	var traps := 0
+	for i in g.w * g.h:
+		if from_spawn[i] < DigCheck.UNREACHED and ok[i] == 0:
+			traps += 1
+	m["traps"] = traps
+	var deep_ladders := 0
+	for y in range(Balance.STRATUM_ROWS[1], g.h):
+		for x in g.w:
+			if g.get_mat(x, y) == Cell.LADDER:
+				deep_ladders += 1
+	m["deep_ladders"] = deep_ladders
+	var route: Array = data.get("route", [])
+	var solid := 0
+	var deep := 0
+	for c in route:
+		if c.y >= Balance.STRATUM_ROWS[1]:
+			deep += 1
+			if g.is_solid(c.x, c.y):
+				solid += 1
+	m["route_dig_pct"] = 100.0 * solid / maxi(deep, 1)
+	var styles: Dictionary = plan.get("shaft_styles", {})
+	for k in ["ladder", "ledges", "open", "plug"]:
+		m["shaft_" + k] = styles.get(k, 0)
+	m["corridor_plugs"] = plan.get("corridor_plugs", 0)
 	return m
+
+
+static func _near(dc: DigCheck, dist: PackedFloat32Array, b: Vector2i) -> float:
+	var best := DigCheck.UNREACHED
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			best = minf(best, dist[(b.y + dy) * dc.W + b.x + dx])
+	return best if best < DigCheck.UNREACHED else -1.0
 
 
 ## Shortest guaranteed-traversal path (RouteCheck model) from spawn to target.

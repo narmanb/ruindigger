@@ -88,6 +88,7 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	_trace("_loose_ceilings()")
 	_hanging_boulders()
 	_trace("_hanging_boulders()")
+	_seal_slivers()
 	_ore()
 	_trace("_ore()")
 	_geodes()
@@ -559,9 +560,13 @@ func _route() -> void:
 			_carve_leg(cur, q)
 		cur = q
 	var tail_start: int = data["route"].size()
+	# the lined approach is an authored ruin structure: alloy walls cannot be cut
+	# into steps, so it is built with plank scaffolds and is never plugged
+	_authored_leg = approach != "direct"
 	for q in tail:
 		_carve_leg(cur, q)
 		cur = q
+	_authored_leg = false
 	# dress the final approach: ruin-built lining around the last stretch
 	if approach != "direct":
 		var lined := 0
@@ -653,6 +658,17 @@ func _carve_leg(a: Vector2i, b: Vector2i) -> void:
 
 func _carve_between_axis(a: Vector2i, b: Vector2i, horizontal: bool, floor_ok: bool = true) -> void:
 	if horizontal:
+		# remember which columns were solid rock: only those may become dig plugs
+		var x0 := mini(a.x, b.x)
+		var x1 := maxi(a.x, b.x)
+		var rock: Array = []
+		for x in range(x0, x1 + 1):
+			var all_rock := true
+			for dy in range(-2, 2):
+				var m := g.get_mat(x, a.y + dy)
+				if not (m == Cell.SOFT or m == Cell.HARD) or g.has_flag(x, a.y + dy, Cell.F_PROTECTED) or reserved.has(Vector2i(x, a.y + dy)):
+					all_rock = false
+			rock.append(all_rock)
 		var x := a.x
 		_carve_corridor(x, a.y)
 		while x != b.x:
@@ -660,17 +676,113 @@ func _carve_between_axis(a: Vector2i, b: Vector2i, horizontal: bool, floor_ok: b
 			_carve_corridor(x, a.y)
 		if floor_ok:
 			_ensure_floor(b.x, b.y)
+		_corridor_plug(x0, x1, a.y, rock)
 	else:
 		var y0 := mini(a.y, b.y)
 		var y1 := maxi(a.y, b.y)
-		for y in range(y0 - 2, y1 + 1):
-			_carve_cell(a.x, y)
-			_carve_cell(a.x + 1, y)
-		for y in range(y0, y1 + 1):
-			if not g.has_flag(a.x, y, Cell.F_PROTECTED):
-				g.put(a.x, y, Cell.LADDER)
-				g.set_flag(a.x, y, Cell.F_NO_RUBBLE)
+		var style := _shaft_style(a.x, y0, y1)
+		shaft_styles[style] = int(shaft_styles.get(style, 0)) + 1
+		if style == "plug":
+			_carve_plug_shaft(a.x, y0, y1)
+		else:
+			for y in range(y0 - 2, y1 + 1):
+				_carve_cell(a.x, y)
+				_carve_cell(a.x + 1, y)
+			if style == "ladder":
+				for y in range(y0, y1 + 1):
+					if not g.has_flag(a.x, y, Cell.F_PROTECTED):
+						g.put(a.x, y, Cell.LADDER)
+						g.set_flag(a.x, y, Cell.F_NO_RUBBLE)
+			elif style == "ledges":
+				# plank scaffolds one jump (3 cells) apart, bottom-up
+				var r := y1 + 1 - RouteCheck.JUMP_CELLS
+				while r >= y0 + 1:
+					for xx in [a.x, a.x + 1]:
+						if g.get_mat(xx, r) == Cell.AIR:
+							g.put(xx, r, Cell.PLATFORM)
+							g.set_flag(xx, r, Cell.F_NO_RUBBLE)
+					r -= RouteCheck.JUMP_CELLS
 		_ensure_floor(b.x, b.y)
+
+
+var shaft_styles: Dictionary = {}
+var _authored_leg := false
+var corridor_plugs := 0
+
+
+## Which kind of vertical route section to build. The Dustworks keeps its
+## ladders (tutorial zone); deeper down the player mostly cuts their own way.
+func _shaft_style(x: int, y0: int, y1: int) -> String:
+	if y1 - y0 <= RouteCheck.JUMP_CELLS:
+		return "open"   # a single jump covers it
+	var s := Balance.stratum_of_row(y0)
+	if s == 0:
+		return "ladder"
+	if _authored_leg:
+		return "ledges"   # ruin maintenance scaffolds: climbable without a ladder
+	# shafts lined with unbreakable walls would be pits: those keep a ladder
+	for y in range(y0, y1 + 1):
+		for xx in [x - 1, x + 2]:
+			var m := g.get_mat(xx, y)
+			if m == Cell.ALLOY or m == Cell.BEDROCK or (Cell.is_solid(m) and g.has_flag(xx, y, Cell.F_PROTECTED)):
+				return "ladder"
+	var w: Array = Balance.GEN_SHAFT_STYLE[s]
+	var roll := route_rng.randf()
+	var names := ["ladder", "ledges", "open", "plug"]
+	for i in names.size():
+		roll -= float(w[i])
+		if roll <= 0.0:
+			return names[i]
+	return "open"
+
+
+## A route section left as cracked rock: the player drills down through it and
+## climbs back up the bore with a Rubble Ladder. Existing caves it crosses stay open.
+func _carve_plug_shaft(x: int, y0: int, y1: int) -> void:
+	for y in range(y0 + 1, y1 - 2):
+		var c := Vector2i(x, y)
+		var m := g.get_mat(x, y)
+		if (m == Cell.SOFT or m == Cell.HARD) and not g.has_flag(x, y, Cell.F_PROTECTED) and not reserved.has(c) and not support.has(c) and not sealed.has(c):
+			g.put(x, y, Cell.CRACKED)
+		# part of the route even though it is rock: landmarks, gas and ore keep off
+		reserved[c] = true
+		no_feature[c] = true
+		no_feature[Vector2i(x + 1, y)] = true
+		data["route"].append(c)
+	# open the two ends so the cracked column is found from above and below
+	for y in range(y0 - 2, y0 + 1):
+		_carve_cell(x, y)
+		_carve_cell(x + 1, y)
+	for y in range(y1 - 2, y1 + 1):
+		_carve_cell(x, y)
+		_carve_cell(x + 1, y)
+
+
+## Now and then a corridor is left blocked by a short cracked wall the player
+## has to drill through (never across caves, protected rock or the ends).
+func _corridor_plug(x0: int, x1: int, y: int, rock: Array) -> void:
+	if Balance.stratum_of_row(y) == 0 or _authored_leg:
+		return
+	# one chance of a plug per stretch of corridor, never within 3 cells of an end
+	var x := x0 + 3
+	while x <= x1 - 3 - Balance.GEN_CORRIDOR_PLUG_LEN[0]:
+		var want := mini(route_rng.randi_range(Balance.GEN_CORRIDOR_PLUG_LEN[0], Balance.GEN_CORRIDOR_PLUG_LEN[1]), x1 - 3 - x)
+		var gap := route_rng.randi_range(0, 4)
+		if route_rng.randf() > Balance.GEN_CORRIDOR_PLUG_CHANCE:
+			x += Balance.GEN_CORRIDOR_PLUG_SPACING
+			continue
+		var start := x + gap
+		var ok := start + want <= x1 - 3
+		if ok:
+			for xx in range(start, start + want):
+				if not rock[xx - x0]:
+					ok = false
+		if ok:
+			for xx in range(start, start + want):
+				for dy in range(-2, 1):
+					g.put(xx, y + dy, Cell.CRACKED)
+			corridor_plugs += 1
+		x += Balance.GEN_CORRIDOR_PLUG_SPACING
 
 
 var _hk := PackedFloat32Array()   # heap keys
@@ -904,7 +1016,10 @@ func _plan_chambers() -> void:
 			continue
 		var a: Vector2i = c["entry"]
 		var b: Vector2i = c["exit"]
-		if RouteCheck.can_reach(g, a, b) and RouteCheck.can_reach(g, b, a):
+		# a frayed fissure only has to carry the player down; the way back up is a
+		# Rubble Ladder, proven by the whole-mine DigCheck at the end
+		var up_ok: bool = c.get("frayed", false) or RouteCheck.can_reach(g, b, a)
+		if RouteCheck.can_reach(g, a, b) and up_ok:
 			continue
 		if OS.get_environment("RD_NOFIX") != "":
 			print("chamber fails: ", c["arch"], " entry ", a, " exit ", b, " a->b ", RouteCheck.can_reach(g, a, b), " b->a ", RouteCheck.can_reach(g, b, a))
@@ -1023,7 +1138,8 @@ func _summarise_plan() -> void:
 		kinds[key] = true
 		summary.append({"id": c["id"], "arch": c["arch"], "variant": c.get("variant", ""), "stratum": c["stratum"], "rect": c["rect"], "backbone": c["backbone"], "fixed": c.get("fixed", false)})
 	data["plan"] = {"chambers": summary, "archetype_count": kinds.size(), "branches": branches, "loops": loops,
-		"chamber_fixes": chamber_fixes, "relic_approach": data.get("relic_approach", ""), "overlaps": space.overlaps()}
+		"chamber_fixes": chamber_fixes, "relic_approach": data.get("relic_approach", ""), "overlaps": space.overlaps(),
+		"shaft_styles": shaft_styles, "corridor_plugs": corridor_plugs}
 
 
 func _carve_corridor(x: int, y: int) -> void:
@@ -1845,16 +1961,56 @@ func door_open_cells() -> Dictionary:
 	return d
 
 
-func _validate_and_repair() -> void:
-	var spawn: Vector2i = data["spawn"]
+## A one-cell-wide strip of diggable rock between two unbreakable walls is a
+## pit: drill down into it with an empty scaffold meter and there is no wall to
+## cut steps into. Such slivers become part of the wall they touch.
+func _seal_slivers() -> void:
+	var sealed_n := 0
+	for y in range(2, H - 2):
+		for x in range(1, W - 1):
+			var m := g.get_mat(x, y)
+			if not (m == Cell.SOFT or m == Cell.HARD or m == Cell.LOOSE or m == Cell.CRACKED) or g.has_flag(x, y, Cell.F_PROTECTED):
+				continue
+			if _unbreakable(x - 1, y) and _unbreakable(x + 1, y):
+				var alloy := g.get_mat(x - 1, y) == Cell.ALLOY or g.get_mat(x + 1, y) == Cell.ALLOY
+				g.put(x, y, Cell.ALLOY if alloy else Cell.BEDROCK)
+				sealed_n += 1
+	data["slivers_sealed"] = sealed_n
+
+
+func _unbreakable(x: int, y: int) -> bool:
+	if not g.in_bounds(x, y):
+		return true
+	var m := g.get_mat(x, y)
+	return m == Cell.ALLOY or m == Cell.BEDROCK or (Cell.is_solid(m) and g.has_flag(x, y, Cell.F_PROTECTED))
+
+
+## The mine must be completable with starting gear (DigCheck: drill plus
+## Rubble Ladders raised where rock is in reach), inside the fairness budget,
+## in both directions. The no-ladder numbers are kept as diagnostics.
+func _dig_valid() -> bool:
+	var dc := DigCheck.new(g, door_open_cells())
+	var from_spawn := dc.costs_from(data["spawn"])
 	var outside: Vector2i = data["door_outside"]
-	var doors := door_open_cells()
+	var from_door := dc.costs_from(outside)
+	data["dig_down_s"] = GenMetrics._near(dc, from_spawn, outside)
+	data["dig_relay_s"] = GenMetrics._near(dc, from_door, data["relay"])
+	data["dig_up_s"] = GenMetrics._near(dc, from_door, data["lift"])
+	data["dig_relic_s"] = GenMetrics._near(dc, from_door, data["relic"])
+	# the time budget for the way out assumes Rubble Ladders (priced in seconds)
+	dc.allow_ladder = true
+	var with_ladder := dc.costs_from(outside)
+	data["climb_up_s"] = GenMetrics._near(dc, with_ladder, data["lift"])
+	data["climb_relay_s"] = GenMetrics._near(dc, with_ladder, data["relay"])
+	return data["dig_down_s"] >= 0.0 and data["dig_down_s"] <= Balance.FAIR_DIG_BUDGET_DOWN \
+		and data["climb_up_s"] >= 0.0 and data["climb_up_s"] <= Balance.FAIR_DIG_BUDGET_UP \
+		and data["dig_relic_s"] >= 0.0 and data["climb_relay_s"] >= 0.0
+
+
+func _validate_and_repair() -> void:
+	var outside: Vector2i = data["door_outside"]
 	for attempt in (0 if no_repair else 3):
-		var down := RouteCheck.can_reach(g, spawn, outside, doors)
-		var up := RouteCheck.can_reach(g, outside, data["lift"], doors)
-		var relic_in := RouteCheck.can_reach(g, outside, data["relic"], doors)
-		data["diag_%d" % attempt] = [down, up, relic_in]
-		if down and up and relic_in:
+		if _dig_valid():
 			data["valid"] = true
 			return
 		repairs += 1
@@ -1863,7 +2019,7 @@ func _validate_and_repair() -> void:
 		var pts: Array[Vector2i] = [data["shaft_bottom"], Vector2i(outside.x, data["shaft_bottom"].y), outside]
 		for i in range(pts.size() - 1):
 			_carve_between_straight(pts[i], pts[i + 1])
-	data["valid"] = RouteCheck.can_reach(g, spawn, outside, doors) and RouteCheck.can_reach(g, outside, data["lift"], doors)
+	data["valid"] = _dig_valid()
 
 
 func _carve_between_straight(a: Vector2i, b: Vector2i) -> void:

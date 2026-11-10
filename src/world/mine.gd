@@ -397,6 +397,8 @@ func _tutorial(delta: float) -> void:
 		["Climb ladders with UP. JUMP again in mid-air for a jet burst.", 9.0],
 		["Ore glows. Break seams and collect the chunks.", 17.0],
 		["CHARGE throws a demolition charge. Mind the red ring!", 26.0],
+		["Breaking rock fills SCAF. LADDER raises a ladder from your feet to the ceiling.", 36.0],
+		["Deeper down the ladders run out: drill your own way, cracked rock marks the route.", 48.0],
 	]
 	if tutorial_step < tips.size() and _tut_t > tips[tutorial_step][1]:
 		hud.hint(tips[tutorial_step][0])

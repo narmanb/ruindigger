@@ -193,9 +193,14 @@ func _fissure(c: Dictionary) -> void:
 			air(x, y)
 	# guaranteed climbing line: a rope ladder down one side of the crack
 	var lx := r.position.x + 1 if ladder_left else r.end.x - 2
+	# below the Dustworks the rope has rotted away except for its top third:
+	# drop down, and bring your own ladder for the climb back
+	var frayed: bool = int(c["stratum"]) > 0
+	c["frayed"] = frayed
+	var rope_end := r.position.y + (r.size.y / 3 if frayed else r.size.y)
 	for y in range(r.position.y, r.end.y):
 		air(lx, y)
-		if not gen.reserved.has(Vector2i(lx, y)):
+		if y < rope_end and not gen.reserved.has(Vector2i(lx, y)):
 			g.put(lx, y, Cell.LADDER)
 			g.set_flag(lx, y, Cell.F_NO_RUBBLE)
 	# ledges on the other wall every 4 rows, and one plank bridge
