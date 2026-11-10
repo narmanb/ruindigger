@@ -2214,6 +2214,7 @@ func _dig_valid() -> bool:
 ## number of cells sealed, 0 when there are no traps, -1 if one cannot be sealed.
 func _seal_traps(from_spawn: PackedFloat32Array, escape: PackedByteArray) -> int:
 	var n := 0
+	var filled: Dictionary = {}
 	for i in W * H:
 		if from_spawn[i] >= DigCheck.UNREACHED or escape[i] == 1:
 			continue
@@ -2228,11 +2229,26 @@ func _seal_traps(from_spawn: PackedFloat32Array, escape: PackedByteArray) -> int
 		g.water[i] = 0
 		g.ore[i] = 0
 		no_feature[c] = true
+		filled[c] = true
 		n += 1
 	if n > 0:
-		# nothing may be left standing inside a cell that was just sealed
+		# Sealing feet can cut off the remaining air above them. Fill that
+		# enclosed space too, rather than leaving an inaccessible cavity.
+		for c in RouteCheck.sealed_pockets(g, data["spawn"], door_open_cells()):
+			if reserved.has(c) or g.has_flag(c.x, c.y, Cell.F_PROTECTED):
+				return -1
+			var wall := Cell.BEDROCK
+			for d in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]:
+				if g.get_mat(c.x + d.x, c.y + d.y) == Cell.ALLOY:
+					wall = Cell.ALLOY
+			g.put(c.x, c.y, wall) # put clears ore and sets the new material's hp
+			g.water[g.idx(c.x, c.y)] = 0
+			no_feature[c] = true
+			filled[c] = true
+			n += 1
+		# Remove only entities affected by this sealing, including modules.
 		for e in data["entities"].duplicate():
-			if e["type"] == "crawler" and g.is_solid(e["cell"].x, e["cell"].y):
+			if filled.has(e["cell"]) or filled.has(e.get("module", Vector2i(-1, -1))):
 				data["entities"].erase(e)
 	return n
 
