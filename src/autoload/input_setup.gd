@@ -16,11 +16,13 @@ const KEYS := {
 	"interact": [KEY_E, KEY_F],
 	"pause": [KEY_ESCAPE, KEY_P],
 	"map": [KEY_M, KEY_TAB],
+	"ladder": [KEY_L, KEY_Q],
 }
 
 const PAD_BUTTONS := {
 	"jump": [JOY_BUTTON_A],
-	"interact": [JOY_BUTTON_Y, JOY_BUTTON_X],
+	"interact": [JOY_BUTTON_Y],
+	"ladder": [JOY_BUTTON_X],
 	"charge": [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_B],
 	"drill": [JOY_BUTTON_RIGHT_SHOULDER],
 	"pause": [JOY_BUTTON_START],

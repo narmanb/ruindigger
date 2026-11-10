@@ -122,6 +122,8 @@ func _build_world() -> void:
 	camera.limit_right = grid.w * C
 	camera.limit_bottom = grid.h * C
 	add_child(camera)
+	_apply_zoom()
+	Settings.changed.connect(_apply_zoom)
 
 
 func _additive() -> CanvasItemMaterial:
@@ -251,7 +253,13 @@ func _build_ui() -> void:
 
 
 # ---------------------------------------------------------------------------
+var _look := Vector2.ZERO
+var _ladder_queue: Array[Vector2i] = []
+var _ladder_t := 0.0
+
+
 func _physics_process(delta: float) -> void:
+	_grow_ladders(delta)
 	if water:
 		water.update(delta)
 		erosion.update(delta)
@@ -317,13 +325,22 @@ func _process(delta: float) -> void:
 	_tutorial(delta)
 
 
+func _apply_zoom() -> void:
+	var z: float = Settings.get_value("camera_zoom")
+	camera.zoom = Vector2(z, z)
+
+
 func _camera(delta: float) -> void:
-	var look := Vector2(player.facing * 28.0, 0.0)
+	# look ahead in the direction of travel / drilling so a close camera never
+	# hides what is coming (eased, so turning around does not snap the view)
+	var view := get_viewport().get_visible_rect().size / camera.zoom
+	var want := Vector2(player.facing * view.x * Balance.CAMERA_LOOK_AHEAD, 0.0)
 	if player.drill_dir.y != 0 and player.drilling:
-		look = Vector2(0, player.drill_dir.y * 40.0)
+		want = Vector2(0, player.drill_dir.y * view.y * 0.2)
 	elif player.velocity.y > 200.0:
-		look.y = 40.0
-	camera.global_position = player.global_position + look + Vector2(0, -10)
+		want.y = view.y * 0.22
+	_look = _look.lerp(want, clampf(delta * 3.5, 0.0, 1.0))
+	camera.global_position = player.global_position + _look + Vector2(0, -10)
 	trauma = maxf(0.0, trauma - delta * 1.6)
 	var amt := trauma * trauma * 7.0 * Settings.shake_scale()
 	camera.offset = Vector2(randf_range(-amt, amt), randf_range(-amt, amt))
@@ -416,7 +433,83 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 			Game.run["ore_mined"] = int(Game.run.get("ore_mined", 0)) + 1
 		if m == Cell.GAS:
 			gas.vent(c)
+		if source in ["drill", "blast"]:
+			add_scaffold(int(Balance.SCAFFOLD_GAIN.get(m, 0)) + (Balance.SCAFFOLD_ORE_BONUS if o != 0 else 0))
 	return res
+
+
+# --- Rubble Ladder ----------------------------------------------------------
+func scaffold_cap() -> int:
+	return Balance.scaffold_capacity(Progress.level("scaffold"))
+
+
+func add_scaffold(n: int) -> void:
+	if n <= 0:
+		return
+	var before := int(Game.run.get("scaffold", 0))
+	Game.run["scaffold"] = mini(scaffold_cap(), before + n)
+	if before < scaffold_cap() and int(Game.run["scaffold"]) >= scaffold_cap() and not Game.run.get("scaffold_tip", false) and hud:
+		Game.run["scaffold_tip"] = true
+		hud.hint("Scaffold full. LADDER raises a ladder from your feet to the ceiling.")
+
+
+## Cells a ladder raised from `from` would fill: straight up to the first solid
+## cell. One-way platforms and existing ladders are passed through (and are free).
+func ladder_plan(from: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var y := from.y
+	var steps := 0
+	while y >= 2 and steps < Balance.SCAFFOLD_MAX_LEN:
+		var m := grid.get_mat(from.x, y)
+		if Cell.is_solid(m):
+			break
+		if m == Cell.AIR:
+			out.append(Vector2i(from.x, y))
+		y -= 1
+		steps += 1
+	return out
+
+
+## Spend scaffold energy to materialise a ladder. Returns the number of cells
+## queued (0 when there is no room or no energy; nothing is spent then).
+func build_ladder(by: Player) -> int:
+	var cells := ladder_plan(by.feet_cell())
+	var energy := int(Game.run.get("scaffold", 0))
+	var afford := (energy - Balance.SCAFFOLD_ACTIVATE_COST) / Balance.SCAFFOLD_CELL_COST if energy >= Balance.SCAFFOLD_ACTIVATE_COST else 0
+	if cells.is_empty() or afford <= 0:
+		if hud:
+			hud.toast("NO ROOM FOR A LADDER" if cells.is_empty() else "SCAFFOLD EMPTY - BREAK ROCK TO REFILL")
+			hud.pulse_scaffold()
+		Audio.play("ui_deny", -6.0)
+		return 0
+	var n := mini(cells.size(), afford)
+	Game.run["scaffold"] = energy - Balance.SCAFFOLD_ACTIVATE_COST - n * Balance.SCAFFOLD_CELL_COST
+	Game.run["ladders_built"] = int(Game.run.get("ladders_built", 0)) + 1
+	for i in n:
+		_ladder_queue.append(cells[i])
+	if n < cells.size() and hud:
+		hud.toast("SCAFFOLD RAN OUT")
+		hud.pulse_scaffold()
+	Audio.play_at("throw", by.global_position, -4.0)
+	return n
+
+
+func _grow_ladders(delta: float) -> void:
+	if _ladder_queue.is_empty():
+		return
+	_ladder_t += delta * Balance.SCAFFOLD_BUILD_RATE
+	while _ladder_t >= 1.0 and not _ladder_queue.is_empty():
+		_ladder_t -= 1.0
+		var c: Vector2i = _ladder_queue.pop_front()
+		if grid.get_mat(c.x, c.y) != Cell.AIR:
+			continue   # something fell or was built there meanwhile
+		grid.set_mat(c.x, c.y, Cell.LADDER)
+		grid.set_flag(c.x, c.y, Cell.F_PLAYER_BUILT | Cell.F_NO_RUBBLE)
+		fx.dust(grid.cell_center(c), Color(0.85, 0.72, 0.45), 3)
+		if _ladder_queue.size() % 3 == 0:
+			Audio.play_at("hit_soft", grid.cell_center(c), -12.0, 0.2, 0.0)
+	if _ladder_queue.is_empty():
+		_ladder_t = 0.0
 
 
 func drill_cell(c: Vector2i, amount: float, tier: int, by: Player) -> void:

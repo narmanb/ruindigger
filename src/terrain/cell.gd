@@ -19,6 +19,7 @@ const F_PROTECTED := 2   # never damaged by anything (lift, relic chamber shell)
 const F_DUG := 4         # was solid at generation time; shows back wall
 const F_CLAIMED := 8     # ore already paid out
 const F_WATER_SAFE := 32 # erosion immunity for guaranteed route bodies/supports
+const F_PLAYER_BUILT := 64 # ladder cell materialised by the player
 const F_NO_RUBBLE := 16  # rubble shatters instead of landing here
 
 # ore ids (see Balance.ORE)

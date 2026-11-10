@@ -58,14 +58,20 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("pause"):
+	if event.is_action_pressed("pause") and mine.hud.map_screen.is_open:
+		mine.hud.map_screen.close()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("pause"):
 		if is_open:
 			close()
 		elif not mine.ending:
 			open()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("map") and not is_open and not mine.ending:
-		open()
+		if mine.hud.map_screen.is_open:
+			mine.hud.map_screen.close()
+		else:
+			mine.hud.open_map()
 		get_viewport().set_input_as_handled()
 	elif is_open and event.is_action_pressed("ui_cancel"):
 		close()
@@ -74,7 +80,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
-		if mine and not mine.ending and not is_open and is_inside_tree():
+		if mine and not mine.ending and not is_open and is_inside_tree() and not mine.hud.map_screen.is_open:
 			open()
 
 

@@ -74,7 +74,20 @@ const UPGRADES := {
 		"desc": ["16 ore units", "24 ore units", "34 ore units", "46 ore units"]},
 	"hull": {"name": "HULL PLATING", "costs": [110, 260, 520],
 		"desc": ["100 hull", "130 hull", "165 hull", "210 hull"]},
+	"scaffold": {"name": "SCAFFOLD HOPPER", "costs": [90, 210, 430],
+		"desc": ["40 ladder energy", "70 ladder energy", "110 ladder energy", "160 ladder energy"]},
 }
+# --- Rubble Ladder (scaffold) ---
+# Broken rock packs into scaffold energy; spending it materialises a ladder
+# from the player's feet up to the first solid cell.
+const SCAFFOLD_CAPACITY := [40, 70, 110, 160]
+const SCAFFOLD_GAIN := {1: 1, 2: 2, 3: 1, 7: 1}   # per broken cell by material (soft, hard, loose, cracked)
+const SCAFFOLD_ORE_BONUS := 1
+const SCAFFOLD_ACTIVATE_COST := 2
+const SCAFFOLD_CELL_COST := 1
+const SCAFFOLD_MAX_LEN := 120
+const SCAFFOLD_BUILD_RATE := 60.0   # cells per second
+const CAMERA_LOOK_AHEAD := 0.11     # fraction of the visible width
 const CHARGE_PRICE := 25
 const CHARGES_FREE := 2
 const CHARGES_MAX := 6
@@ -272,6 +285,10 @@ func heat_capacity(level: int) -> float:
 
 func heat_cooling(level: int) -> float:
 	return HEAT_COOL_PER_SEC[clampi(level, 0, HEAT_COOL_PER_SEC.size() - 1)]
+
+
+func scaffold_capacity(level: int) -> int:
+	return SCAFFOLD_CAPACITY[clampi(level, 0, SCAFFOLD_CAPACITY.size() - 1)]
 
 
 func cargo_capacity(level: int) -> int:

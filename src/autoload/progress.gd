@@ -6,7 +6,7 @@ signal changed
 
 const PATH := "user://progress.json"
 const VERSION := 1
-const TRACKS := ["drill", "heat", "cargo", "hull"]
+const TRACKS := ["drill", "heat", "cargo", "hull", "scaffold"]
 
 var credits: int = 0
 var upgrades: Dictionary = {"drill": 0, "heat": 0, "cargo": 0, "hull": 0}

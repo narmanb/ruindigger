@@ -94,6 +94,8 @@ func start_run() -> void:
 		"kills": 0,
 		"time": 0.0,
 		"ore_mined": 0,
+		"scaffold": Balance.scaffold_capacity(Progress.level("scaffold")),
+		"ladders_built": 0,
 	}
 	goto("mine")
 

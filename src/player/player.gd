@@ -216,6 +216,8 @@ func _physics_process(delta: float) -> void:
 		_throw_charge(ay)
 	if _just("interact") and mine:
 		mine.player_interact(self)
+	if _just("ladder") and mine:
+		mine.build_ladder(self)
 
 	move_and_slide()
 	var now_floor := is_on_floor()
@@ -341,6 +343,15 @@ func _wall_dir() -> int:
 		if grid.solid_at(Vector2(px, global_position.y - 6)) and grid.solid_at(Vector2(px, global_position.y + 6)):
 			return d
 	return 0
+
+
+## Enough scaffold energy to raise at least one ladder cell?
+func can_build_ladder() -> bool:
+	return int(Game.run.get("scaffold", 0)) >= Balance.SCAFFOLD_ACTIVATE_COST + Balance.SCAFFOLD_CELL_COST
+
+
+func feet_cell() -> Vector2i:
+	return grid.world_to_cell(global_position + Vector2(0, HALF.y - 1.0))
 
 
 func _ladder_overlap() -> bool:

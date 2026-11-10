@@ -17,7 +17,20 @@ const DEFAULTS := {
 	"touch_scale": 1.0,
 	"touch_opacity": 0.65,
 	"show_fps": false,
+	"camera_zoom": 1.4,
+	"move_control": 1,      # 0 fixed stick, 1 floating stick, 2 d-pad
+	"stick_size": 1.0,
+	"stick_deadzone": 0.15,
+	# layout offsets (viewport px) dragged in the layout editor
+	"pos_move_x": 0.0, "pos_move_y": 0.0,
+	"pos_drill_x": 0.0, "pos_drill_y": 0.0,
+	"pos_jump_x": 0.0, "pos_jump_y": 0.0,
+	"pos_charge_x": 0.0, "pos_charge_y": 0.0,
+	"pos_interact_x": 0.0, "pos_interact_y": 0.0,
+	"pos_ladder_x": 0.0, "pos_ladder_y": 0.0,
 }
+
+const LAYOUT_KEYS := ["move", "drill", "jump", "charge", "interact", "ladder"]
 
 const RANGES := {
 	"master_volume": [0.0, 1.0],
@@ -27,6 +40,10 @@ const RANGES := {
 	"touch_mode": [0, 2],
 	"touch_scale": [0.7, 1.5],
 	"touch_opacity": [0.25, 1.0],
+	"camera_zoom": [1.0, 1.8],
+	"move_control": [0, 2],
+	"stick_size": [0.6, 1.8],
+	"stick_deadzone": [0.05, 0.35],
 }
 
 var values: Dictionary = DEFAULTS.duplicate()
@@ -53,6 +70,10 @@ func set_value(key: String, v: Variant) -> void:
 
 func _sanitize(key: String, v: Variant) -> Variant:
 	var def: Variant = DEFAULTS[key]
+	if key.begins_with("pos_"):
+		if typeof(v) != TYPE_INT and typeof(v) != TYPE_FLOAT or is_nan(float(v)) or is_inf(float(v)):
+			return 0.0
+		return clampf(float(v), -900.0, 900.0)
 	if typeof(def) == TYPE_BOOL:
 		return bool(v) if (typeof(v) == TYPE_BOOL or typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT) else def
 	if typeof(def) == TYPE_INT:
@@ -96,6 +117,25 @@ func apply() -> void:
 			var lin: float = values[bus[1]]
 			AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(lin, 0.0001)))
 			AudioServer.set_bus_mute(idx, lin <= 0.001)
+
+
+func layout_offset(name: String) -> Vector2:
+	return Vector2(float(values.get("pos_%s_x" % name, 0.0)), float(values.get("pos_%s_y" % name, 0.0)))
+
+
+func set_layout_offset(name: String, off: Vector2) -> void:
+	values["pos_%s_x" % name] = _sanitize("pos_%s_x" % name, off.x)
+	values["pos_%s_y" % name] = _sanitize("pos_%s_y" % name, off.y)
+	save_settings()
+	changed.emit()
+
+
+func reset_layout() -> void:
+	for n in LAYOUT_KEYS:
+		values["pos_%s_x" % n] = 0.0
+		values["pos_%s_y" % n] = 0.0
+	save_settings()
+	changed.emit()
 
 
 func shake_scale() -> float:

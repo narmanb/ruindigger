@@ -139,7 +139,8 @@ func _process(delta: float) -> void:
 	var vp := get_viewport()
 	var inv := vp.get_canvas_transform().affine_inverse()
 	var tl: Vector2 = inv * Vector2.ZERO
-	var size := vp.get_visible_rect().size
+	# with a zoomed camera the visible world area is smaller than the viewport
+	var size := vp.get_visible_rect().size / vp.get_canvas_transform().get_scale()
 	var want := Vector2i(int(ceil(size.x)) + 2, int(ceil(size.y)) + 2)
 	if sv.size != want:
 		sv.size = want

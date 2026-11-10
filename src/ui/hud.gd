@@ -18,6 +18,8 @@ var _toast_t := 0.0
 var _banner_t := 0.0
 var _hint_t := 0.0
 var _cargo_pulse := 0.0
+var _scaf_pulse := 0.0
+var map_screen: Node
 
 
 func _ready() -> void:
@@ -30,7 +32,7 @@ func _ready() -> void:
 	diag = Diag.new()
 	diag.hud = self
 	diag.position = Vector2(6, 6)
-	diag.size = Vector2(150, 62)
+	diag.size = Vector2(150, 74)
 	root.add_child(diag)
 	minimap = Minimap.new()
 	minimap.setup(mine)
@@ -41,6 +43,14 @@ func _ready() -> void:
 	minimap.offset_top = 6
 	minimap.offset_bottom = 58
 	root.add_child(minimap)
+	# tap the minimap to open the full survey map
+	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
+	minimap.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			open_map())
+	map_screen = load("res://src/ui/map_screen.gd").new()
+	map_screen.mine = mine
+	add_child(map_screen)
 	depth_panel = DepthPanel.new()
 	depth_panel.hud = self
 	depth_panel.anchor_left = 1.0
@@ -75,7 +85,7 @@ func _ready() -> void:
 	prompt_label.offset_top = -22
 	prompt_label.offset_bottom = -6
 	fps_label = UIKit.label("", 9, UIKit.MUTED)
-	fps_label.position = Vector2(8, 70)
+	fps_label.position = Vector2(8, 82)
 	root.add_child(fps_label)
 	touch = TouchControls.new()
 	touch.mine = mine
@@ -114,11 +124,22 @@ func pulse_cargo() -> void:
 	_cargo_pulse = 1.0
 
 
+func pulse_scaffold() -> void:
+	_scaf_pulse = 1.0
+
+
+func open_map() -> void:
+	if mine.ending or get_tree().paused:
+		return
+	map_screen.open()
+
+
 func _process(delta: float) -> void:
 	_toast_t -= delta
 	_banner_t -= delta
 	_hint_t -= delta
 	_cargo_pulse = maxf(0.0, _cargo_pulse - delta * 3.0)
+	_scaf_pulse = maxf(0.0, _scaf_pulse - delta * 2.0)
 	toast_label.modulate.a = clampf(_toast_t * 2.0, 0.0, 1.0)
 	banner_label.modulate.a = clampf(_banner_t * 1.5, 0.0, 1.0)
 	hint_label.modulate.a = clampf(_hint_t, 0.0, 1.0)
@@ -169,6 +190,10 @@ class Diag extends Control:
 				draw_rect(Rect2(r.position, Vector2(7, 2)), Color("ff8a8a"))
 			else:
 				draw_rect(r, Color(0.3, 0.25, 0.35), false, 1.0)
+		var scap: int = hud.mine.scaffold_cap()
+		var sn: int = Game.run.get("scaffold", 0)
+		var scol := Color("f2cc59").lerp(Color("ff5a4a"), hud._scaf_pulse)
+		_bar(f, 8, 61, "SCAF", float(sn) / scap, scol, "%d" % sn, hud._scaf_pulse > 0.5 and int(t * 8) % 2 == 0)
 		if Game.run.get("relic", false):
 			var rp := Vector2(size.x - 16, 50)
 			draw_colored_polygon(PackedVector2Array([rp + Vector2(0, -6), rp + Vector2(5, 0), rp + Vector2(0, 6), rp + Vector2(-5, 0)]), Color(0.4, 1.0, 1.0, 0.8 + 0.2 * sin(t * 5.0)))

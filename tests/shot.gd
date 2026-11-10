@@ -121,6 +121,24 @@ func _process(_d: float) -> void:
 		mine.damage_cell(Vector2i(22, 97), 99.0, 0, false, "shot")
 	if mine and args.has("charge") and frame == 40:
 		mine.player.input_override = {"charge_just": true, "x": 0.0}
+	if frame == 2:
+		for k in ["move_control", "touch_mode", "camera_zoom", "stick_size"]:
+			if args.has(k):
+				Settings.values[k] = Settings._sanitize(k, float(args[k]) if k in ["camera_zoom", "stick_size"] else int(args[k]))
+		Settings.changed.emit()
+	if mine and args.has("map") and frame == target - 6 and mine.get("hud") != null:
+		for y in range(0, mine.grid.h):
+			for x in range(0, mine.grid.w):
+				if (x + y * 3) % 7 != 0 and y < int(args["map"]):
+					mine.grid.set_flag(x, y, Cell.F_EXPLORED)
+					mine.hud.minimap.img.set_pixel(x, y, Minimap.cell_color(mine.grid, x, y))
+		mine.hud.open_map()
+		if args.has("mapzoom"):
+			mine.hud.map_screen.view.zoom_by(float(args["mapzoom"]) / 2.0, Vector2(320, 180))
+	if mine and args.has("ladder") and frame == target - 30:
+		mine.build_ladder(mine.player)
+	if mine and args.has("layout") and frame == target - 6:
+		get_tree().root.add_child(load("res://src/ui/layout_editor.gd").new())
 	if mine and args.has("pause") and frame == target - 5 and mine.get("pause_menu") != null:
 		mine.pause_menu.open()
 	if mine and args.has("panel") and frame == 30 and mine.has_method("_upgrade_panel"):

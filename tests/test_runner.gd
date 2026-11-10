@@ -279,6 +279,10 @@ func _save() -> void:
 	check(Settings._sanitize("screen_shake", "loud") == Settings.DEFAULTS["screen_shake"], "bad setting type -> default")
 	check(Settings._sanitize("touch_scale", 9.0) == 1.5, "setting clamped to range")
 	check(Settings._sanitize("reduced_flashing", 1) == true, "bool setting accepts ints")
+	check(Settings._sanitize("camera_zoom", 99.0) == 1.8 and Settings._sanitize("camera_zoom", "x") == 1.4, "camera zoom clamped / defaulted")
+	check(Settings._sanitize("move_control", 7) == 2 and Settings._sanitize("move_control", -3) == 0, "movement control mode clamped")
+	check(Settings._sanitize("stick_size", 0.1) == 0.6 and Settings._sanitize("stick_deadzone", NAN) == 0.15, "stick size / dead zone sanitised")
+	check(Settings._sanitize("pos_drill_x", 1e9) == 900.0 and Settings._sanitize("pos_jump_y", "left") == 0.0, "layout offsets sanitised")
 
 
 # ---------------------------------------------------------------------------
@@ -442,27 +446,111 @@ func _generation_v2_checks(tag: String, d: Dictionary, gen: MineGenerator) -> vo
 # ---------------------------------------------------------------------------
 func _ui() -> void:
 	section("ui layout")
+	var buttons: Array = TouchControls.default_buttons()
+	for aspect in [Vector2(640, 360), Vector2(780, 360), Vector2(853, 360), Vector2(640, 400), Vector2(576, 360)]:
+		var sr := Rect2(Vector2.ZERO, aspect)
+		for sc in [0.7, 1.0, 1.5]:
+			for mode in [TouchControls.MODE_FIXED, TouchControls.MODE_FLOATING, TouchControls.MODE_DPAD]:
+				var rects: Array[Rect2] = []
+				for b in buttons:
+					var p: Vector2 = TouchControls.button_pos(b, sr, sc, Vector2.ZERO)
+					var r: float = float(b["r"]) * sc
+					rects.append(Rect2(p - Vector2(r, r), Vector2(r, r) * 2.0))
+				var overlap := false
+				for i in rects.size():
+					for j in range(i + 1, rects.size()):
+						if rects[i].grow(-2.0).intersects(rects[j].grow(-2.0)):
+							overlap = true
+					var top_hud := Rect2(aspect.x - 180, 0, 180, 56)
+					if rects[i].intersects(top_hud) or rects[i].position.x < aspect.x * 0.45 or rects[i].position.y < 60:
+						overlap = true
+				# the resting stick / d-pad stays on screen, clear of the buttons and the HUD
+				var mr: float = 34.0 * sc * (1.25 if mode == TouchControls.MODE_DPAD else 1.0)
+				var mp := TouchControls.move_rest_pos(sr, mr, Vector2.ZERO)
+				var mrect := Rect2(mp - Vector2(mr, mr), Vector2(mr, mr) * 2.0)
+				if not sr.encloses(mrect) or mrect.intersects(Rect2(0, 0, 160, 80)):
+					overlap = true
+				for rc in rects:
+					if rc.intersects(mrect):
+						overlap = true
+				check(not overlap, "touch controls separate and clear of HUD at %dx%d scale %.1f mode %d" % [aspect.x, aspect.y, sc, mode])
+	# d-pad: all 8 directions give clean axes; the centre is dead
+	var want := {0: Vector2(1, 0), 45: Vector2(1, 1), 90: Vector2(0, 1), 135: Vector2(-1, 1), 180: Vector2(-1, 0), 225: Vector2(-1, -1), 270: Vector2(0, -1), 315: Vector2(1, -1)}
+	var dpad_ok := true
+	for deg in want.keys():
+		for jitter in [-14.0, 0.0, 14.0]:
+			var d := Vector2.RIGHT.rotated(deg_to_rad(float(deg) + jitter)) * 30.0
+			if TouchControls.move_vector(TouchControls.MODE_DPAD, d, 40.0, 0.15) != want[deg]:
+				dpad_ok = false
+	check(dpad_ok, "d-pad maps 8 directions (with finger jitter) to exact axes")
+	check(TouchControls.move_vector(TouchControls.MODE_DPAD, Vector2(3, 2), 40.0, 0.15) == Vector2.ZERO, "d-pad centre is a dead zone")
+	check(TouchControls.move_vector(TouchControls.MODE_FIXED, Vector2(4, 0), 40.0, 0.15).x == 0.0 and TouchControls.move_vector(TouchControls.MODE_FIXED, Vector2(30, 0), 40.0, 0.15).x == 0.75, "stick dead zone and proportional output")
+	check(TouchControls.move_vector(TouchControls.MODE_FLOATING, Vector2(400, 0), 40.0, 0.15).x == 1.0, "stick output saturates at 1")
+	# live synthetic touches
+	var keep := Settings.values.duplicate()
+	Settings.values["touch_mode"] = 1
+	Settings.values["touch_scale"] = 1.0
 	var tc := TouchControls.new()
 	add_child(tc)
-	for aspect in [Vector2(640, 360), Vector2(780, 360), Vector2(853, 360), Vector2(640, 400), Vector2(576, 360)]:
-		for sc in [0.7, 1.0, 1.5]:
-			Settings.values["touch_scale"] = sc
-			var rects: Array[Rect2] = []
-			for b in tc.buttons:
-				var p: Vector2 = Vector2(aspect.x, aspect.y) + (b["off"] as Vector2) * sc
-				var r: float = float(b["r"]) * sc
-				rects.append(Rect2(p - Vector2(r, r), Vector2(r, r) * 2.0))
-			var overlap := false
-			for i in rects.size():
-				for j in range(i + 1, rects.size()):
-					if rects[i].grow(-2.0).intersects(rects[j].grow(-2.0)):
-						overlap = true
-				var top_hud := Rect2(aspect.x - 180, 0, 180, 56)
-				if rects[i].intersects(top_hud) or rects[i].position.x < aspect.x * 0.45 or rects[i].position.y < 60:
-					overlap = true
-			check(not overlap, "touch buttons separate and clear of HUD at %dx%d scale %.1f" % [aspect.x, aspect.y, sc])
-	Settings.values["touch_scale"] = 1.0
+	var vp := tc.get_viewport_rect().size
+	Settings.values["move_control"] = TouchControls.MODE_FLOATING
+	_touch(tc, 0, Vector2(120, 200), true)
+	check(tc.stick_finger == 0 and tc.stick_center == Vector2(120, 200), "floating stick spawns under the finger")
+	_drag(tc, 0, Vector2(160, 200))
+	check(Input.is_action_pressed("move_right") and not Input.is_action_pressed("move_left"), "floating stick drives move_right")
+	var jump: Dictionary = tc.buttons[1]
+	_touch(tc, 1, tc._btn_pos(jump), true)
+	check(Input.is_action_pressed("jump") and Input.is_action_pressed("move_right"), "second finger jumps while the first keeps moving")
+	_touch(tc, 1, tc._btn_pos(jump), false)
+	_touch(tc, 0, Vector2(160, 200), false)
+	check(not Input.is_action_pressed("move_right") and not Input.is_action_pressed("jump"), "releasing fingers releases the actions")
+	_touch(tc, 0, Vector2(120, 30), true)
+	check(tc.stick_finger == -1, "floating stick does not spawn over the HUD row")
+	_touch(tc, 0, Vector2(120, 30), false)
+	_touch(tc, 0, Vector2(vp.x * 0.5, 200), true)
+	check(tc.stick_finger == -1, "floating stick does not spawn outside the left zone")
+	_touch(tc, 0, Vector2(vp.x * 0.5, 200), false)
+	Settings.values["move_control"] = TouchControls.MODE_FIXED
+	_touch(tc, 0, Vector2(300, 150), true)
+	check(tc.stick_finger == -1, "fixed stick ignores touches away from its base")
+	_touch(tc, 0, Vector2(300, 150), false)
+	_touch(tc, 0, tc._rest_pos() + Vector2(-20, 0), true)
+	check(tc.stick_finger == 0 and tc.stick_center == tc._rest_pos() and Input.is_action_pressed("move_left"), "fixed stick stays at its base and reads the offset")
+	_touch(tc, 0, tc._rest_pos(), false)
+	Settings.values["move_control"] = TouchControls.MODE_DPAD
+	_touch(tc, 0, tc._rest_pos() + Vector2(0, -25), true)
+	check(Input.is_action_pressed("aim_up") and not Input.is_action_pressed("move_left") and not Input.is_action_pressed("move_right"), "d-pad up aims up without walking")
+	_drag(tc, 0, tc._rest_pos() + Vector2(22, -22))
+	check(Input.is_action_pressed("aim_up") and Input.is_action_pressed("move_right"), "d-pad diagonal moves and aims")
+	_touch(tc, 0, tc._rest_pos(), false)
+	# layout editor: dragging a control stores an offset; reset clears it
+	tc.edit_mode = true
+	var drill: Dictionary = tc.buttons[0]
+	var before := tc._btn_pos(drill)
+	_touch(tc, 0, before, true)
+	_drag(tc, 0, before + Vector2(-40, -30))
+	_touch(tc, 0, before + Vector2(-40, -30), false)
+	check(tc._btn_pos(drill).distance_to(before + Vector2(-40, -30)) < 1.0, "layout editor drags a button to a new place")
+	Settings.values = keep.duplicate()
+	check(tc._btn_pos(drill).distance_to(before) < 1.0, "resetting the layout restores default positions")
+	tc._release_all()
 	tc.queue_free()
+	Settings.values = keep
+
+
+func _touch(tc: TouchControls, idx: int, pos: Vector2, down: bool) -> void:
+	var e := InputEventScreenTouch.new()
+	e.index = idx
+	e.position = pos
+	e.pressed = down
+	tc._input(e)
+
+
+func _drag(tc: TouchControls, idx: int, pos: Vector2) -> void:
+	var e := InputEventScreenDrag.new()
+	e.index = idx
+	e.position = pos
+	tc._input(e)
 
 
 func _ui_settings() -> void:
@@ -836,9 +924,112 @@ func _gameplay() -> void:
 	check(not mine.grid.is_solid(pp.x, pp.y) or true, "soak finished")
 	check(mine.view.redraw_count < 70 * 900 / 4, "chunk redraws stay incremental (%d)" % mine.view.redraw_count)
 	check(Game.current == mine, "soak run still alive (no crash/scene loss)")
+	await _v05_live()
 	await _floodgate_breach()
 	Game.goto("title", true)
 	await _frames(5)
+
+
+## 0.5 features in a live mine: Rubble Ladder, full-screen map, camera zoom.
+func _v05_live() -> void:
+	section("rubble ladder, map screen, camera zoom")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 4242
+	Game.start_run()
+	await _frames(30)
+	var mine: Node = Game.current
+	var g: TerrainGrid = mine.grid
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	check(int(Game.run["scaffold"]) == mine.scaffold_cap(), "run starts with a full scaffold meter (%d)" % Game.run["scaffold"])
+	# fixture: a solid block with two 17-cell shafts
+	for e in mine.enemies.duplicate():
+		mine.enemies.erase(e)
+		e.queue_free()
+	for y in range(148, 172):
+		for x in range(18, 34):
+			g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE | Cell.F_WATER_SAFE, false)
+			g.set_water(x, y, 0)
+			g.set_mat(x, y, Cell.BEDROCK if (x == 18 or x == 33 or y == 148 or y == 171) else Cell.HARD)
+	for y in range(152, 169):
+		g.set_mat(25, y, Cell.AIR)
+		g.set_mat(29, y, Cell.AIR)
+	g.set_mat(26, 168, Cell.AIR)
+	g.set_mat(27, 168, Cell.AIR)
+	g.set_mat(28, 168, Cell.AIR)
+	g.set_mat(26, 167, Cell.AIR)
+	g.set_mat(27, 167, Cell.AIR)
+	g.set_mat(28, 167, Cell.AIR)
+	await _frames(3)
+	pl.global_position = Vector2(25 * 16 + 8, 169 * 16 - Player.HALF.y - 0.5)
+	pl.velocity = Vector2.ZERO
+	pl.input_override = {"x": 0.0}
+	await _frames(10)
+	check(pl.feet_cell() == Vector2i(25, 168), "player stands at the shaft bottom %s" % str(pl.feet_cell()))
+	Game.run["scaffold"] = 40
+	var n: int = mine.build_ladder(pl)
+	check(n == 17 and int(Game.run["scaffold"]) == 40 - 2 - 17, "ladder plan fills the shaft to the ceiling: %d cells, %d energy left" % [n, Game.run["scaffold"]])
+	await _frames(40)
+	var built := 0
+	for y in range(152, 169):
+		if g.get_mat(25, y) == Cell.LADDER and g.has_flag(25, y, Cell.F_PLAYER_BUILT):
+			built += 1
+	check(built == 17 and g.get_mat(25, 151) == Cell.HARD, "ladder materialises up to the first solid cell (%d cells)" % built)
+	var e0 := int(Game.run["scaffold"])
+	check(mine.build_ladder(pl) == 0 and int(Game.run["scaffold"]) == e0, "building where a ladder already stands costs nothing")
+	pl.input_override = {"x": 0.0, "y": -1.0}
+	await _frames(150)
+	check(pl.feet_cell().y <= 154, "player climbs the built ladder (feet row %d)" % pl.feet_cell().y)
+	# partial build when energy is short
+	pl.input_override = {"x": 0.0}
+	pl.on_ladder = false
+	pl.global_position = Vector2(29 * 16 + 8, 169 * 16 - Player.HALF.y - 0.5)
+	pl.velocity = Vector2.ZERO
+	await _frames(10)
+	Game.run["scaffold"] = 7
+	n = mine.build_ladder(pl)
+	await _frames(20)
+	check(n == 5 and int(Game.run["scaffold"]) == 0 and g.get_mat(29, 164) == Cell.LADDER and g.get_mat(29, 163) == Cell.AIR, "short energy builds a partial ladder from the bottom (%d cells)" % n)
+	check(mine.build_ladder(pl) == 0 and not pl.can_build_ladder(), "empty scaffold builds nothing")
+	# energy comes from breaking rock
+	mine.damage_cell(Vector2i(30, 168), 99.0, 3, true, "drill")
+	check(int(Game.run["scaffold"]) == int(Balance.SCAFFOLD_GAIN[Cell.HARD]), "breaking basalt yields scaffold energy (%d)" % Game.run["scaffold"])
+	Game.run["scaffold"] = mine.scaffold_cap()
+	mine.damage_cell(Vector2i(31, 168), 99.0, 3, true, "drill")
+	check(int(Game.run["scaffold"]) == mine.scaffold_cap(), "scaffold energy is capped")
+	# a ladder never replaces solid cells, and passes one-way platforms
+	g.set_mat(29, 160, Cell.PLATFORM)
+	var plan: Array[Vector2i] = mine.ladder_plan(Vector2i(29, 168))
+	check(plan.size() == 11 and not plan.has(Vector2i(29, 160)) and plan.has(Vector2i(29, 152)), "ladder plan passes a platform and stops at rock (%d new cells)" % plan.size())
+	# camera zoom follows the setting
+	var keep_zoom: float = Settings.values["camera_zoom"]
+	Settings.values["camera_zoom"] = 1.6
+	Settings.changed.emit()
+	check(is_equal_approx(mine.camera.zoom.x, 1.6), "camera zoom follows the setting")
+	Settings.values["camera_zoom"] = keep_zoom
+	Settings.changed.emit()
+	# full-screen map
+	var ms: Node = mine.hud.map_screen
+	mine.hud.open_map()
+	check(ms.is_open and get_tree().paused, "opening the map pauses the game")
+	ms.view.size = get_viewport().get_visible_rect().size
+	ms.view.zoom_by(1000.0, Vector2(100, 100))
+	check(is_equal_approx(ms.view.zoom, MapScreen.ZOOM_MAX), "map zoom is clamped at the maximum")
+	ms.view.pan(Vector2(-1e6, -1e6))
+	var half: Vector2 = ms.view.size / ms.view.px() * 0.5
+	check(ms.view.centre.x <= g.w - half.x + 0.01 and ms.view.centre.y <= g.h - half.y + 0.01, "map panning stops at the map edge")
+	ms.view.zoom_by(0.0001, Vector2(100, 100))
+	check(is_equal_approx(ms.view.zoom, MapScreen.ZOOM_MIN), "map zoom is clamped at the minimum")
+	# (the anchor rule applies once the map is larger than the screen on both axes)
+	ms.view.zoom = 6.5
+	ms.view.centre = Vector2(g.w * 0.5, g.h * 0.5)
+	ms.view._clamp()
+	var before_c: Vector2 = ms.view.to_cell(Vector2(330, 170))
+	ms.view.zoom_by(1.2, Vector2(330, 170))
+	check(ms.view.to_cell(Vector2(330, 170)).distance_to(before_c) < 0.75, "zoom keeps the point under the fingers in place")
+	ms.close()
+	check(not ms.is_open and not get_tree().paused, "closing the map resumes the game")
+	pl.input_override = {}
 
 
 ## Dynamic generator scenario: breach a generated floodgate in a live mine, let

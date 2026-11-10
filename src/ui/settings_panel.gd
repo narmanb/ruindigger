@@ -42,8 +42,23 @@ func _ready() -> void:
 	ob.item_selected.connect(func(i: int) -> void: Settings.set_value("touch_mode", i))
 	row.add_child(ob)
 	list.add_child(row)
+	var row2 := HBoxContainer.new()
+	row2.add_child(_name("Movement control"))
+	var mc := OptionButton.new()
+	mc.add_item("Fixed stick", 0)
+	mc.add_item("Floating stick", 1)
+	mc.add_item("D-pad", 2)
+	mc.selected = int(Settings.get_value("move_control"))
+	mc.custom_minimum_size = Vector2(110, 24)
+	mc.item_selected.connect(func(i: int) -> void: Settings.set_value("move_control", i))
+	row2.add_child(mc)
+	list.add_child(row2)
+	_slider(list, "Stick / D-pad size", "stick_size", 0.6, 1.8, 0.05)
+	_slider(list, "Stick dead zone", "stick_deadzone", 0.05, 0.35, 0.01)
 	_slider(list, "Button size", "touch_scale", 0.7, 1.5, 0.05)
-	_slider(list, "Button opacity", "touch_opacity", 0.25, 1.0, 0.05)
+	_slider(list, "Control opacity", "touch_opacity", 0.25, 1.0, 0.05)
+	list.add_child(UIKit.button("EDIT TOUCH LAYOUT", _edit_layout, 200.0))
+	_slider(list, "Camera zoom", "camera_zoom", 1.0, 1.8, 0.05)
 	var back := UIKit.button("BACK", func() -> void:
 		closed.emit()
 		queue_free())
@@ -54,6 +69,16 @@ func _ready() -> void:
 	_center()
 	if first_focus:
 		first_focus.grab_focus()
+
+
+func _edit_layout() -> void:
+	var ed: Node = load("res://src/ui/layout_editor.gd").new()
+	visible = false
+	get_tree().root.add_child(ed)
+	ed.tree_exited.connect(func() -> void:
+		visible = true
+		if first_focus:
+			first_focus.grab_focus())
 
 
 ## Centre on the screen from the panel's real minimum size. (Setting anchors
