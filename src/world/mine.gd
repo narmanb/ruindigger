@@ -3,8 +3,8 @@ extends Node2D
 ## camera, and implements the shared rules (damage, explosions, loot).
 
 const C := 16
-const AMBIENT := [Color(0.42, 0.36, 0.33), Color(0.27, 0.35, 0.37), Color(0.27, 0.23, 0.36)]
-const MUSIC := ["amb_dust", "amb_spore", "amb_engine"]
+const AMBIENT := [Color(0.42, 0.36, 0.33), Color(0.27, 0.35, 0.37), Color(0.27, 0.23, 0.36), Color(0.22, 0.31, 0.42), Color(0.36, 0.25, 0.4)]
+const MUSIC := ["amb_dust", "amb_spore", "amb_engine", "amb_aqueduct", "amb_crystal"]
 
 var data: Dictionary
 var grid: TerrainGrid
@@ -135,7 +135,7 @@ func _additive() -> CanvasItemMaterial:
 func _build_parallax() -> void:
 	var far: Texture2D = load("res://assets/gen/bg_far.png")
 	var mid: Texture2D = load("res://assets/gen/bg_mid.png")
-	for s in 3:
+	for s in Balance.ZONE_COUNT:
 		for layer in 2:
 			var p := Parallax2D.new()
 			p.scroll_scale = Vector2(0.25, 0.3) if layer == 0 else Vector2(0.5, 0.55)
@@ -351,27 +351,19 @@ func shake(amount: float) -> void:
 
 
 func _atmosphere(delta: float) -> void:
-	var y := camera.get_screen_center_position().y / C
-	var s := Balance.stratum_of_row(int(y))
-	# blend ambient light across stratum boundaries
+	# the zone under the middle of the screen sets light, backdrop and music
+	var mid := camera.get_screen_center_position() / C
+	var y := mid.y
+	var s := grid.get_stratum(clampi(int(mid.x), 0, grid.w - 1), clampi(int(y), 0, grid.h - 1))
 	var target: Color = AMBIENT[s]
-	var b1: float = Balance.STRATUM_ROWS[1]
-	var b2: float = Balance.STRATUM_ROWS[2]
-	if absf(y - b1) < 8.0:
-		target = AMBIENT[0].lerp(AMBIENT[1], clampf((y - b1 + 8.0) / 16.0, 0.0, 1.0))
-	elif absf(y - b2) < 8.0:
-		target = AMBIENT[1].lerp(AMBIENT[2], clampf((y - b2 + 8.0) / 16.0, 0.0, 1.0))
 	if y < 12.0:
 		target = target.lerp(Color(0.55, 0.48, 0.44), clampf((12.0 - y) / 8.0, 0.0, 1.0))
 	modulate_node.color = modulate_node.color.lerp(target, clampf(delta * 3.0, 0.0, 1.0))
 	for entry in parallax:
-		var ps: int = entry[0]
 		var node: Parallax2D = entry[2]
-		var centre := (float(Balance.STRATUM_ROWS[ps]) + float(Balance.STRATUM_ROWS[ps + 1] if ps < 2 else Balance.MAP_H)) * 0.5
-		var half := (float(Balance.STRATUM_ROWS[ps + 1] if ps < 2 else Balance.MAP_H) - float(Balance.STRATUM_ROWS[ps])) * 0.5
-		var a := clampf(1.0 - (absf(y - centre) - half) / 10.0, 0.0, 1.0)
-		node.visible = a > 0.01
-		node.modulate.a = a
+		var want := 1.0 if int(entry[0]) == s else 0.0
+		node.modulate.a = move_toward(node.modulate.a, want, delta * 1.5)
+		node.visible = node.modulate.a > 0.01
 	if s != current_stratum:
 		current_stratum = s
 		Audio.music(MUSIC[s])

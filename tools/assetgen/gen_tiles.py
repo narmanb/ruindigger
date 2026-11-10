@@ -1,7 +1,10 @@
 """Terrain atlas generator.
 
-Atlas layout (terrain_atlas.png, 1024x1024):
-  4x4 grid of 256x256 blocks, one per (material, stratum) in BLOCKS order.
+Atlas layout (terrain_atlas.png, 2048x1024):
+  8x4 grid of 256x256 blocks, one per (material, stratum), at block_slot():
+  soft/hard/loose of stratum s at s*3 + 0/1/2, bedrock at 15 + s, alloy at 20.
+  Strata: 0 Dustworks, 1 Spore Veins, 2 Forgotten Engine, 3 Drowned
+  Aqueducts, 4 Crystal Hollows.
   Inside a block: 16x16 tiles of 16px. tile index = mask * 16 + variant,
   where mask = N|E<<1|S<<2|W<<3 (bit set = that side is exposed to open space)
   and variant = (cell_x % 4) + (cell_y % 4) * 4 (seamless 64px texture window).
@@ -29,10 +32,34 @@ RAMPS = {
     ("bedrock", 1): ["#020608", "#0a1418", "#122027", "#1b2e37", "#284150", "#3d5b6b"],
     ("bedrock", 2): ["#050309", "#100a17", "#1a1124", "#261a33", "#352648", "#4d3a66"],
     ("alloy", 0): ["#0b0812", "#1f182d", "#332947", "#4b3e66", "#6c5b8f", "#a090cc"],
+    # Drowned Aqueducts: wet slate and pale dressed stone
+    ("soft", 3): ["#070d17", "#12233a", "#1c3653", "#2c4a66", "#44698a", "#7fa6c4"],
+    ("hard", 3): ["#0a1018", "#1c2a38", "#2d4155", "#44607a", "#648aa6", "#a3c6dc"],
+    ("loose", 3): ["#0b1420", "#20344a", "#33506b", "#4d7391", "#739cb8", "#b4d6e8"],
+    ("bedrock", 3): ["#02050a", "#08111c", "#0f1c2b", "#18293b", "#24394f", "#38536c"],
+    # Crystal Hollows: dark violet rock shot through with bright facets
+    ("soft", 4): ["#120716", "#2a1230", "#41204a", "#5a2d5c", "#7c4480", "#b47ab8"],
+    ("hard", 4): ["#0f0818", "#261538", "#3f2459", "#5f3a82", "#8a5fb0", "#d1a8f0"],
+    ("loose", 4): ["#160a1c", "#33183e", "#522a62", "#77428c", "#a56cc0", "#e4bbf5"],
+    ("bedrock", 4): ["#06030a", "#110818", "#1c0f27", "#291838", "#3a244d", "#553a6b"],
 }
-BLOCKS = list(RAMPS.keys())
+BLOCKS = list(RAMPS.keys())   # order fixes each block's texture seed: append only
+STRATA = 5
+ATLAS_COLS = 8
+
+
+def block_slot(key):
+    """Where a block sits in the atlas (must match TerrainView.block_index)."""
+    mat, s = key
+    if mat == "alloy":
+        return 20
+    if mat == "bedrock":
+        return 15 + s
+    return s * 3 + ["soft", "hard", "loose"].index(mat)
+
 
 MOSS = ["#1e5b3a", "#3fa060", "#7fe08a"]
+ALGAE = ["#0f3d4a", "#1f7f8c", "#5fd0d8"]
 
 
 def rgb_ramp(cols):
@@ -81,6 +108,16 @@ def tex_soft(stratum, seed):
             x, y = r.integers(0, TEX, 2)
             extra.append((x, y, hexc("#9fb0c8")))
             extra.append(((x + 1) % TEX, y, hexc("#5d6a80")))
+    if stratum == 3:  # silt laid down in level bands, with pale shell flecks
+        lv = np.clip(lv + (np.arange(TEX)[:, None] % 8 == 0).astype(int) * -1, 1, 5)
+        for _ in range(12):
+            x, y = r.integers(0, TEX, 2)
+            extra.append((x, y, hexc("#bfe0f0")))
+    if stratum == 4:  # crystal grit
+        for _ in range(16):
+            x, y = r.integers(0, TEX, 2)
+            extra.append((x, y, hexc("#f0c8ff")))
+            extra.append(((x + 1) % TEX, (y + 1) % TEX, hexc("#7fe8ff")))
     if stratum == 0:  # tiny roots
         for _ in range(4):
             x, y = r.integers(0, TEX, 2)
@@ -91,8 +128,38 @@ def tex_soft(stratum, seed):
     return lv, extra
 
 
+def tex_ashlar(seed):
+    """Dressed stone courses (Drowned Aqueducts): 8px rows, staggered joints."""
+    r = np.random.default_rng(seed + 1)
+    lv = np.zeros((TEX, TEX), int)
+    n = fbm(TEX, TEX, 16, 3, seed + 3)
+    for row in range(TEX // 8):
+        y0 = row * 8
+        x = int(r.integers(0, 6))
+        start = x
+        while x < start + TEX:
+            w = int(r.integers(9, 15))
+            tone = int(r.integers(2, 5))
+            for xx in range(x, min(x + w, start + TEX)):
+                for yy in range(y0, y0 + 8):
+                    v = tone + (1 if n[yy, xx % TEX] > 0.62 else 0) - (1 if n[yy, xx % TEX] < 0.34 else 0)
+                    lv[yy, xx % TEX] = int(np.clip(v, 1, 5))
+                lv[y0, xx % TEX] = min(5, tone + 1)       # lit top edge
+                lv[y0 + 7, xx % TEX] = 0                  # mortar joint
+            lv[y0:y0 + 8, x % TEX] = 0
+            x += w
+    extra = []
+    for _ in range(6):   # damp streaks
+        x, y = r.integers(0, TEX, 2)
+        for i in range(int(r.integers(3, 7))):
+            extra.append((x, (y + i) % TEX, hexc("#1f7f8c")))
+    return lv, extra
+
+
 def tex_hard(stratum, seed):
-    f1, f2, ids = worley(TEX, TEX, 13, seed)
+    if stratum == 3:
+        return tex_ashlar(seed)
+    f1, f2, ids = worley(TEX, TEX, 13 if stratum != 4 else 9, seed)
     r = np.random.default_rng(seed + 1)
     base = r.random(ids.max() + 1) * 0.35 + 0.35
     hmap = -f1 / 10.0 + 0.15 * fbm(TEX, TEX, 16, 3, seed + 3)
@@ -108,6 +175,12 @@ def tex_hard(stratum, seed):
         for _ in range(8):
             x, y = r.integers(0, TEX, 2)
             extra.append((x, y, hexc("#c08cff")))
+    if stratum == 4:  # faceted crystal: hard light on one side of every cell
+        lv = np.where((lit > 0.62) & (lv > 0), np.minimum(lv + 1, 5), lv)
+        for _ in range(14):
+            x, y = r.integers(0, TEX, 2)
+            extra.append((x, y, hexc("#ffffff")))
+            extra.append(((x + 1) % TEX, y, hexc("#7fe8ff")))
     return lv, extra
 
 
@@ -118,7 +191,13 @@ def tex_loose(stratum, seed):
     v = base[ids] * (1.15 - f1 / 6.0)
     lv = quantize(np.clip(v, 0, 1), 4) + 1
     lv[(f2 - f1) < 1.0] = 0
-    return lv, []
+    extra = []
+    if stratum == 4:  # loose crystal shards catch the light
+        lv = np.where(lv >= 3, np.minimum(lv + 1, 5), lv)
+        for _ in range(18):
+            x, y = r.integers(0, TEX, 2)
+            extra.append((x, y, hexc("#ffffff")))
+    return lv, extra
 
 
 def tex_bedrock(stratum, seed):
@@ -178,7 +257,7 @@ def rough_1d(seed, maxv):
 
 def make_block(key, bi):
     mat, stratum = key
-    seed = 1000 + bi * 77
+    seed = 1000 + bi * 77   # bi = position in BLOCKS (stable), not the atlas slot
     lv, extra = TEXFN[mat](stratum, seed)
     ramp = rgb_ramp(RAMPS[key])
     tex = ramp[np.clip(lv, 0, 5)]
@@ -191,7 +270,8 @@ def make_block(key, bi):
     if mat == "alloy":
         rough = {k: np.zeros(TEX, int) for k in rough}
     block = np.zeros((256, 256, 4), np.uint8)
-    moss = rgb_ramp(MOSS)
+    moss = rgb_ramp(ALGAE if stratum == 3 else MOSS)
+    moss_p = {1: 0.8, 3: 0.3}.get(stratum, 0.0)
     rr = np.random.default_rng(seed + 99)
     for mask in range(16):
         N, E, S, W = bool(mask & 1), bool(mask & 2), bool(mask & 4), bool(mask & 8)
@@ -253,10 +333,10 @@ def make_block(key, bi):
             keep = ~(r1_up | r1_dn | r1_lf | r1_rt | r2_up)
             out[keep] = tile[keep]
             # spore moss on upward faces
-            if stratum == 1 and mat in ("soft", "hard", "loose"):
+            if moss_p > 0 and mat in ("soft", "hard", "loose"):
                 mz = r1_up | (boundary & up)
                 for yy, xx in zip(*np.nonzero(mz)):
-                    if rr.random() < 0.8:
+                    if rr.random() < moss_p:
                         out[yy, xx] = moss[1 if (xx + var) % 3 else 2]
                         if yy + 1 < T and solid[yy + 1, xx] and rr.random() < 0.4:
                             out[yy + 1, xx] = moss[0]
@@ -308,9 +388,9 @@ def make_cracks():
 
 
 def make_backwalls():
-    """Per stratum 64x64 seamless back-wall shown behind dug tunnels -> 192x64."""
-    out = np.zeros((64, 192, 4), np.uint8)
-    for s in range(3):
+    """Per stratum 64x64 seamless back-wall shown behind dug tunnels -> 320x64."""
+    out = np.zeros((64, 64 * STRATA, 4), np.uint8)
+    for s in range(STRATA):
         lv, _ = tex_soft(s, 4000 + s)
         ramp = rgb_ramp(RAMPS[("soft", s)])
         tex = ramp[np.clip(lv, 0, 5)].astype(float)
@@ -340,9 +420,10 @@ def make_alloy_glow():
 
 
 def main():
-    atlas = np.zeros((1024, 1024, 4), np.uint8)
+    atlas = np.zeros((1024, 256 * ATLAS_COLS, 4), np.uint8)
     for bi, key in enumerate(BLOCKS):
-        bx, by = bi % 4, bi // 4
+        slot = block_slot(key)
+        bx, by = slot % ATLAS_COLS, slot // ATLAS_COLS
         atlas[by * 256:(by + 1) * 256, bx * 256:(bx + 1) * 256] = make_block(key, bi)
     save(to_image(atlas), "terrain_atlas.png")
     save(to_image(make_cracks()), "cracks.png")

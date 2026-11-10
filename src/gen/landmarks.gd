@@ -115,11 +115,23 @@ func floodgate(prefer_stratum: int, strict: bool = false) -> bool:
 	return false
 
 
-func flooded_machinery() -> bool:
-	var relic_top: int = (gen.data["relic_room"] as Rect2i).position.y
+## Rows and columns of zone z that landmarks may use (clear of zone edges).
+func band(z: int) -> Rect2i:
+	var zr: Rect2i = Balance.ZONE_RECTS[z]
+	var top := 16 if z == Balance.Z_DUST else zr.position.y + (3 if z == Balance.Z_ENGINE else 8)
+	var bottom := zr.end.y - (1 if z == Balance.Z_ENGINE else 5)
+	return Rect2i(zr.position.x + 2, top, zr.size.x - 4, bottom - top)
+
+
+func _place(z: int, w: int, h: int) -> Rect2i:
+	var b := band(z)
+	return gen._place_landmark(w, h, b.position.y, b.end.y, 2, b.position.x, b.end.x)
+
+
+func flooded_machinery(z: int = Balance.Z_ENGINE) -> bool:
 	var w := rng.randi_range(12, 16)
 	var h := 9
-	var r := gen._place_landmark(w, h, Balance.STRATUM_ROWS[2] + 4, relic_top - 3, 2)
+	var r := _place(z, w, h)
 	if r.size.x == 0:
 		return false
 	gen.space.claim(r, "landmark", "flooded_machinery")
@@ -176,9 +188,7 @@ func flooded_machinery() -> bool:
 
 
 func hanging_gallery(s: int) -> bool:
-	var y_lo: int = 18 if s == 0 else Balance.STRATUM_ROWS[1] + 10
-	var y_hi: int = Balance.STRATUM_ROWS[1] - 6 if s == 0 else Balance.STRATUM_ROWS[2] - 6
-	var r := gen._place_landmark(rng.randi_range(16, 20), 8, y_lo, y_hi, 2)
+	var r := _place(s, rng.randi_range(16, 20), 8)
 	if r.size.x == 0:
 		return false
 	gen.space.claim(r, "landmark", "hanging_gallery")
@@ -210,11 +220,10 @@ func hanging_gallery(s: int) -> bool:
 	return true
 
 
-func survey_post() -> bool:
-	var band := rng.randi_range(0, 2)
-	var y_lo: int = [16, Balance.STRATUM_ROWS[1] + 6, Balance.STRATUM_ROWS[2] + 4][band]
-	var y_hi: int = [Balance.STRATUM_ROWS[1] - 6, Balance.STRATUM_ROWS[2] - 6, (gen.data["relic_room"] as Rect2i).position.y - 3][band]
-	var r := gen._place_landmark(9, 6, y_lo, y_hi, 2)
+func survey_post(z: int = -1) -> bool:
+	if z < 0:
+		z = rng.randi_range(0, Balance.ZONE_COUNT - 1)
+	var r := _place(z, 9, 6)
 	if r.size.x == 0:
 		return false
 	gen.space.claim(r, "landmark", "survey_post")
@@ -267,14 +276,15 @@ func vent_cluster() -> bool:
 	return false
 
 
-func cistern() -> bool:
+func cistern(z: int = Balance.Z_SPORE) -> bool:
+	var zb := band(z)
 	for attempt in 80:
 		var w1 := rng.randi_range(5, 6)
 		var w2 := rng.randi_range(4, 6)
 		var h1 := rng.randi_range(4, 6)
 		var drop := rng.randi_range(2, 3)
-		var x0 := rng.randi_range(5, Balance.MAP_W - w1 - w2 - 8)
-		var y0 := rng.randi_range(Balance.STRATUM_ROWS[1] + 8, Balance.STRATUM_ROWS[2] - h1 - drop - 6)
+		var x0 := rng.randi_range(zb.position.x + 2, zb.end.x - w1 - w2 - 4)
+		var y0 := rng.randi_range(zb.position.y, zb.end.y - h1 - drop - 2)
 		var a := Rect2i(x0, y0, w1, h1)                     # upper, full
 		var b := Rect2i(x0 + w1 + 1, y0 + drop, w2, h1)     # lower, empty
 		var whole := Rect2i(x0 - 1, y0 - 1, w1 + w2 + 3, h1 + drop + 2)
@@ -309,12 +319,13 @@ func cistern() -> bool:
 ## Fallback water encounter: a tall sealed reservoir buried in rock. Only needs
 ## a free patch of rock, so it fits even in crowded strata.
 func buried_reservoir(s: int) -> bool:
-	var y_lo: int = Balance.STRATUM_ROWS[s] + 6
-	var y_hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else (gen.data["relic_room"] as Rect2i).position.y) - 4
+	var zb := band(s)
+	var y_lo: int = zb.position.y
+	var y_hi: int = zb.end.y
 	for attempt in 240:
 		var w := rng.randi_range(4, 5)
 		var h := rng.randi_range(6, 8)
-		var x0 := rng.randi_range(4, Balance.MAP_W - w - 5)
+		var x0 := rng.randi_range(zb.position.x + 1, zb.end.x - w - 2)
 		var y0 := rng.randi_range(y_lo, maxi(y_lo, y_hi - h))
 		var inner := Rect2i(x0, y0, w, h)
 		var shell := inner.grow(1)
@@ -345,7 +356,10 @@ func buried_reservoir(s: int) -> bool:
 func _connect_to_route(from: Vector2) -> void:
 	var best := Vector2i(-1, -1)
 	var bd := 1 << 30
+	var z := g.get_stratum(int(from.x), int(from.y))
 	for rc in gen.data["route"]:
+		if g.get_stratum(rc.x, rc.y) != z:
+			continue   # never aim a passage through the bedrock between zones
 		var d: int = absi(rc.x - int(from.x)) + absi(rc.y - int(from.y))
 		if d < bd:
 			bd = d
@@ -353,3 +367,49 @@ func _connect_to_route(from: Vector2) -> void:
 	if best.x >= 0 and bd < 60:
 		gen.carver.tunnel(from, Vector2(best) + Vector2(0.5, -0.5), 1.3, 1.8, 0.25)
 		gen.branches += 1
+
+
+## Drowned Aqueducts: a long stone channel still full of water. Walk the rim
+## above it, dive for the ore on its bed, or crack an end wall low down and
+## send the whole length pouring into the galleries below.
+func aqueduct_channel() -> bool:
+	var w := rng.randi_range(16, 26)
+	var h := 6
+	var r := _place(Balance.Z_AQUEDUCT, w, h)
+	if r.size.x == 0:
+		r = _place(Balance.Z_AQUEDUCT, 14, h)
+	if r.size.x == 0:
+		return false
+	gen.space.claim(r, "landmark", "aqueduct")
+	var bed := r.end.y - 1                 # stone bed row
+	var water_top := bed - 2               # two rows of water
+	for y in range(r.position.y, r.end.y):
+		for x in range(r.position.x, r.end.x):
+			var edge := x == r.position.x or x == r.end.x - 1 or y == r.position.y or y == bed
+			g.put(x, y, Cell.HARD if edge else Cell.AIR)
+			gen.no_feature[Vector2i(x, y)] = true
+	# piers every few cells carry the vault (and give the swimmer cover)
+	var cells: Array = []
+	for x in range(r.position.x + 1, r.end.x - 1):
+		var pier := (x - r.position.x) % 6 == 3
+		for y in range(water_top, bed):
+			if pier:
+				g.put(x, y, Cell.HARD)
+			else:
+				cells.append(Vector2i(x, y))
+		if not pier and rng.randf() < 0.3:
+			g.put(x, bed, Cell.HARD, Cell.ORE_AETHER if rng.randf() < 0.35 else Cell.ORE_COBALT)
+	# the weak point: a cracked block low in one end wall
+	var weak_x := r.position.x if rng.randf() < 0.5 else r.end.x - 1
+	g.put(weak_x, bed - 1, Cell.CRACKED)
+	gen.seal_rect(r)
+	_water("aqueduct", r, cells, {"head": 2, "outlet": Vector2i(weak_x, bed - 1)})
+	# entrance over the rim at the far end from the weak point
+	var door_x := r.end.x - 1 if weak_x == r.position.x else r.position.x
+	var feet := water_top - 1
+	for dy in range(-1, 1):
+		g.put(door_x, feet + dy, Cell.AIR)
+	gen.data["entities"].append({"type": "lamp", "cell": Vector2i(r.position.x + r.size.x / 2, r.position.y + 1), "color": "6fd8ff"})
+	_connect_to_route(Vector2(door_x + (1.5 if door_x > weak_x else -0.5), feet - 0.5))
+	_record("aqueduct", r)
+	return true

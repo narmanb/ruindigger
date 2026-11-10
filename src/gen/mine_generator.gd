@@ -58,6 +58,15 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	enc_rng.seed = seed_value ^ 0x20636e65 ^ cseed
 	route_rng.seed = seed_value ^ 0x74756f72
 	space = GenSpace.new(W, H)
+	# nothing may be planned inside the bedrock around the zones
+	space.claim(Rect2i(0, 0, Balance.CORE_X0, Balance.SHELF_Y1), "void", "flank_w")
+	space.claim(Rect2i(Balance.CORE_X1, 0, W - Balance.CORE_X1, Balance.SHELF_Y1), "void", "flank_e")
+	space.claim(Rect2i(Balance.CORE_X0, Balance.STRATUM_ROWS[2], Balance.CORE_X1 - Balance.CORE_X0, Balance.SHELF_Y1 - Balance.STRATUM_ROWS[2]), "void", "shelf")
+	space.claim(Rect2i(Balance.DIVIDER_X0, Balance.SHELF_Y1, Balance.DIVIDER_X1 - Balance.DIVIDER_X0, Balance.VAULT_Y0 - Balance.SHELF_Y1), "void", "divider")
+	var zones: Array = []
+	for z in Balance.ZONE_COUNT:
+		zones.append({"id": z, "name": Balance.STRATUM_NAMES[z], "rect": Balance.ZONE_RECTS[z], "color": Balance.ZONE_COLORS[z]})
+	data["zones"] = zones
 	carver = ChamberCarver.new(self, topo)
 	_trace("start")
 	_base_fill(seed_value)
@@ -69,6 +78,7 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	_shaft()
 	_relay_station()
 	_relic_chamber()
+	_shelf_gates()
 	_trace("anchors")
 	_plan_chambers()
 	_trace("_plan_chambers()")
@@ -128,23 +138,49 @@ func _base_fill(seed_value: int) -> void:
 	warp.frequency = 0.04
 	for y in H:
 		for x in W:
-			var s := 0
-			for k in [1, 2]:
-				var b: int = Balance.STRATUM_ROWS[k] + int(round(2.5 * sin(x * 0.19 + phase + k)))
-				if y >= b:
-					s = k
+			var s := Balance.zone_of(x, y)
+			if s < 0 or x < 2 or x >= W - 2 or y < 2 or y >= H - 6:
+				# outside every zone: the unbreakable bedrock the world is cut into
+				g.stratum[g.idx(x, y)] = _void_stratum(x, y)
+				g.put(x, y, Cell.BEDROCK)
+				g.set_flag(x, y, Cell.F_PROTECTED)
+				continue
+			# wavy boundaries where two zones meet top-to-bottom
+			if s <= Balance.Z_SPORE:
+				s = Balance.Z_SPORE if y >= Balance.STRATUM_ROWS[1] + int(round(2.5 * sin(x * 0.19 + phase + 1.0))) else Balance.Z_DUST
+			elif y >= Balance.VAULT_Y0 + int(round(2.0 * sin(x * 0.17 + phase + 2.0))):
+				s = Balance.Z_ENGINE
+			elif y < Balance.VAULT_Y0:
+				s = Balance.Z_AQUEDUCT if x < Balance.DIVIDER_X0 else Balance.Z_CRYSTAL
+			else:
+				s = Balance.Z_AQUEDUCT if x < (Balance.DIVIDER_X0 + Balance.DIVIDER_X1) / 2 else Balance.Z_CRYSTAL
 			g.stratum[g.idx(x, y)] = s
 			var v := n.get_noise_2d(x, y)
-			var hard_thr: float = [0.28, 0.12, -0.02][s]
-			var m := Cell.HARD if v > hard_thr else Cell.SOFT
-			if s == 0:
-				# Dustworks: layered sediment. Thin, gently warped basalt beds
-				# instead of blobs, so the stratum reads as mining country.
-				var bed := sin(y * 0.52 + warp.get_noise_2d(x, y) * 2.2)
-				m = Cell.HARD if (bed > 0.82 or v > 0.42) else Cell.SOFT
-			if x < 2 or x >= W - 2 or y < 2 or y >= H - 6:
-				m = Cell.BEDROCK
+			var m := Cell.HARD if v > float(Balance.GEN_HARD_THRESH[s]) else Cell.SOFT
+			match s:
+				Balance.Z_DUST:
+					# Dustworks: layered sediment. Thin, gently warped basalt beds
+					# instead of blobs, so the stratum reads as mining country.
+					var bed := sin(y * 0.52 + warp.get_noise_2d(x, y) * 2.2)
+					m = Cell.HARD if (bed > 0.82 or v > 0.42) else Cell.SOFT
+				Balance.Z_AQUEDUCT:
+					# Drowned Aqueducts: level stone courses, like flooded masonry
+					var course := sin(y * 0.9 + warp.get_noise_2d(x, y) * 0.8)
+					m = Cell.HARD if (course > 0.45 or v > 0.34) else Cell.SOFT
+				Balance.Z_CRYSTAL:
+					# Crystal Hollows: steep, shard-like ribs of hard rock
+					var rib := sin(x * 0.55 + y * 0.21 + warp.get_noise_2d(x, y) * 3.0)
+					m = Cell.HARD if (rib > 0.35 or v > 0.22) else Cell.SOFT
 			g.put(x, y, m)
+
+
+## Tile set shown on bedrock outside the zones: whatever lies next to it.
+func _void_stratum(x: int, y: int) -> int:
+	if y >= Balance.VAULT_Y0:
+		return Balance.Z_ENGINE
+	if y >= Balance.SHELF_Y1:
+		return Balance.Z_AQUEDUCT if x < (Balance.DIVIDER_X0 + Balance.DIVIDER_X1) / 2 else Balance.Z_CRYSTAL
+	return Balance.Z_SPORE if y >= Balance.STRATUM_ROWS[1] else Balance.Z_DUST
 
 
 func _caves(seed_value: int) -> void:
@@ -157,31 +193,39 @@ func _caves(seed_value: int) -> void:
 	n2.frequency = 0.05
 	for y in range(12, H - 8):
 		for x in range(3, W - 3):
+			if g.mat[y * W + x] == Cell.BEDROCK:
+				continue
 			var s := g.get_stratum(x, y)
 			var v := 0.0
-			var thr := 0.0
 			match s:
-				0:
+				Balance.Z_DUST:
 					# long flat lenses between sediment beds
 					n.frequency = 0.06
 					v = n.get_noise_2d(x * 0.4, y * 1.9)
-					thr = 0.4
-				1:
+				Balance.Z_SPORE:
 					n.frequency = 0.045
 					v = n.get_noise_2d(x, y) * 0.8 + n2.get_noise_2d(x, y) * 0.35
-					thr = 0.33
-				2:
+				Balance.Z_ENGINE:
 					# the Engine is mostly worked rock: natural voids are rare
 					n.frequency = 0.05
 					v = n.get_noise_2d(x * 0.8, y * 1.2)
-					thr = 0.52
-			if v > thr:
+				Balance.Z_AQUEDUCT:
+					# drowned galleries: very long, low, level voids
+					n.frequency = 0.05
+					v = n.get_noise_2d(x * 0.3, y * 2.4)
+				Balance.Z_CRYSTAL:
+					# tall cracks and steep hollows
+					n.frequency = 0.05
+					v = n.get_noise_2d(x * 1.9, y * 0.45) * 0.85 + n2.get_noise_2d(x, y) * 0.3
+			if v > float(Balance.GEN_CAVE_THRESH[s]):
 				g.put(x, y, Cell.AIR)
 	# smooth twice (cellular automata) so walls read as organic shapes
 	for it in 2:
 		var copy := g.mat.duplicate()
 		for y in range(12, H - 8):
 			for x in range(3, W - 3):
+				if copy[y * W + x] == Cell.BEDROCK:
+					continue
 				var solid := 0
 				for dy in [-1, 0, 1]:
 					for dx in [-1, 0, 1]:
@@ -193,26 +237,26 @@ func _caves(seed_value: int) -> void:
 				elif solid <= 3 and Cell.is_solid(copy[i]) and copy[i] != Cell.BEDROCK:
 					g.put(x, y, Cell.AIR)
 	# fill tiny pockets (< 8 cells) so the map is not full of confetti holes
-	var seen: Dictionary = {}
-	for y in H:
-		for x in W:
-			var c := Vector2i(x, y)
-			if g.get_mat(x, y) != Cell.AIR or seen.has(c):
-				continue
-			var region: Array[Vector2i] = [c]
-			seen[c] = true
-			var head := 0
-			while head < region.size() and region.size() < 40:
-				var cc: Vector2i = region[head]
-				head += 1
-				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-					var nn: Vector2i = cc + d
-					if g.get_mat(nn.x, nn.y) == Cell.AIR and not seen.has(nn):
-						seen[nn] = true
-						region.append(nn)
-			if region.size() < 8:
-				for cc in region:
-					g.put(cc.x, cc.y, Cell.SOFT)
+	var seen := PackedByteArray()
+	seen.resize(W * H)
+	var region := PackedInt32Array()
+	for start in W * H:
+		if g.mat[start] != Cell.AIR or seen[start] == 1:
+			continue
+		region.clear()
+		region.append(start)
+		seen[start] = 1
+		var head := 0
+		while head < region.size() and region.size() < 40:
+			var cc := region[head]
+			head += 1
+			for nn in [cc + 1, cc - 1, cc + W, cc - W]:
+				if nn >= 0 and nn < W * H and g.mat[nn] == Cell.AIR and seen[nn] == 0:
+					seen[nn] = 1
+					region.append(nn)
+		if region.size() < 8:
+			for cc in region:
+				g.put(cc % W, cc / W, Cell.SOFT)
 
 
 # ---------------------------------------------------------------------------
@@ -226,20 +270,40 @@ func _carve_free(x: int, y: int) -> void:
 	g.put(x, y, Cell.AIR)
 
 
+func _zr(z: int) -> Rect2i:
+	return Balance.ZONE_RECTS[z]
+
+
+## A random cell inside zone z, at least `mx` from its sides, `top` below its
+## top edge (never above row `min_y`) and `bot` above its bottom edge.
+func _zone_cell(r: RandomNumberGenerator, z: int, mx: int, top: int, bot: int, min_y: int = 12) -> Vector2i:
+	var zr := _zr(z)
+	var lo := maxi(min_y, zr.position.y + top)
+	var hi := maxi(lo, zr.end.y - 1 - bot)
+	return Vector2i(r.randi_range(zr.position.x + mx, zr.end.x - 1 - mx), r.randi_range(lo, hi))
+
+
 func _worm_tunnels() -> void:
-	var count := rng.randi_range(2, 4)
-	for i in count:
-		var x := rng.randi_range(6, W - 7)
-		var y := rng.randi_range(16, Balance.STRATUM_ROWS[2] - 4)
-		var dir := Vector2(1 if rng.randf() < 0.5 else -1, 0)
-		for step in rng.randi_range(25, 60):
-			for dy in range(-1, 2):
-				for dx in range(0, 2):
-					_carve_free(int(x) + dx, int(y) + dy)
-			if rng.randf() < 0.18:
-				dir = Vector2(dir.x if rng.randf() < 0.7 else -dir.x, rng.randf_range(-0.9, 0.9))
-			x = clampi(int(round(x + dir.x)), 5, W - 7)
-			y = clampi(int(round(y + dir.y * 0.6 + (1 if rng.randf() < 0.08 else 0))), 15, H - 12)
+	# wandering burrows: a few in the core, one in each wing
+	var core := Rect2i(Balance.CORE_X0, 14, Balance.CORE_X1 - Balance.CORE_X0, Balance.STRATUM_ROWS[2] - 18)
+	for i in rng.randi_range(2, 4):
+		_worm(core)
+	for z in [Balance.Z_AQUEDUCT, Balance.Z_CRYSTAL]:
+		_worm((Balance.ZONE_RECTS[z] as Rect2i).grow(-3))
+
+
+func _worm(area: Rect2i) -> void:
+	var x := rng.randi_range(area.position.x + 3, area.end.x - 4)
+	var y := rng.randi_range(area.position.y + 2, area.end.y - 3)
+	var dir := Vector2(1 if rng.randf() < 0.5 else -1, 0)
+	for step in rng.randi_range(25, 60):
+		for dy in range(-1, 2):
+			for dx in range(0, 2):
+				_carve_free(int(x) + dx, int(y) + dy)
+		if rng.randf() < 0.18:
+			dir = Vector2(dir.x if rng.randf() < 0.7 else -dir.x, rng.randf_range(-0.9, 0.9))
+		x = clampi(int(round(x + dir.x)), area.position.x + 2, area.end.x - 4)
+		y = clampi(int(round(y + dir.y * 0.6 + (1 if rng.randf() < 0.08 else 0))), area.position.y + 1, area.end.y - 3)
 
 
 # ---------------------------------------------------------------------------
@@ -259,32 +323,33 @@ func _rect_fill(x0: int, y0: int, w: int, h: int, m: int, flags_on: int = 0, kee
 
 func _lift_room() -> void:
 	# Room interior x 28..43, y 4..9; lift cage centred at x 34.5, floor row 10.
-	var x0 := 27
+	var ox: int = Balance.CORE_X0
+	var x0 := 27 + ox
 	_rect_fill(x0, 2, 18, 8, Cell.AIR, Cell.F_NO_RUBBLE)
 	_rect_fill(x0, 10, 18, 2, Cell.HARD)
-	_rect_fill(32, 10, 6, 2, Cell.HARD, Cell.F_PROTECTED)
+	_rect_fill(32 + ox, 10, 6, 2, Cell.HARD, Cell.F_PROTECTED)
 	# shaft opening in the ceiling where the cable comes down
 	for y in range(0, 2):
-		for x in range(33, 37):
+		for x in range(33 + ox, 37 + ox):
 			g.put(x, y, Cell.AIR)
 			g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE)
 	# keep the bedrock ceiling over the room protected (it is anyway) + side walls normal
-	data["spawn"] = Vector2i(31, 9)
-	data["lift"] = Vector2i(35, 9)
+	data["spawn"] = Vector2i(31 + ox, 9)
+	data["lift"] = Vector2i(35 + ox, 9)
 	for y in range(2, 10):
 		for x in range(x0, x0 + 18):
 			no_feature[Vector2i(x, y)] = true
 			reserved[Vector2i(x, y)] = true
-	data["entities"].append({"type": "lift", "cell": Vector2i(35, 9), "id": "surface"})
-	data["entities"].append({"type": "lamp", "cell": Vector2i(29, 4)})
-	data["entities"].append({"type": "lamp", "cell": Vector2i(42, 4)})
-	data["entities"].append({"type": "sign", "cell": Vector2i(40, 9), "text": "SHAFT A"})
+	data["entities"].append({"type": "lift", "cell": Vector2i(35 + ox, 9), "id": "surface"})
+	data["entities"].append({"type": "lamp", "cell": Vector2i(29 + ox, 4)})
+	data["entities"].append({"type": "lamp", "cell": Vector2i(42 + ox, 4)})
+	data["entities"].append({"type": "sign", "cell": Vector2i(40 + ox, 9), "text": "SHAFT A"})
 	space.claim(Rect2i(x0, 0, 18, 12), "anchor", "lift_room")
 
 
 func _shaft() -> void:
 	# Old timber shaft: 3 wide, ladder on the east column, platforms every 7 rows.
-	var sx := 39
+	var sx := 39 + Balance.CORE_X0
 	var top := 10
 	var bottom := Balance.STRATUM_ROWS[1] - 8
 	for y in range(top, bottom + 1):
@@ -326,29 +391,83 @@ func _shaft() -> void:
 func _relay_station() -> void:
 	var y_floor := Balance.STRATUM_ROWS[1] + 8
 	var left := rng.randf() < 0.5
-	var x0 := 6 + rng.randi_range(0, 6) if left else W - 22 - rng.randi_range(0, 6)
-	_rect_fill(x0, y_floor - 5, 14, 6, Cell.AIR, Cell.F_NO_RUBBLE)
-	# the station floor is part of the structure: protected and a support, so no
-	# route shaft, branch tunnel or blast can leave the lift cage hanging
-	_rect_fill(x0, y_floor + 1, 14, 1, Cell.HARD, Cell.F_PROTECTED)
-	for x in range(x0, x0 + 14):
-		support[Vector2i(x, y_floor + 1)] = true
+	var x0 := Balance.CORE_X0 + 6 + rng.randi_range(0, 6) if left else Balance.CORE_X1 - 22 - rng.randi_range(0, 6)
+	data["relay"] = _station(x0, y_floor, "relay")
+
+
+## A lift station: a small protected room with a dormant relay lift. Returns the
+## lift cell. The floor is protected and a support, so nothing can undermine it.
+func _station(x0: int, y_floor: int, id: String) -> Vector2i:
 	for y in range(y_floor - 5, y_floor + 1):
 		for x in range(x0, x0 + 14):
+			if g.get_mat(x, y) != Cell.LADDER:
+				g.put(x, y, Cell.AIR)
+			g.set_flag(x, y, Cell.F_PROTECTED, false)
+			g.set_flag(x, y, Cell.F_NO_RUBBLE)
 			reserved[Vector2i(x, y)] = true
 			no_feature[Vector2i(x, y)] = true
-	data["relay"] = Vector2i(x0 + 7, y_floor)
-	space.claim(Rect2i(x0 - 2, y_floor - 6, 18, 9), "anchor", "relay")
-	data["entities"].append({"type": "lift", "cell": Vector2i(x0 + 7, y_floor), "id": "relay"})
+	for x in range(x0, x0 + 14):
+		if g.get_mat(x, y_floor + 1) != Cell.LADDER:
+			g.put(x, y_floor + 1, Cell.HARD)
+			g.set_flag(x, y_floor + 1, Cell.F_PROTECTED)
+			support[Vector2i(x, y_floor + 1)] = true
+	var cell := Vector2i(x0 + 7, y_floor)
+	space.claim(Rect2i(x0 - 2, y_floor - 6, 18, 9), "anchor", id)
+	data["entities"].append({"type": "lift", "cell": cell, "id": id})
 	data["entities"].append({"type": "lamp", "cell": Vector2i(x0 + 1, y_floor - 4)})
+	return cell
+
+
+## The bedrock shelf under the Spore Veins is open only at its two ends. Each
+## gate is an authored ladder shaft (bedrock cannot be cut into steps) from a
+## landing in the Spore Veins down to a lift station at the top of a wing.
+func _shelf_gates() -> void:
+	var gates: Array = []
+	var top_y: int = Balance.STRATUM_ROWS[2] - 1          # feet row of the landing above
+	var station_floor: int = Balance.SHELF_Y1 + 6          # feet row of the station below
+	for side in [-1, 1]:
+		var gx: int = Balance.CORE_X0 + 4 if side < 0 else Balance.CORE_X1 - 6
+		# landing alcove in the Spore Veins
+		var lx0: int = gx - 1 if side < 0 else gx - 6
+		for y in range(top_y - 3, top_y + 1):
+			for x in range(lx0, lx0 + 9):
+				g.put(x, y, Cell.AIR)
+				g.set_flag(x, y, Cell.F_NO_RUBBLE)
+				reserved[Vector2i(x, y)] = true
+				no_feature[Vector2i(x, y)] = true
+		for x in range(lx0, lx0 + 9):
+			if x != gx and x != gx + 1:
+				support[Vector2i(x, top_y + 1)] = true
+		# the station sits right under the shelf, reaching inward under the core
+		var sx0: int = gx - 2 if side < 0 else gx - 10
+		var lift := _station(sx0, station_floor, "relay_l" if side < 0 else "relay_r")
+		# the shaft through the shelf: 2 wide with a ladder, bedrock walls
+		for y in range(top_y - 1, station_floor + 1):
+			for x in [gx, gx + 1]:
+				g.set_flag(x, y, Cell.F_PROTECTED, false)
+				g.put(x, y, Cell.AIR)
+				g.set_flag(x, y, Cell.F_NO_RUBBLE)
+				reserved[Vector2i(x, y)] = true
+				no_feature[Vector2i(x, y)] = true
+			g.put(gx, y, Cell.LADDER)
+		space.claim(Rect2i(lx0 - 1, top_y - 4, 11, 6), "anchor", "gate_landing")
+		space.claim(Rect2i(gx - 1, Balance.STRATUM_ROWS[2], 4, Balance.SHELF_Y1 - Balance.STRATUM_ROWS[2]), "gate", "gate_shaft")
+		var top := Vector2i(gx + (3 if side < 0 else -2), top_y)
+		var bottom := Vector2i(lift.x + (5 if side < 0 else -5), station_floor)
+		gates.append({"side": side, "x": gx, "top": top, "bottom": bottom, "lift": lift, "zone": Balance.Z_AQUEDUCT if side < 0 else Balance.Z_CRYSTAL})
+		data["entities"].append({"type": "sign", "cell": Vector2i(gx + (4 if side < 0 else -3), top_y), "text": "WEST DESCENT" if side < 0 else "EAST DESCENT"})
+		data["entities"].append({"type": "lamp", "cell": Vector2i(gx + (5 if side < 0 else -4), top_y - 3)})
+	data["gates"] = gates
 
 
 func _relic_chamber() -> void:
 	var w := 16
 	var h := 9
-	var y0 := H - 6 - h - rng.randi_range(2, 5)
+	# the shared vault: both wings come down into the Forgotten Engine, and the
+	# relic chamber sits near its centre so either side is a fair way in
+	var y0 := H - 6 - h - rng.randi_range(2, 4)
 	var door_left := rng.randf() < 0.5
-	var x0 := rng.randi_range(14, W - w - 6) if door_left else rng.randi_range(5, W - w - 14)
+	var x0 := rng.randi_range(W / 2 - 22, W / 2 + 6)
 	# make sure surroundings are solid so the shell reads clearly
 	_rect_fill(x0 - 1, y0 - 1, w + 2, h + 2, Cell.HARD)
 	_rect_fill(x0, y0, w, h, Cell.ALLOY, Cell.F_PROTECTED)
@@ -413,9 +532,13 @@ func _set_pieces() -> void:
 
 ## Footprint for a landmark: free in GenSpace AND clear of the guaranteed
 ## route and its supports (landmarks are placed after the route is carved).
-func _place_landmark(rw: int, rh: int, y_lo: int, y_hi: int, margin: int) -> Rect2i:
+func _place_landmark(rw: int, rh: int, y_lo: int, y_hi: int, margin: int, x_lo: int = -1, x_hi: int = -1) -> Rect2i:
+	if x_lo < 0:
+		# callers that only give rows mean the core column
+		x_lo = Balance.CORE_X0 + 2
+		x_hi = Balance.CORE_X1 - 2
 	for attempt in 12:
-		var r := space.place(land_rng, rw, rh, y_lo, y_hi, margin)
+		var r := space.place(land_rng, rw, rh, y_lo, y_hi, margin, 40, x_lo, x_hi)
 		if r.size.x == 0:
 			continue
 		var clear := true
@@ -456,7 +579,7 @@ func _lm_grotto() -> void:
 
 
 func _lm_vault() -> void:
-	var r := _place_landmark(11, 7, Balance.STRATUM_ROWS[1] + 14, Balance.STRATUM_ROWS[2] - 6, 2)
+	var r := _place_landmark(11, 7, Balance.STRATUM_ROWS[1] + 14, Balance.STRATUM_ROWS[2] - 10, 2)
 	if r.size.x == 0:
 		return
 	space.claim(r, "landmark", "vault")
@@ -512,17 +635,78 @@ func _ellipse_air(cx: float, cy: float, rx: float, ry: float) -> void:
 # ---------------------------------------------------------------------------
 # Guaranteed route: shaft bottom -> relay station -> deep caves -> relic door.
 func _route() -> void:
-	## Guaranteed route: shaft bottom -> relay -> Spore Veins backbone chambers
-	## -> Engine backbone ruins -> one of several relic approaches -> door.
-	## Inside a backbone chamber its own (pre-checked) geometry carries the player
-	## from entry to exit, so the route takes on each chamber's character instead
-	## of being one long constructed corridor.
+	## Guaranteed route. Trunk: shaft bottom -> relay -> Spore Veins backbone
+	## chambers. At the bedrock shelf it splits: each side treks to its gate,
+	## drops into a wing, runs through that wing's backbone chambers and comes
+	## down into the Engine vault to the relic door. Inside a backbone chamber its
+	## own (pre-checked) geometry carries the player from entry to exit.
 	var relay: Vector2i = data["relay"]
-	var relay_entry := Vector2i(relay.x - 5 if relay.x > W / 2 else relay.x + 5, relay.y)
-	var pts: Array = [data["shaft_bottom"], relay_entry]
-	var prev: Vector2i = relay_entry
+	var mid_x: int = (Balance.CORE_X0 + Balance.CORE_X1) / 2
+	var relay_entry := Vector2i(relay.x - 5 if relay.x > mid_x else relay.x + 5, relay.y)
+	var trunk: Array = _chain(relay_entry, [Balance.Z_DUST, Balance.Z_SPORE])
+	var outside: Vector2i = data["door_outside"]
+	var side := -1 if data["door_left"] else 1
+	var approach: String = ["maintenance_shaft", "gallery", "direct"][route_rng.randi_range(0, 2)]
+	data["relic_approach"] = approach
+	var start: int = data["route"].size()
+	_build_leg_costs()
+	_trace("  leg costs")
+	var cur: Vector2i = data["shaft_bottom"]
+	_carve_leg(cur, relay_entry)
+	cur = _carve_chain(relay_entry, trunk)
+	var trunk_end := cur
+	data["trunk_end"] = trunk_end
+	for gate in data["gates"]:
+		# the trek along the shelf to this side's gate
+		_carve_leg(trunk_end, gate["top"])
+		var wing: Array = _chain(gate["bottom"], [gate["zone"]])
+		cur = _carve_chain(gate["bottom"], wing)
+		# the wing on the door's side gets the dressed approach; the other one
+		# simply finds its way to the door through the vault
+		var tail: Array[Vector2i] = [outside]
+		var dressed: bool = approach != "direct" and int(gate["side"]) == side
+		if dressed:
+			match approach:
+				"maintenance_shaft":
+					var sx := clampi(outside.x + side * 2, 4, W - 6)
+					tail = [Vector2i(sx, Balance.VAULT_Y0 + 2), Vector2i(sx, outside.y), outside]
+				"gallery":
+					var gx := clampi(outside.x + side * route_rng.randi_range(10, 16), 4, W - 6)
+					tail = [Vector2i(gx, Balance.VAULT_Y0 + 2), Vector2i(gx, outside.y), outside]
+		var tail_start: int = data["route"].size()
+		# the lined approach is an authored ruin structure: alloy walls cannot be
+		# cut into steps, so it is built with plank scaffolds and is never plugged
+		for k in tail.size():
+			_authored_leg = dressed and k > 0
+			_carve_leg(cur, tail[k])
+			cur = tail[k]
+		_authored_leg = false
+		# dress the final approach: ruin-built lining around the last stretch
+		if dressed:
+			var lined := 0
+			var from_k := tail_start
+			for k in range(tail_start, data["route"].size()):
+				if (data["route"][k] as Vector2i).y < Balance.VAULT_Y0 + 2:
+					from_k = k + 1
+			for k in range(from_k, data["route"].size()):
+				var rc: Vector2i = data["route"][k]
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, -1)]:
+					var n: Vector2i = rc + d
+					if g.is_solid(n.x, n.y) and not reserved.has(n) and writable(n.x, n.y) and g.get_mat(n.x, n.y) != Cell.ALLOY:
+						g.put(n.x, n.y, Cell.ALLOY)
+						no_feature[n] = true
+						lined += 1
+			data["approach_lined"] = lined
+	data["route_cells_main"] = data["route"].size() - start
+
+
+## Backbone chambers of the given zones as route steps from `from`:
+## ["leg", entry] carves a leg to the chamber, ["skip", exit] walks through it.
+func _chain(from: Vector2i, zones: Array) -> Array:
+	var out: Array = []
+	var prev := from
 	for c in chambers:
-		if not c["backbone"]:
+		if not c["backbone"] or not zones.has(int(c["stratum"])):
 			continue
 		var a: Vector2i = c["entry"]
 		var b: Vector2i = c["exit"]
@@ -530,56 +714,19 @@ func _route() -> void:
 			var t := a
 			a = b
 			b = t
-		pts.append(["leg", a])
-		pts.append(["skip", b])
+		out.append(["leg", a])
+		out.append(["skip", b])
 		prev = b
-	var outside: Vector2i = data["door_outside"]
-	var side := -1 if data["door_left"] else 1
-	var approach: String = ["maintenance_shaft", "gallery", "direct"][route_rng.randi_range(0, 2)]
-	data["relic_approach"] = approach
-	var tail: Array[Vector2i] = []
-	match approach:
-		"maintenance_shaft":
-			var sx := clampi(outside.x + side * 2, 4, W - 6)
-			tail = [Vector2i(sx, mini(prev.y, outside.y - 12)), Vector2i(sx, outside.y), outside]
-		"gallery":
-			var gx := clampi(outside.x + side * route_rng.randi_range(10, 16), 4, W - 6)
-			tail = [Vector2i(gx, prev.y), Vector2i(gx, outside.y), outside]
-		_:
-			tail = [outside]
-	var start: int = data["route"].size()
-	_build_leg_costs()
-	_trace("  leg costs")
-	var cur: Vector2i = data["shaft_bottom"]
-	_carve_leg(cur, relay_entry)
-	cur = relay_entry
-	for p in pts.slice(2):
-		var kind: String = p[0]
-		var q: Vector2i = p[1]
-		if kind == "leg":
-			_carve_leg(cur, q)
-		cur = q
-	var tail_start: int = data["route"].size()
-	# the lined approach is an authored ruin structure: alloy walls cannot be cut
-	# into steps, so it is built with plank scaffolds and is never plugged
-	_authored_leg = approach != "direct"
-	for q in tail:
-		_carve_leg(cur, q)
-		cur = q
-	_authored_leg = false
-	# dress the final approach: ruin-built lining around the last stretch
-	if approach != "direct":
-		var lined := 0
-		for k in range(tail_start, data["route"].size()):
-			var rc: Vector2i = data["route"][k]
-			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, -1)]:
-				var n: Vector2i = rc + d
-				if g.is_solid(n.x, n.y) and not reserved.has(n) and writable(n.x, n.y) and g.get_mat(n.x, n.y) != Cell.ALLOY:
-					g.put(n.x, n.y, Cell.ALLOY)
-					no_feature[n] = true
-					lined += 1
-		data["approach_lined"] = lined
-	data["route_cells_main"] = data["route"].size() - start
+	return out
+
+
+func _carve_chain(from: Vector2i, chain: Array) -> Vector2i:
+	var cur := from
+	for p in chain:
+		if p[0] == "leg":
+			_carve_leg(cur, p[1])
+		cur = p[1]
+	return cur
 
 
 # ---------------------------------------------------------------------------
@@ -715,7 +862,7 @@ var corridor_plugs := 0
 func _shaft_style(x: int, y0: int, y1: int) -> String:
 	if y1 - y0 <= RouteCheck.JUMP_CELLS:
 		return "open"   # a single jump covers it
-	var s := Balance.stratum_of_row(y0)
+	var s := g.get_stratum(x, y0)
 	if s == 0:
 		return "ladder"
 	if _authored_leg:
@@ -761,7 +908,7 @@ func _carve_plug_shaft(x: int, y0: int, y1: int) -> void:
 ## Now and then a corridor is left blocked by a short cracked wall the player
 ## has to drill through (never across caves, protected rock or the ends).
 func _corridor_plug(x0: int, x1: int, y: int, rock: Array) -> void:
-	if Balance.stratum_of_row(y) == 0 or _authored_leg:
+	if g.get_stratum(x0, y) == 0 or _authored_leg:
 		return
 	# one chance of a plug per stretch of corridor, never within 3 cells of an end
 	var x := x0 + 3
@@ -1213,7 +1360,10 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 	var centre := r.get_center()
 	var best := Vector2i(-1, -1)
 	var bd := 1 << 30
+	var zone := g.get_stratum(centre.x, centre.y)
 	for c in data["route"]:
+		if g.get_stratum(c.x, c.y) != zone:
+			continue   # never aim a passage through the bedrock between zones
 		var d: int = absi(c.x - centre.x) + absi(c.y - centre.y) * 2
 		if d < bd:
 			bd = d
@@ -1268,14 +1418,15 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 
 # ---------------------------------------------------------------------------
 func _loose_ceilings() -> void:
-	var counts := [14, 10, 6]
-	for s in 3:
+	var counts: Array = Balance.GEN_LOOSE
+	for s in Balance.ZONE_COUNT:
 		var placed := 0
 		var tries := 0
-		while placed < counts[s] and tries < 400:
+		while placed < int(counts[s]) and tries < 400:
 			tries += 1
-			var x := rng.randi_range(4, W - 8)
-			var y := rng.randi_range(maxi(14, Balance.STRATUM_ROWS[s] + 2), (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 10) - 2)
+			var lc := _zone_cell(rng, s, 5, 2, 4, 14)
+			var x := lc.x
+			var y := lc.y
 			# need: (x..x+w, y) solid support row with open air directly below,
 			# and two solid rows above it to become rubble
 			var w := rng.randi_range(2, 4)
@@ -1346,17 +1497,16 @@ func _hanging_boulders() -> void:
 			for y in range(maxi(0, r1.position.y), mini(H, r1.end.y)):
 				for x in range(maxi(0, r1.position.x), mini(W, r1.end.x)):
 					pmask[y * W + x] = 1
-	var counts := [5, 4, 2]
+	var counts: Array = Balance.GEN_BOULDERS
 	var placed_total := 0
-	for st in 3:
+	for st in Balance.ZONE_COUNT:
 		var placed := 0
 		var tries := 0
-		while placed < counts[st] and tries < 800:
+		while placed < int(counts[st]) and tries < 800:
 			tries += 1
-			var x := rng.randi_range(5, W - 6)
-			var lo: int = maxi(16, Balance.STRATUM_ROWS[st])
-			var hi: int = (Balance.STRATUM_ROWS[st + 1] if st < 2 else H - 10) - 8
-			var y := rng.randi_range(lo, hi)
+			var bc := _zone_cell(rng, st, 4, 1, 8, 16)
+			var x := bc.x
+			var y := bc.y
 			if not g.is_solid(x, y) or g.get_mat(x, y) == Cell.ALLOY:
 				continue
 			var ok := true
@@ -1383,54 +1533,63 @@ func _hanging_boulders() -> void:
 
 ## Hollow crystal geodes sealed in basalt.
 func _geodes() -> void:
-	var n := rng.randi_range(1, 3)
 	var made := 0
-	var tries := 0
-	while made < n and tries < 200:
-		tries += 1
-		var cx := rng.randi_range(8, W - 9)
-		var cy := rng.randi_range(Balance.STRATUM_ROWS[1] + 6, H - 16)
-		var rx := rng.randi_range(3, 5)
-		var ry := rng.randi_range(2, 4)
-		if not _free_region(cx, cy, rx + 1, ry + 1, false):
-			continue
-		space.claim(Rect2i(cx - rx - 1, cy - ry - 1, rx * 2 + 3, ry * 2 + 3), "feature", "geode%d" % made)
-		var kind := Cell.ORE_AETHER if cy > Balance.STRATUM_ROWS[2] else Cell.ORE_COBALT
-		for y in range(cy - ry - 1, cy + ry + 2):
-			for x in range(cx - rx - 1, cx + rx + 2):
-				var dx := (x + 0.5 - cx) / (rx + 0.5)
-				var dy := (y + 0.5 - cy) / (ry + 0.5)
-				var d := dx * dx + dy * dy
-				if d <= 0.55:
-					g.put(x, y, Cell.AIR)
-				elif d <= 1.0:
-					g.put(x, y, Cell.HARD, kind if rng.randf() < 0.55 else Cell.ORE_NONE)
-				elif d <= 1.6:
-					g.put(x, y, Cell.HARD)
-				no_feature[Vector2i(x, y)] = true
-		made += 1
+	for z in Balance.ZONE_COUNT:
+		var spec: Variant = Balance.GEN_GEODES[z]
+		var want: int = rng.randi_range(int(spec[0]), int(spec[1])) if typeof(spec) == TYPE_ARRAY else int(spec)
+		var done := 0
+		var tries := 0
+		while done < want and tries < 200:
+			tries += 1
+			if _geode(z, made):
+				made += 1
+				done += 1
 	data["geodes"] = made
+
+
+func _geode(z: int, made: int) -> bool:
+	var gc := _zone_cell(rng, z, 7, 6, 8, 14)
+	var cx := gc.x
+	var cy := gc.y
+	var rx := rng.randi_range(3, 5)
+	var ry := rng.randi_range(2, 4)
+	if not _free_region(cx, cy, rx + 1, ry + 1, false):
+		return false
+	space.claim(Rect2i(cx - rx - 1, cy - ry - 1, rx * 2 + 3, ry * 2 + 3), "feature", "geode%d" % made)
+	var kind := Cell.ORE_COBALT if z == Balance.Z_SPORE else Cell.ORE_AETHER
+	for y in range(cy - ry - 1, cy + ry + 2):
+		for x in range(cx - rx - 1, cx + rx + 2):
+			var dx := (x + 0.5 - cx) / (rx + 0.5)
+			var dy := (y + 0.5 - cy) / (ry + 0.5)
+			var d := dx * dx + dy * dy
+			if d <= 0.55:
+				g.put(x, y, Cell.AIR)
+			elif d <= 1.0:
+				g.put(x, y, Cell.HARD, kind if rng.randf() < 0.55 else Cell.ORE_NONE)
+			elif d <= 1.6:
+				g.put(x, y, Cell.HARD)
+			no_feature[Vector2i(x, y)] = true
+	return true
 
 
 ## Sealed flooded pockets. Treasure lines the floor; breach the wall and the
 ## water floods out into whatever you have dug.
 func _water_pockets() -> void:
 	# small groundwater pockets: common but modest, irregular blobs
-	var counts := [water_rng.randi_range(1, 2), water_rng.randi_range(2, 3), water_rng.randi_range(0, 1)]
+	var counts: Array = []
+	for z in Balance.ZONE_COUNT:
+		counts.append(water_rng.randi_range(int(Balance.GEN_POCKETS[z][0]), int(Balance.GEN_POCKETS[z][1])))
 	var pockets: Array = []
-	for st in 3:
+	for st in Balance.ZONE_COUNT:
 		var placed := 0
 		var tries := 0
 		while placed < counts[st] and tries < 400:
 			tries += 1
 			var rx := water_rng.randi_range(2, 5)
 			var ry := water_rng.randi_range(2, 3)
-			var cx := water_rng.randi_range(6 + rx, W - 7 - rx)
-			var lo: int = maxi(18, Balance.STRATUM_ROWS[st] + ry + 2)
-			var hi: int = (Balance.STRATUM_ROWS[st + 1] if st < 2 else H - 10) - ry - 3
-			if hi <= lo:
-				continue
-			var cy := water_rng.randi_range(lo, hi)
+			var pc := _zone_cell(water_rng, st, 4 + rx, ry + 2, ry + 3, 18)
+			var cx := pc.x
+			var cy := pc.y
 			if not _free_region(cx, cy, rx + 2, ry + 2, true):
 				continue
 			space.claim(Rect2i(cx - rx - 2, cy - ry - 2, rx * 2 + 5, ry * 2 + 5), "water", "pocket%d" % pockets.size())
@@ -1528,7 +1687,7 @@ func _contained(cells: Array) -> bool:
 func _ensure_water_encounter() -> void:
 	for wf in data["water_features"]:
 		var r: Rect2i = wf["rect"]
-		if wf["kind"] != "pocket" and int(wf.get("cells", 0)) >= 20 and Balance.stratum_of_row(r.get_center().y) == 1:
+		if wf["kind"] != "pocket" and int(wf.get("cells", 0)) >= 20 and g.get_stratum(r.get_center().x, r.get_center().y) == Balance.Z_SPORE:
 			return
 	var lm := Landmarks.new(self, water_rng)
 	if OS.get_environment("RD_TRACE") != "":
@@ -1628,6 +1787,25 @@ func _landmarks_v2() -> void:
 			odds["floodgate"] = 0.8
 		"quiet":
 			odds["flooded_machinery"] = 0.4
+	# the wings carry their biome's signature set pieces
+	var channels := 0
+	for k in land_rng.randi_range(int(Balance.GEN_AQUEDUCT_CHANNELS[0]), int(Balance.GEN_AQUEDUCT_CHANNELS[1])):
+		if lm.aqueduct_channel():
+			channels += 1
+	data["aqueduct_channels"] = channels
+	if land_rng.randf() < 0.8:
+		lm.floodgate(Balance.Z_AQUEDUCT, true)
+	if land_rng.randf() < 0.6:
+		lm.cistern(Balance.Z_AQUEDUCT)
+	if land_rng.randf() < 0.5:
+		lm.flooded_machinery(Balance.Z_AQUEDUCT)
+	var galleries := 0
+	for k in land_rng.randi_range(1, 2):
+		if lm.hanging_gallery(Balance.Z_CRYSTAL):
+			galleries += 1
+	data["crystal_galleries"] = galleries
+	if land_rng.randf() < 0.5:
+		lm.survey_post(Balance.Z_CRYSTAL)
 	# a deterministic but shuffled order, so the same few don't always win space
 	var order: Array = ["floodgate", "flooded_machinery", "hanging_gallery", "cistern", "survey_post", "vent_cluster"]
 	for i in range(order.size() - 1, 0, -1):
@@ -1642,13 +1820,13 @@ func _landmarks_v2() -> void:
 			"floodgate":
 				lm.floodgate(land_rng.randi_range(0, 1))
 			"flooded_machinery":
-				lm.flooded_machinery()
+				lm.flooded_machinery(Balance.Z_ENGINE)
 			"hanging_gallery":
 				lm.hanging_gallery(land_rng.randi_range(0, 1))
 			"cistern":
 				lm.cistern()
 			"survey_post":
-				lm.survey_post()
+				lm.survey_post(land_rng.randi_range(0, 2))
 			"vent_cluster":
 				lm.vent_cluster()
 				if cid == "gas":
@@ -1664,7 +1842,7 @@ func _landmarks_v2() -> void:
 		var ok := false
 		match kind:
 			"survey_post":
-				ok = lm.survey_post()
+				ok = lm.survey_post(land_rng.randi_range(0, 1))
 			"hanging_gallery":
 				ok = lm.hanging_gallery(land_rng.randi_range(0, 1))
 			"cistern":
@@ -1702,16 +1880,17 @@ func _ore() -> void:
 	## reward exploration (seams on chamber walls, sparse fault veins, a fossil
 	## band in the sediment, exposed hints leading into richer hidden pockets).
 	var mult: float = contract.get("ore", 1.0)
-	var counts := [int(24 * mult), int(21 * mult), int(18 * mult)]
-	for s in 3:
+	var counts: Array = []
+	for z in Balance.ZONE_COUNT:
+		counts.append(int(float(Balance.GEN_ORE_VEINS[z]) * mult))
+	for s in Balance.ZONE_COUNT:
 		var placed := 0
 		var tries := 0
 		while placed < counts[s] and tries < 2000:
 			tries += 1
-			var x := ore_rng.randi_range(3, W - 4)
-			var lo: int = maxi(12, Balance.STRATUM_ROWS[s])
-			var hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 7) - 1
-			var y := ore_rng.randi_range(lo, hi)
+			var oc := _zone_cell(ore_rng, s, 1, 0, 1, 12)
+			var x := oc.x
+			var y := oc.y
 			if not _ore_ok(x, y):
 				continue
 			if ore_rng.randf() < 0.7 and not _near_open(x, y, 3):
@@ -1734,14 +1913,12 @@ func _ore() -> void:
 			if _contact_seam(c):
 				data["ore_structures"]["seams"] += 1
 	# fault veins: long, sparse, angled lines through rock
-	for s in 3:
+	for s in Balance.ZONE_COUNT:
 		for k in ore_rng.randi_range(1, 2):
-			var lo: int = maxi(14, Balance.STRATUM_ROWS[s])
-			var hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 8) - 1
-			var p := Vector2(ore_rng.randi_range(5, W - 6), ore_rng.randi_range(lo, hi))
+			var p := Vector2(_zone_cell(ore_rng, s, 3, 0, 2, 14))
 			var ang := ore_rng.randf_range(0.5, 1.1) * (1.0 if ore_rng.randf() < 0.5 else -1.0)
 			var dir := Vector2(cos(ang), sin(ang))
-			var kind: int = [Cell.ORE_COPPER, Cell.ORE_COBALT, Cell.ORE_AETHER][s] if ore_rng.randf() < 0.8 else _pick_ore(s, int(p.y))
+			var kind: int = int(Balance.GEN_ZONE_ORE[s]) if ore_rng.randf() < 0.8 else _pick_ore(s, int(p.y))
 			for t in ore_rng.randi_range(12, 22):
 				var c := Vector2i(int(round(p.x + dir.x * t)), int(round(p.y + dir.y * t)))
 				if _ore_ok(c.x, c.y) and ore_rng.randf() < 0.42 * mult:
@@ -1749,7 +1926,7 @@ func _ore() -> void:
 			data["ore_structures"]["faults"] += 1
 	# fossil band: one sedimentary horizon in the Dustworks
 	var by := ore_rng.randi_range(22, Balance.STRATUM_ROWS[1] - 12)
-	for x in range(3, W - 3):
+	for x in range(Balance.CORE_X0 + 1, Balance.CORE_X1 - 1):
 		var y := by + int(round(sin(x * 0.2) * 1.5))
 		if _ore_ok(x, y) and ore_rng.randf() < 0.09:
 			g.ore[g.idx(x, y)] = Cell.ORE_FOSSIL
@@ -1780,7 +1957,7 @@ func _contact_seam(c: Dictionary) -> bool:
 		set_[w] = true
 	var cur: Vector2i = walls[ore_rng.randi_range(0, walls.size() - 1)]
 	var s: int = c["stratum"]
-	var kind: int = [Cell.ORE_COPPER, Cell.ORE_COBALT, Cell.ORE_AETHER if ore_rng.randf() < 0.5 else Cell.ORE_COBALT][s]
+	var kind: int = [Cell.ORE_COPPER, Cell.ORE_COBALT, Cell.ORE_AETHER if ore_rng.randf() < 0.5 else Cell.ORE_COBALT, Cell.ORE_COBALT, Cell.ORE_AETHER if ore_rng.randf() < 0.6 else Cell.ORE_COBALT][s]
 	var length := ore_rng.randi_range(4, 8)
 	var placed := 0
 	for k in length:
@@ -1813,8 +1990,8 @@ func _hint_pocket(c: Dictionary, premium: int) -> bool:
 	if into == Vector2i.ZERO:
 		return false
 	var s: int = c["stratum"]
-	var hint_kind: int = [Cell.ORE_COPPER, Cell.ORE_COBALT, Cell.ORE_COBALT][s]
-	var rich_kind: int = premium if premium > 0 else [Cell.ORE_COBALT, Cell.ORE_AETHER, Cell.ORE_AETHER][s]
+	var hint_kind: int = [Cell.ORE_COPPER, Cell.ORE_COBALT, Cell.ORE_COBALT, Cell.ORE_COPPER, Cell.ORE_COBALT][s]
+	var rich_kind: int = premium if premium > 0 else [Cell.ORE_COBALT, Cell.ORE_AETHER, Cell.ORE_AETHER, Cell.ORE_AETHER, Cell.ORE_AETHER][s]
 	g.ore[g.idx(w.x, w.y)] = hint_kind
 	var centre := w + into * 3
 	var made := 0
@@ -1840,6 +2017,10 @@ func _pick_ore(s: int, y: int) -> int:
 			return Cell.ORE_FOSSIL if r < 0.08 else (Cell.ORE_COBALT if r < 0.14 and y > 50 else Cell.ORE_COPPER)
 		1:
 			return Cell.ORE_AETHER if r < 0.06 else (Cell.ORE_COPPER if r < 0.3 else Cell.ORE_COBALT)
+		Balance.Z_AQUEDUCT:
+			return Cell.ORE_AETHER if r < 0.12 else (Cell.ORE_COPPER if r < 0.3 else Cell.ORE_COBALT)
+		Balance.Z_CRYSTAL:
+			return Cell.ORE_COBALT if r < 0.5 else Cell.ORE_AETHER
 		_:
 			return Cell.ORE_COBALT if r < 0.42 else Cell.ORE_AETHER
 
@@ -1848,17 +2029,20 @@ func _gas() -> void:
 	## Background gas: fewer than before (vent clusters carry the drama) and
 	## never within two cells of the guaranteed route, so it is opt-in.
 	var mult: float = contract.get("gas", 1.0)
-	var counts := [int(round(2 * mult)), int(round(7 * mult)), int(round(3 * mult))]
+	var counts: Array = []
+	for z in Balance.ZONE_COUNT:
+		counts.append(int(round(float(Balance.GEN_GAS[z]) * mult)))
 	var anchors: Array = [data["spawn"], data["relay"], data["door_outside"]]
-	for s in 3:
+	for gate in data["gates"]:
+		anchors.append(gate["lift"])
+	for s in Balance.ZONE_COUNT:
 		var placed := 0
 		var tries := 0
 		while placed < counts[s] and tries < 1500:
 			tries += 1
-			var x := enc_rng.randi_range(3, W - 4)
-			var lo: int = maxi(16, Balance.STRATUM_ROWS[s])
-			var hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 7) - 1
-			var y := enc_rng.randi_range(lo, hi)
+			var gc := _zone_cell(enc_rng, s, 2, 1, 2, 16)
+			var x := gc.x
+			var y := gc.y
 			var far := true
 			for a in anchors:
 				if absi(a.x - x) + absi(a.y - y) < 9:
@@ -1890,12 +2074,14 @@ func _enemies() -> void:
 	## Crawlers by role first (a guard in optional chambers, a patrol on backbone
 	## chambers), then the remaining budget as wanderers in natural caves.
 	var mult: float = contract.get("crawlers", 1.0)
-	var counts := [int(round(3 * mult)), int(round(5 * mult)), int(round(3 * mult))]
+	var counts: Array = []
+	for z in Balance.ZONE_COUNT:
+		counts.append(int(round(float(Balance.GEN_CRAWLERS[z]) * mult)))
 	var total := 0
 	for e in data["entities"]:
 		if e["type"] == "crawler":
 			total += 1
-			counts[Balance.stratum_of_row(e["cell"].y)] -= 1
+			counts[g.get_stratum(e["cell"].x, e["cell"].y)] -= 1
 	var spawn: Vector2i = data["spawn"]
 	var relay: Vector2i = data["relay"]
 	var order: Array = chambers.duplicate()
@@ -1920,14 +2106,13 @@ func _enemies() -> void:
 		data["entities"].append({"type": "crawler", "cell": cell, "role": "patrol" if c["backbone"] else "guard"})
 		counts[s] -= 1
 		total += 1
-	for s in 3:
+	for s in Balance.ZONE_COUNT:
 		var tries := 0
 		while counts[s] > 0 and tries < 800 and total < Balance.CRAWLER_CAP:
 			tries += 1
-			var x := enc_rng.randi_range(4, W - 5)
-			var lo: int = maxi(20, Balance.STRATUM_ROWS[s])
-			var hi: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else H - 7) - 1
-			var y := enc_rng.randi_range(lo, hi)
+			var ec := _zone_cell(enc_rng, s, 2, 1, 2, 20)
+			var x := ec.x
+			var y := ec.y
 			if not _crawler_ok(x, y, spawn, relay):
 				continue
 			data["entities"].append({"type": "crawler", "cell": Vector2i(x, y), "role": "wander"})
@@ -1992,17 +2177,19 @@ func _dig_valid() -> bool:
 	var dc := DigCheck.new(g, door_open_cells())
 	var from_spawn := dc.costs_from(data["spawn"])
 	var outside: Vector2i = data["door_outside"]
-	var from_door := dc.costs_from(outside)
 	data["dig_down_s"] = GenMetrics._near(dc, from_spawn, outside)
-	data["dig_relay_s"] = GenMetrics._near(dc, from_door, data["relay"])
-	data["dig_up_s"] = GenMetrics._near(dc, from_door, data["lift"])
-	data["dig_relic_s"] = GenMetrics._near(dc, from_door, data["relic"])
-	# the time budget for the way out assumes Rubble Ladders (priced in seconds)
+	# every wing entrance must be reachable on the way down
+	var gates_ok := true
+	for gate in data["gates"]:
+		if GenMetrics._near(dc, from_spawn, gate["lift"]) < 0.0:
+			gates_ok = false
+	# the way out may use Rubble Ladders (priced in seconds, see DigCheck)
 	dc.allow_ladder = true
 	var with_ladder := dc.costs_from(outside)
 	data["climb_up_s"] = GenMetrics._near(dc, with_ladder, data["lift"])
 	data["climb_relay_s"] = GenMetrics._near(dc, with_ladder, data["relay"])
-	return data["dig_down_s"] >= 0.0 and data["dig_down_s"] <= Balance.FAIR_DIG_BUDGET_DOWN \
+	data["dig_relic_s"] = GenMetrics._near(dc, with_ladder, data["relic"])
+	return gates_ok and data["dig_down_s"] >= 0.0 and data["dig_down_s"] <= Balance.FAIR_DIG_BUDGET_DOWN \
 		and data["climb_up_s"] >= 0.0 and data["climb_up_s"] <= Balance.FAIR_DIG_BUDGET_UP \
 		and data["dig_relic_s"] >= 0.0 and data["climb_relay_s"] >= 0.0
 
@@ -2103,8 +2290,8 @@ func _prop_kind(c: Vector2i, prng: RandomNumberGenerator) -> String:
 				wet = true
 	if wet:
 		return "crate" if prng.randf() < 0.55 else "canister"
-	var s := Balance.stratum_of_row(c.y)
-	if s == 2:
+	var s := g.get_stratum(c.x, c.y)
+	if s == Balance.Z_ENGINE:
 		return "scrap" if prng.randf() < 0.6 else "canister"
 	var k := space.kind_at(c)
 	if s == 0 and (k == "chamber" or k == "landmark") and prng.randf() < 0.6:

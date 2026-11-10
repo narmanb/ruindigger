@@ -37,6 +37,10 @@ def far_layer(stratum):
         base, dark, accent = "#2a1a12", "#1c120c", "#3d281a"
     elif stratum == 1:
         base, dark, accent = "#0d2226", "#081619", "#123238"
+    elif stratum == 3:
+        base, dark, accent = "#0c1a2c", "#070f1c", "#14283f"
+    elif stratum == 4:
+        base, dark, accent = "#1c0d26", "#110818", "#2c153a"
     else:
         base, dark, accent = "#1a1226", "#110b1a", "#251a36"
     img[..., :3] = dither_grad(H, W, base, dark)
@@ -68,6 +72,29 @@ def far_layer(stratum):
             fill_mask(img, cap & (ys <= top + 2), "#0f3a36")
             spots = cap & ((xs * 7 + ys * 3) % 23 == 0)
             fill_mask(img, spots, "#2ab3a0")
+    elif stratum == 3:
+        # drowned arcades: rows of tall arches receding into the dark
+        for k, (y0, span, tone) in enumerate([(70, 46, "#081320"), (150, 64, "#060e18")]):
+            for x0 in range(int(r.integers(0, span)), W + span, span):
+                dx = ((xs - x0 + W / 2) % W) - W / 2
+                pier = np.abs(dx) < span * 0.14
+                arch = (np.abs(dx) < span * 0.5) & (ys < y0 - (span * 0.36) * np.sqrt(np.clip(1 - (dx / (span * 0.5)) ** 2, 0, 1)) + 6)
+                fill_mask(img, (pier | arch) & (ys > y0 - span * 0.9) & (ys < y0 + 60), tone)
+            fill_mask(img, (ys >= y0 + 58) & (ys < y0 + 62), "#1b4a66")     # waterline glint
+    elif stratum == 4:
+        # giant crystal spires, some with a lit facet
+        for k in range(9):
+            x0 = int(r.integers(0, W))
+            base_y = int(r.integers(120, H))
+            hgt = int(r.integers(60, 170))
+            wid = int(r.integers(8, 22))
+            lean = float(r.uniform(-0.25, 0.25))
+            t = np.clip((base_y - ys) / hgt, 0, 1)
+            dx = ((xs - x0 - lean * (base_y - ys) + W / 2) % W) - W / 2
+            spire = (np.abs(dx) < wid * (1 - t)) & (ys <= base_y) & (ys > base_y - hgt)
+            fill_mask(img, spire, "#0d0616")
+            fill_mask(img, spire & (dx > 0) & (dx < wid * (1 - t) * 0.45), "#3a1b55")
+            fill_mask(img, spire & (np.abs(dx - 1) < 1) & ((ys + x0) % 9 < 5), "#c58cff")
     else:
         # distant colossal machinery: gears and vertical conduits with lights
         for k in range(3):
@@ -91,8 +118,8 @@ def mid_layer(stratum):
     img = np.zeros((H, W, 4), np.float64)
     r = np.random.default_rng(50 + stratum)
     ys, xs = np.mgrid[0:H, 0:W]
-    sil = {0: "#140c07", 1: "#04100e", 2: "#0a0610"}[stratum]
-    hi = {0: "#2e1e12", 1: "#0f2d2a", 2: "#221636"}[stratum]
+    sil = {0: "#140c07", 1: "#04100e", 2: "#0a0610", 3: "#050c16", 4: "#0c0513"}[stratum]
+    hi = {0: "#2e1e12", 1: "#0f2d2a", 2: "#221636", 3: "#1a3550", 4: "#3a1c52"}[stratum]
     if stratum == 0:
         # horizontal pipes & wooden cross beams
         for k in range(3):
@@ -118,6 +145,33 @@ def mid_layer(stratum):
             fill_mask(img, m, sil)
             dots = m & ((ys + x0) % 31 == 0)
             fill_mask(img, dots, "#3ee0c0")
+    elif stratum == 3:
+        # broken channel walls and thin falls of water
+        for k in range(3):
+            y0 = int(r.integers(20, H - 30))
+            th = int(r.integers(8, 14))
+            gap0 = int(r.integers(0, W))
+            m = (ys >= y0) & (ys < y0 + th) & (((xs - gap0) % W) > 70)
+            fill_mask(img, m, sil)
+            fill_mask(img, m & (ys == y0), hi)
+            fill_mask(img, m & ((xs + y0) % 16 == 0), "#081320")
+            fall = (np.abs(((xs - gap0 - 72 + W / 2) % W) - W / 2) < 2) & (ys >= y0 + th)
+            fill_mask(img, fall & ((ys + xs) % 5 < 3), "#3fa8d8", 150)
+    elif stratum == 4:
+        # near crystal clusters hanging from above and rising from below
+        for k in range(10):
+            x0 = int(r.integers(0, W))
+            from_top = k % 2 == 0
+            hgt = int(r.integers(30, 90))
+            wid = int(r.integers(5, 12))
+            edge_y = 0 if from_top else H
+            dist = (ys - edge_y) if from_top else (edge_y - ys)
+            t = np.clip(dist / hgt, 0, 1)
+            dx = ((xs - x0 + W / 2) % W) - W / 2
+            shard = (np.abs(dx) < wid * (1 - t)) & (dist >= 0) & (dist < hgt)
+            fill_mask(img, shard, sil)
+            fill_mask(img, shard & (dx < -wid * (1 - t) * 0.4), hi)
+            fill_mask(img, shard & (np.abs(dx) < 1) & (dist % 11 < 3), "#ff9af0")
     else:
         # machine frames: big rectangles with rivet lines and circuit glows
         for k in range(4):
@@ -226,8 +280,8 @@ def outpost_layers():
 
 
 def main():
-    far = np.concatenate([far_layer(s) for s in range(3)], 0)
-    mid = np.concatenate([mid_layer(s) for s in range(3)], 0)
+    far = np.concatenate([far_layer(s) for s in range(5)], 0)
+    mid = np.concatenate([mid_layer(s) for s in range(5)], 0)
     save(to_image(far), "bg_far.png")
     save(to_image(mid), "bg_mid.png")
     save(to_image(fore_layer()), "bg_fore.png")

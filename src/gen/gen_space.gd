@@ -52,6 +52,8 @@ func overlaps() -> Array:
 		for j in range(i + 1, claims.size()):
 			if claims[i]["kind"] == "anchor" and claims[j]["kind"] == "anchor":
 				continue   # the shaft, its landing and the lift room are one structure
+			if claims[i]["kind"] in ["void", "gate"] or claims[j]["kind"] in ["void", "gate"]:
+				continue   # bedrock outside the zones; gate shafts are cut through it on purpose
 			if (claims[i]["rect"] as Rect2i).intersects(claims[j]["rect"]):
 				out.append([claims[i]["id"], claims[j]["id"]])
 	return out

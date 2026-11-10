@@ -229,8 +229,8 @@ class DepthPanel extends Control:
 		var depth := int(maxf(0.0, pl.global_position.y / Balance.CELL - 9.0) * Balance.METERS_PER_CELL)
 		draw_string(f, Vector2(6, 11), "DEPTH", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UIKit.MUTED)
 		draw_string(f, Vector2(44, 12), "%4d M" % depth, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UIKit.AMBER)
-		var s := Balance.stratum_of_row(int(pl.global_position.y / Balance.CELL))
-		draw_string(f, Vector2(6, 23), Balance.STRATUM_NAMES[s], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, [Color("e0a060"), Color("6ff3d0"), Color("b48cff")][s])
+		var s: int = mine.grid.get_stratum(int(pl.global_position.x / Balance.CELL), int(pl.global_position.y / Balance.CELL))
+		draw_string(f, Vector2(6, 23), Balance.STRATUM_NAMES[s], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Balance.ZONE_COLORS[s])
 		# objective compass
 		var target: Vector2
 		var label := ""
@@ -243,7 +243,7 @@ class DepthPanel extends Control:
 			var best: Node2D = null
 			var bd := INF
 			for l in mine.lifts:
-				if not l.active and l.id != "relay":
+				if not l.active and not String(l.id).begins_with("relay"):
 					continue
 				var d: float = l.global_position.distance_to(pl.global_position)
 				if d < bd:

@@ -226,7 +226,7 @@ const CRAWLER_ATTACK_COOLDOWN := 1.1
 const CRAWLER_REPATH := 0.45
 const CRAWLER_TUNNEL_TIME := 1.6    # s to chew one sediment cell
 const CRAWLER_PATH_RADIUS := 22
-const CRAWLER_CAP := 16
+const CRAWLER_CAP := 20
 
 # --- Ruin Sentry ---
 const SENTRY_HP := 55.0
@@ -242,10 +242,40 @@ const SENTRY_BOLT_DAMAGE := 12.0
 const POWER_MODULE_HP := 14.0
 
 # --- World generation ---
-const MAP_W := 72
-const MAP_H := 214
-const STRATUM_ROWS := [2, 72, 142]  # row where each stratum begins
-const STRATUM_NAMES := ["DUSTWORKS", "SPORE VEINS", "FORGOTTEN ENGINE"]
+# World shape (0.5): the Dustworks and Spore Veins sit in a central column.
+# Under them a bedrock shelf is open only at its far ends; each end drops into
+# a wing with its own biome, and both wings meet in the Forgotten Engine vault.
+#
+#            +---- core: 0 Dustworks ----+
+#            |         1 Spore Veins     |
+#   +--------+==== bedrock shelf ========+--------+
+#   | 3 Drowned Aqueducts  ||  4 Crystal Hollows  |
+#   +----------- 2 Forgotten Engine (vault) ------+
+const MAP_W := 128
+const MAP_H := 236
+const CORE_X0 := 28                 # central column spans CORE_X0 .. CORE_X1-1
+const CORE_X1 := 100
+const STRATUM_ROWS := [2, 72, 142]  # Dustworks top, Spore Veins top, shelf top
+const SHELF_Y1 := 150               # shelf rows STRATUM_ROWS[2] .. SHELF_Y1-1
+const VAULT_Y0 := 206               # wings span SHELF_Y1 .. VAULT_Y0-1
+const DIVIDER_X0 := 62              # bedrock wall between the wings
+const DIVIDER_X1 := 66
+# zone id == stratum id stored in the grid (tiles, light, music, generation)
+const Z_DUST := 0
+const Z_SPORE := 1
+const Z_ENGINE := 2
+const Z_AQUEDUCT := 3
+const Z_CRYSTAL := 4
+const ZONE_COUNT := 5
+const STRATUM_NAMES := ["DUSTWORKS", "SPORE VEINS", "FORGOTTEN ENGINE", "DROWNED AQUEDUCTS", "CRYSTAL HOLLOWS"]
+const ZONE_COLORS := [Color("e0a060"), Color("6ff3d0"), Color("b48cff"), Color("5fb4ff"), Color("ff7ad9")]
+const ZONE_RECTS := [
+	Rect2i(28, 2, 72, 70),      # Dustworks
+	Rect2i(28, 72, 72, 70),     # Spore Veins
+	Rect2i(2, 206, 124, 24),    # Forgotten Engine vault
+	Rect2i(2, 150, 60, 56),     # Drowned Aqueducts (left wing)
+	Rect2i(66, 150, 60, 56),    # Crystal Hollows (right wing)
+]
 const METERS_PER_CELL := 2.0
 
 # --- generation v2 -----------------------------------------------------------
@@ -255,7 +285,24 @@ const GEN_ARCH_WEIGHTS := {
 	0: [["works", 3], ["hall", 3], ["terraces", 2], ["fissure", 1]],
 	1: [["terraces", 3], ["hall", 2], ["fissure", 2]],
 	2: [["ruin", 1]],
+	3: [["terraces", 3], ["hall", 4]],                    # aqueducts: wide, wet, level
+	4: [["fissure", 3], ["hall", 2], ["terraces", 1]],   # crystal: tall cracks and vaults
 }
+# per-zone generation budgets, indexed by zone id
+#                       dust spore engine aqueduct crystal
+const GEN_CHAMBERS :=     [3,   4,    3,     3,       3]
+const GEN_CAVE_THRESH :=  [0.4, 0.33, 0.52,  0.42,    0.36]
+const GEN_HARD_THRESH :=  [0.28, 0.12, -0.02, 0.2,    0.0]
+const GEN_LOOSE :=        [14,  10,   5,     5,       26]
+const GEN_BOULDERS :=     [5,   4,    2,     1,       5]
+const GEN_POCKETS :=      [[1, 2], [2, 3], [0, 1], [3, 5], [0, 1]]
+const GEN_ORE_VEINS :=    [24,  21,   10,    13,      16]
+const GEN_GAS :=          [2,   7,    2,     1,       3]
+const GEN_CRAWLERS :=     [3,   5,    2,     3,       3]
+const GEN_GEODES :=       [0,   [1, 2], [0, 1], [0, 1], [3, 5]]
+const GEN_AQUEDUCT_CHANNELS := [2, 3]
+# primary ore per zone for fault veins (Cell.ORE_* ids: 1 copper, 2 cobalt, 3 aetherite, 4 fossil)
+const GEN_ZONE_ORE :=     [1,   2,    3,     2,       3]
 const GEN_CATHEDRAL_CHANCE := 0.55
 # base odds of each optional landmark (contracts adjust them in MineGenerator)
 const GEN_LANDMARK_ODDS := {"survey_post": 0.6, "hanging_gallery": 0.7, "flooded_machinery": 0.65, "cistern": 0.45, "vent_cluster": 0.3, "floodgate": 0.55}
@@ -272,6 +319,8 @@ const GEN_SHAFT_STYLE := {
 	0: [1.0, 0.0, 0.0, 0.0],
 	1: [0.05, 0.2, 0.3, 0.45],
 	2: [0.0, 0.15, 0.3, 0.55],
+	3: [0.0, 0.25, 0.3, 0.45],
+	4: [0.0, 0.1, 0.4, 0.5],
 }
 const GEN_CORRIDOR_PLUG_CHANCE := 0.8   # per plug opportunity below the Dustworks
 const GEN_CORRIDOR_PLUG_LEN := [3, 7]
@@ -322,9 +371,18 @@ func ore_color(id: int) -> Color:
 	return Color.WHITE
 
 
+## Zone at a cell, or -1 for the solid bedrock outside every zone.
+func zone_of(x: int, y: int) -> int:
+	for z in ZONE_COUNT:
+		if (ZONE_RECTS[z] as Rect2i).has_point(Vector2i(x, y)):
+			return z
+	return -1
+
+
+## Legacy helper (rows only): prefer TerrainGrid.get_stratum / zone_of.
 func stratum_of_row(row: int) -> int:
-	if row >= STRATUM_ROWS[2]:
-		return 2
+	if row >= VAULT_Y0:
+		return Z_ENGINE
 	if row >= STRATUM_ROWS[1]:
-		return 1
-	return 0
+		return Z_SPORE
+	return Z_DUST

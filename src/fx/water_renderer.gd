@@ -20,6 +20,8 @@ const COLORS := [
 	[Color(0.24, 0.56, 0.86, 0.72), Color(0.07, 0.25, 0.54, 0.88), Color(0.74, 0.92, 1.0, 0.95)],
 	[Color(0.16, 0.62, 0.66, 0.72), Color(0.05, 0.3, 0.36, 0.88), Color(0.62, 1.0, 0.92, 0.95)],
 	[Color(0.36, 0.34, 0.86, 0.72), Color(0.13, 0.11, 0.42, 0.88), Color(0.8, 0.76, 1.0, 0.95)],
+	[Color(0.2, 0.66, 0.9, 0.74), Color(0.04, 0.2, 0.46, 0.9), Color(0.7, 0.95, 1.0, 0.95)],
+	[Color(0.62, 0.4, 0.9, 0.7), Color(0.26, 0.1, 0.46, 0.88), Color(0.95, 0.8, 1.0, 0.95)],
 ]
 
 var grid: TerrainGrid
@@ -151,7 +153,7 @@ func _process(delta: float) -> void:
 	_ease(delta, field.view_rect)
 	field.queue_redraw()
 	# tint by the stratum at the centre of the view
-	var s := Balance.stratum_of_row(int((tl.y + size.y * 0.5) / Balance.CELL))
+	var s := grid.get_stratum(int((tl.x + size.x * 0.5) / Balance.CELL), int((tl.y + size.y * 0.5) / Balance.CELL))
 	var c: Array = COLORS[s]
 	for m in [back_mat, front_mat]:
 		m.set_shader_parameter("shallow_color", c[0])

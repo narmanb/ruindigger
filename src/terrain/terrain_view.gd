@@ -191,6 +191,9 @@ func shape_count(key: Vector2i) -> int:
 # ---------------------------------------------------------------------------
 # Drawing helpers used by chunks
 # ---------------------------------------------------------------------------
+const ATLAS_COLS := 8   # terrain_atlas.png is 8 x 4 blocks (see tools/assetgen/gen_tiles.py)
+
+
 func block_index(m: int, s: int) -> int:
 	match m:
 		Cell.SOFT, Cell.GAS:
@@ -200,9 +203,9 @@ func block_index(m: int, s: int) -> int:
 		Cell.LOOSE:
 			return s * 3 + 2
 		Cell.BEDROCK:
-			return 9 + s
+			return 15 + s
 		Cell.ALLOY:
-			return 12
+			return 20
 	return 0
 
 
@@ -210,7 +213,7 @@ func tile_rect(m: int, s: int, mask: int, x: int, y: int) -> Rect2:
 	var bi := block_index(m, s)
 	var var_i := (x % 4) + (y % 4) * 4
 	var t := mask * 16 + var_i
-	return Rect2((bi % 4) * 256 + (t % 16) * C, (bi / 4) * 256 + (t / 16) * C, C, C)
+	return Rect2((bi % ATLAS_COLS) * 256 + (t % 16) * C, (bi / ATLAS_COLS) * 256 + (t / 16) * C, C, C)
 
 
 func prop_rect(n: String) -> Rect2:
@@ -307,6 +310,7 @@ func draw_deco(ci: CanvasItem, x: int, y: int, p: Vector2, s: int) -> void:
 	var below := grid.get_mat(x, y + 1)
 	if (above == Cell.SOFT or above == Cell.HARD) and hsh % 5 == 0:
 		var n := ""
+		var tint := Color.WHITE
 		match s:
 			0:
 				n = "roots%d" % (hsh / 7 % 3)
@@ -314,7 +318,13 @@ func draw_deco(ci: CanvasItem, x: int, y: int, p: Vector2, s: int) -> void:
 				n = "tendril%d" % (hsh / 7 % 2)
 			2:
 				n = "cable%d" % (hsh / 7 % 2)
-		ci.draw_texture_rect_region(tex_props, Rect2(p, Vector2(C, C)), prop_rect(n))
+			3:
+				n = "tendril%d" % (hsh / 7 % 2)
+				tint = Color(0.45, 0.8, 1.0)     # dripping weed
+			4:
+				n = "roots%d" % (hsh / 7 % 3)
+				tint = Color(1.0, 0.6, 1.0)      # crystal fringes
+		ci.draw_texture_rect_region(tex_props, Rect2(p, Vector2(C, C)), prop_rect(n), tint)
 	elif (below == Cell.SOFT or below == Cell.HARD) and hsh % 6 == 1:
 		match s:
 			0:
@@ -325,6 +335,11 @@ func draw_deco(ci: CanvasItem, x: int, y: int, p: Vector2, s: int) -> void:
 			2:
 				if hsh / 11 % 2 == 0:
 					ci.draw_texture_rect_region(tex_props, Rect2(p + Vector2(0, 8), Vector2(16, 8)), prop_rect("pebbles"), Color(0.7, 0.6, 0.9))
+			3:
+				if hsh / 11 % 2 == 0:
+					ci.draw_texture_rect_region(tex_props, Rect2(p + Vector2(0, 8), Vector2(16, 8)), prop_rect("pebbles"), Color(0.55, 0.8, 1.0))
+			4:
+				ci.draw_texture_rect_region(tex_props, Rect2(p + Vector2(0, 8), Vector2(16, 8)), prop_rect("pebbles"), Color(1.0, 0.7, 1.0))
 
 
 
@@ -361,6 +376,10 @@ class GlowChunk extends Node2D:
 					var hsh := TerrainView.hash2(x, y)
 					var s := g.get_stratum(x, y)
 					var below := g.get_mat(x, y + 1)
+					if s == 4 and (below == Cell.SOFT or below == Cell.HARD) and hsh % 6 == 1:
+						# crystals light the Hollows from the floor
+						var c4 := Color(1.0, 0.5, 0.95, 0.5) if hsh / 11 % 3 != 1 else Color(0.5, 0.95, 1.0, 0.5)
+						draw_texture_rect(view.tex_glow, Rect2(p + Vector2(-8, -8), Vector2(32, 32)), false, c4)
 					if s == 1 and (below == Cell.SOFT or below == Cell.HARD) and hsh % 6 == 1:
 						var cc := Color(0.4, 1.0, 1.0, 0.35) if hsh / 11 % 3 == 1 else Color(0.85, 0.45, 1.0, 0.35)
 						draw_texture_rect(view.tex_glow, Rect2(p + Vector2(-6, -6), Vector2(28, 28)), false, cc)

@@ -302,6 +302,8 @@ func _generation(n: int) -> void:
 	var total_water := 0
 	var total_boulders := 0
 	var total_deep_ladders := 0
+	var wing_water := [0, 0]
+	var wing_hard := [0.0, 0.0]
 	for i in n:
 		var seed_value := 1000 + i * 7919
 		var contract: Dictionary = Balance.CONTRACTS[i % Balance.CONTRACTS.size()]
@@ -342,10 +344,38 @@ func _generation(n: int) -> void:
 		check(traps.is_empty(), tag + ": no softlock traps (%d, e.g. %s)" % [traps.size(), str(traps.slice(0, 3))])
 		var deep_ladders := 0
 		for yy in range(Balance.STRATUM_ROWS[1], g.h):
+			if yy >= Balance.STRATUM_ROWS[2] - 2 and yy < Balance.SHELF_Y1 + 7:
+				continue   # the two authored gate shafts through the bedrock shelf
 			for xx in g.w:
 				if g.get_mat(xx, yy) == Cell.LADDER:
 					deep_ladders += 1
 		total_deep_ladders += deep_ladders
+		# 0.5 world: the shelf is bedrock except for the two gate shafts, both
+		# wings are reachable, and each wing has its own character
+		var gate_cols: Dictionary = {}
+		for gate in d["gates"]:
+			gate_cols[int(gate["x"])] = true
+			gate_cols[int(gate["x"]) + 1] = true
+		var shelf_ok := true
+		for yy in range(Balance.STRATUM_ROWS[2], Balance.SHELF_Y1):
+			for xx in g.w:
+				if not gate_cols.has(xx) and (g.get_mat(xx, yy) != Cell.BEDROCK or not g.has_flag(xx, yy, Cell.F_PROTECTED)):
+					shelf_ok = false
+		check(shelf_ok and d["gates"].size() == 2, tag + ": the bedrock shelf is unbreakable except at its two gates")
+		var from_spawn := dig.costs_from(sp)
+		for gate in d["gates"]:
+			var gl: Vector2i = gate["lift"]
+			check(from_spawn[gl.y * g.w + gl.x] < DigCheck.UNREACHED, tag + ": wing entrance %d is reachable" % gate["side"])
+		var void_ok := true
+		for e in d["entities"]:
+			if Balance.zone_of(e["cell"].x, e["cell"].y) < 0 and not (e["type"] in ["sign", "lamp", "beam"]):
+				void_ok = false
+		check(void_ok, tag + ": nothing is placed inside the bedrock between zones")
+		var wm := GenMetrics.compute(d)
+		wing_water[0] += int(wm["s3_water"])
+		wing_water[1] += int(wm["s4_water"])
+		wing_hard[0] += float(wm["s3_hard_pct"])
+		wing_hard[1] += float(wm["s4_hard_pct"])
 		var pockets := RouteCheck.sealed_pockets(g, sp, doors)
 		check(pockets.is_empty(), tag + ": no sealed pockets (%d)" % pockets.size())
 		var room: Rect2i = d["relic_room"]
@@ -394,7 +424,9 @@ func _generation(n: int) -> void:
 	check(total_water > 0, "mines contain water")
 	check(total_boulders > n, "mines contain hanging boulders (avg > 1 per seed)")
 	check(repaired == 0, "guaranteed route never needed the repair fallback")
-	check(total_deep_ladders / float(n * Balance.CONTRACTS.size()) < 60.0, "few generated ladders below the Dustworks (%.1f cells per mine)" % (total_deep_ladders / float(n * Balance.CONTRACTS.size())))
+	check(total_deep_ladders / float(n) < 95.0, "few generated ladders below the Dustworks (%.1f cells per mine, gate shafts excluded)" % (total_deep_ladders / float(n)))
+	check(wing_water[0] > wing_water[1] * 2, "the Drowned Aqueducts hold far more water than the Crystal Hollows (%d vs %d units)" % wing_water)
+	check(wing_hard[1] > wing_hard[0] + 5.0 * n, "the Crystal Hollows are harder rock than the Aqueducts (%.0f%% vs %.0f%%)" % [wing_hard[1] / n, wing_hard[0] / n])
 
 
 ## Generator v2: layout structure, water encounters, balance and safety.
@@ -430,7 +462,7 @@ func _generation_v2_checks(tag: String, d: Dictionary, gen: MineGenerator) -> vo
 		check(int(wf.get("settled_volume", 0)) > int(wf.get("volume", 0)) * 0.4, tag + ": %s keeps its water after settling" % wf["kind"])
 	check(big_s1, tag + ": a significant water encounter in the Spore Veins")
 	var m := GenMetrics.compute(d)
-	check(int(m["ore_value"]) >= 6000 and int(m["ore_value"]) <= 16000, tag + ": ore value in balance band (%d)" % m["ore_value"])
+	check(int(m["ore_value"]) >= 10000 and int(m["ore_value"]) <= 28000, tag + ": ore value in balance band (%d)" % m["ore_value"])
 	check(int(m["first_reward"]) >= 0 and int(m["first_reward"]) <= 90, tag + ": first reward within reach (%d)" % m["first_reward"])
 	var gas_on_route := 0
 	for rc in d["route"]:
@@ -609,16 +641,17 @@ func _gameplay() -> void:
 	check(pl.is_on_floor(), "player lands on the lift-room floor")
 	check(not g.is_solid(pc.x, pc.y) and not g.is_solid(pc.x, pc.y - 1), "player is not inside terrain")
 	# --- drill down into fresh ground and fall into the hole
-	pl.global_position = Vector2(29 * 16 + 8, 10 * 16 - Player.HALF.y - 0.5)
-	g.set_flag(29, 10, Cell.F_PROTECTED, false)
-	g.set_flag(29, 11, Cell.F_PROTECTED, false)
+	var dx0: int = 29 + Balance.CORE_X0     # a floor cell in the lift room, west of the cage
+	pl.global_position = Vector2(dx0 * 16 + 8, 10 * 16 - Player.HALF.y - 0.5)
+	g.set_flag(dx0, 10, Cell.F_PROTECTED, false)
+	g.set_flag(dx0, 11, Cell.F_PROTECTED, false)
 	await _frames(10)
 	var y0 := pl.global_position.y
 	pl.input_override = {"drill": true, "y": 1.0}
 	await _frames(150)
 	pl.input_override = {"x": 0.0}
 	await _frames(30)
-	check(not g.is_solid(29, 10), "drilling down removed the floor cell")
+	check(not g.is_solid(dx0, 10), "drilling down removed the floor cell")
 	check(pl.global_position.y > y0 + 12.0, "player dropped into the new hole (dy=%.1f)" % (pl.global_position.y - y0))
 	# --- collect a resource: plant an ore seam beside the player and drill it
 	pc = g.world_to_cell(pl.global_position)
@@ -693,7 +726,7 @@ func _gameplay() -> void:
 	check(mine.collapse.landed + mine.collapse.shattered >= 2, "rubble fell and resolved (landed %d, shattered %d)" % [mine.collapse.landed, mine.collapse.shattered])
 	# --- gas: telegraph first, cloud later, explosion ignites
 	pl.invuln = 99.0
-	var gx := 20
+	var gx: int = 20 + Balance.CORE_X0
 	var gy := 40
 	for y in range(gy - 2, gy + 3):
 		for x in range(gx - 3, gx + 4):

@@ -85,11 +85,11 @@ static func sound_class(m: int) -> String:
 static func debris_color(m: int, stratum: int) -> Color:
 	match m:
 		SOFT, CRACKED:
-			return [Color("a46a33"), Color("2f7566"), Color("54485f")][stratum]
+			return [Color("a46a33"), Color("2f7566"), Color("54485f"), Color("3a5f80"), Color("6e3a72")][stratum]
 		HARD:
-			return [Color("756e70"), Color("4f6a83"), Color("4b3a5c")][stratum]
+			return [Color("756e70"), Color("4f6a83"), Color("4b3a5c"), Color("6c8ba6"), Color("a56cc0")][stratum]
 		LOOSE:
-			return [Color("c4a070"), Color("5e9a80"), Color("73617a")][stratum]
+			return [Color("c4a070"), Color("5e9a80"), Color("73617a"), Color("7fa2bd"), Color("c79ae0")][stratum]
 		GAS:
 			return Color("a6c51f")
 		ALLOY:

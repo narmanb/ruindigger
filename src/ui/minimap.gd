@@ -40,9 +40,9 @@ static func cell_color(g: TerrainGrid, x: int, y: int) -> Color:
 		Cell.PLATFORM:
 			return Color(0.6, 0.45, 0.3, 0.9)
 		Cell.SOFT, Cell.CRACKED:
-			return [Color("7d4c25"), Color("1f5a50"), Color("4a3c56")][s]
+			return [Color("7d4c25"), Color("1f5a50"), Color("4a3c56"), Color("2c4a66"), Color("5a2d5c")][s]
 		Cell.HARD:
-			return [Color("8a8078"), Color("4c6378"), Color("5b4a70")][s]
+			return [Color("8a8078"), Color("4c6378"), Color("5b4a70"), Color("5d7f9c"), Color("9a5fb0")][s]
 		Cell.LOOSE:
 			return Color("c9a86e")
 		Cell.ALLOY:

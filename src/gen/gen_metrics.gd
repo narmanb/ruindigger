@@ -11,15 +11,21 @@ static func compute(data: Dictionary) -> Dictionary:
 	var doors: Dictionary = {}
 	for c in data.get("door_cells", []):
 		doors[c] = true
-	m["route_len"] = route_length(g, data["spawn"], data["door_outside"], doors)
+	m["route_cells"] = data.get("route", []).size()
 	m["first_reward"] = first_reward_distance(g, data)
-	for s in 3:
+	for s in Balance.ZONE_COUNT:
 		var st := _stratum_shape(g, s)
 		m["s%d_spacious" % s] = st["spacious"]
 		m["s%d_hrun" % s] = st["hrun"]
 		m["s%d_vrun" % s] = st["vrun"]
 		m["s%d_vmax" % s] = st["vmax"]
 		m["s%d_open" % s] = st["open"]
+		# what the zone is made of and what is in it (the wings must differ)
+		m["s%d_open_pct" % s] = st["open_pct"]
+		m["s%d_hard_pct" % s] = st["hard_pct"]
+		m["s%d_water" % s] = st["water"]
+		m["s%d_loose" % s] = st["loose"]
+		m["s%d_ladders" % s] = st["ladders"]
 	var w := _water(g)
 	m["water_units"] = w["units"]
 	m["water_bodies"] = w["bodies"]
@@ -52,7 +58,6 @@ static func compute(data: Dictionary) -> Dictionary:
 	var dc := DigCheck.new(g, doors)
 	var from_spawn := dc.costs_from(data["spawn"])
 	m["dig_down_s"] = _near(dc, from_spawn, data["door_outside"])
-	m["dig_up_s"] = dc.cost(data["door_outside"], data["lift"])
 	m["climb_up_s"] = data.get("climb_up_s", -1.0)
 	dc.allow_ladder = true
 	var ok := dc.escape_set(data["lift"])
@@ -136,16 +141,38 @@ static func first_reward_distance(g: TerrainGrid, data: Dictionary) -> int:
 
 
 static func _stratum_shape(g: TerrainGrid, s: int) -> Dictionary:
-	var y0: int = maxi(12, Balance.STRATUM_ROWS[s])
-	var y1: int = (Balance.STRATUM_ROWS[s + 1] if s < 2 else g.h - 6)
+	var zr: Rect2i = Balance.ZONE_RECTS[s]
+	var y0: int = maxi(12, zr.position.y)
+	var y1: int = zr.end.y
+	var x_lo: int = zr.position.x
+	var x_hi: int = zr.end.x
+	var cells := 0
+	var hard := 0
+	var solid_n := 0
+	var water := 0
+	var loose := 0
+	var ladders := 0
+	for y in range(y0, y1):
+		for x in range(x_lo, x_hi):
+			var mm := g.get_mat(x, y)
+			cells += 1
+			water += g.get_water(x, y)
+			if mm == Cell.LADDER:
+				ladders += 1
+			if mm == Cell.LOOSE:
+				loose += 1
+			if Cell.is_solid(mm):
+				solid_n += 1
+				if mm == Cell.HARD:
+					hard += 1
 	var open := 0
 	var spacious := 0
 	var hruns: Array[int] = []
 	var vruns: Array[int] = []
 	for y in range(y0, y1):
 		var run := 0
-		for x in range(2, g.w - 1):
-			var o := not g.is_solid(x, y)
+		for x in range(x_lo, x_hi + 1):
+			var o := x < x_hi and not g.is_solid(x, y)
 			if o:
 				open += 1
 				run += 1
@@ -160,7 +187,7 @@ static func _stratum_shape(g: TerrainGrid, s: int) -> Dictionary:
 				hruns.append(run)
 				run = 0
 	var vmax := 0
-	for x in range(2, g.w - 2):
+	for x in range(x_lo, x_hi):
 		var run2 := 0
 		for y in range(y0, y1 + 1):
 			if y < y1 and not g.is_solid(x, y) and g.get_mat(x, y) != Cell.LADDER:
@@ -169,7 +196,9 @@ static func _stratum_shape(g: TerrainGrid, s: int) -> Dictionary:
 				vruns.append(run2)
 				vmax = maxi(vmax, run2)
 				run2 = 0
-	return {"open": open, "spacious": spacious, "hrun": _mean(hruns), "vrun": _mean(vruns), "vmax": vmax}
+	return {"open": open, "spacious": spacious, "hrun": _mean(hruns), "vrun": _mean(vruns), "vmax": vmax,
+		"open_pct": snappedf(100.0 * (cells - solid_n) / maxi(cells, 1), 0.1), "hard_pct": snappedf(100.0 * hard / maxi(solid_n, 1), 0.1),
+		"water": water, "loose": loose, "ladders": ladders}
 
 
 static func _mean(a: Array[int]) -> float:
