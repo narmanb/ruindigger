@@ -1082,17 +1082,19 @@ func _v05_live() -> void:
 ## Dynamic generator scenario: breach a generated floodgate in a live mine, let
 ## the jet, currents and erosion run, then re-prove the guaranteed route.
 func _floodgate_breach() -> void:
-	Game.contract = Balance.CONTRACTS[0].duplicate()
-	Game.contract["seed"] = 7
+	# Reuse the footprint-regression fixture, which has a genuine floodgate.
+	Game.contract = Balance.CONTRACTS[1].duplicate()
+	Game.contract["seed"] = 103947
 	Game.contract["reward"] = 260
 	Game.start_run()
 	await _frames(30)
 	var mine: Node = Game.current
 	var res: Dictionary = {}
 	for wf in mine.data.get("water_features", []):
-		if wf["kind"] == "reservoir" and wf.has("outlet"):
+		# Buried reservoirs share the kind label but have no receiving chamber.
+		if wf["kind"] == "reservoir" and wf.has("outlet") and wf.has("catch"):
 			res = wf
-	check(not res.is_empty(), "seed 7 generates a floodgate reservoir")
+	check(not res.is_empty(), "footprint-regression seed generates a genuine floodgate reservoir")
 	if res.is_empty():
 		return
 	var g: TerrainGrid = mine.grid
