@@ -87,6 +87,9 @@ func floodgate(prefer_stratum: int, strict: bool = false) -> bool:
 			var ix0: int = dam_x + 1 if side == 1 else dam_x - w
 			var inner := Rect2i(ix0, fy - h + 1, w, h)
 			var shell := inner.grow(1)
+			# The rock check omits the dam, but its full footprint must be free.
+			if not gen.space.fits(shell, 0):
+				continue
 			if not _rock_box_ok(Rect2i(shell.position.x + (1 if side == 1 else 0), shell.position.y, shell.size.x - 1, shell.size.y)):
 				continue
 			gen.space.claim(shell, "landmark", "floodgate")
