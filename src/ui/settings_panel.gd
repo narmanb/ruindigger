@@ -13,7 +13,7 @@ func _ready() -> void:
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 6)
 	add_child(outer)
-	outer.add_child(UIKit.header("SYSTEM SETTINGS"))
+	outer.add_child(UIKit.header("SYSTEM SETTINGS " + str(ProjectSettings.get_setting("application/config/version"))))
 	outer.add_child(UIKit.Scanline.new())
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(320, clampf(get_viewport_rect().size.y - 130.0, 120.0, 210.0))
