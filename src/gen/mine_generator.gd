@@ -1397,7 +1397,10 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 			for dy in range(-2, 1):
 				g.put(x, fy + dy, wall_mat)
 			placed_wall = true
-		if not g.is_solid(x, fy + 1) and not reserved.has(Vector2i(x, fy + 1)) and g.get_mat(x, fy + 1) != Cell.LADDER:
+		var floor_cell := Vector2i(x, fy + 1)
+		# A passage through an existing room must not fill its open floor space.
+		if not g.is_solid(x, fy + 1) and not reserved.has(floor_cell) and g.get_mat(x, fy + 1) != Cell.LADDER \
+				and space.kind_at(floor_cell) not in ["chamber", "landmark"]:
 			g.put(x, fy + 1, Cell.HARD)
 	var ystep := signi(best.y - fy)
 	var y := fy
