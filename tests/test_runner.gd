@@ -613,6 +613,30 @@ func _ui_settings() -> void:
 	var r := sp.get_global_rect()
 	check(vp.encloses(r), "settings panel is fully on screen (%s in %s)" % [str(r), str(vp)])
 	check(absf(r.get_center().x - vp.get_center().x) < 4.0 and absf(r.get_center().y - vp.get_center().y) < 4.0, "settings panel is centred (%s vs %s)" % [str(r.get_center()), str(vp.get_center())])
+	var scroll: ScrollContainer = sp.get_child(0).get_child(2)
+	var bar := scroll.get_v_scroll_bar()
+	check(bar.size.x >= 28.0, "settings scrollbar has a finger-sized hit area")
+	check(bar.get_theme_stylebox("grabber").get_minimum_size().y >= 40.0, "settings scrollbar handle stays large enough to grab")
+	# Android emulates these mouse events from a finger on the native scrollbar.
+	var start := bar.global_position + Vector2(bar.size.x * 0.5, 24.0)
+	var finish := Vector2(start.x, bar.get_global_rect().end.y - 8.0)
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = start
+	get_viewport().push_input(down, true)
+	var drag := InputEventMouseMotion.new()
+	drag.button_mask = MOUSE_BUTTON_MASK_LEFT
+	drag.position = finish
+	drag.relative = finish - start
+	get_viewport().push_input(drag, true)
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.position = finish
+	get_viewport().push_input(up, true)
+	await get_tree().process_frame
+	var last: Control = scroll.get_child(0).get_child(-1)
+	check(scroll.get_global_rect().encloses(last.get_global_rect()), "dragging settings scrollbar reaches Camera zoom at the bottom")
 	host.queue_free()
 	await get_tree().process_frame
 

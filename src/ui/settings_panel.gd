@@ -18,6 +18,25 @@ func _ready() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(320, clampf(get_viewport_rect().size.y - 130.0, 120.0, 210.0))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
+	scroll.follow_focus = true
+	# A separate, wide drag lane keeps scrolling clear of sliders and switches.
+	var bar := scroll.get_v_scroll_bar()
+	var track := StyleBoxFlat.new()
+	track.bg_color = UIKit.PANEL_EDGE
+	track.content_margin_left = 16
+	track.content_margin_right = 16
+	bar.add_theme_stylebox_override("scroll", track)
+	var handle := StyleBoxFlat.new()
+	handle.bg_color = UIKit.AMBER
+	handle.set_content_margin_all(16)
+	handle.content_margin_top = 20
+	handle.content_margin_bottom = 20
+	bar.add_theme_stylebox_override("grabber", handle)
+	bar.add_theme_stylebox_override("grabber_highlight", handle)
+	var pressed: StyleBoxFlat = handle.duplicate()
+	pressed.bg_color = UIKit.TEAL
+	bar.add_theme_stylebox_override("grabber_pressed", pressed)
 	outer.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
