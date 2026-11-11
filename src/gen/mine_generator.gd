@@ -349,7 +349,7 @@ func _lift_room() -> void:
 
 
 func _shaft() -> void:
-	# Old timber shaft: 3 wide, ladder on the east column, platforms every 7 rows.
+	# Old timber shaft: 3 wide, ladder on the east column; room exits get landings.
 	var sx := 39 + Balance.CORE_X0
 	var top := 10
 	var bottom := Balance.STRATUM_ROWS[1] - 8

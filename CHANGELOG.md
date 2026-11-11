@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.6
+- Add an explicit CARGO button below the depth panel; keep Cargo Manifest in Pause and show the build version on the pause screen.
+- Hold Down and press Jump to drop through a wooden platform. Lower platforms and solid rock still catch you.
+- Remove periodic timber-shaft bars and unsupported or tiny ladder fragments. Keep short landings at room exits and cave walls instead of broad planks across natural caverns; retain necessary Engine maintenance scaffolds.
+
 ## 0.5.5
 - Cargo manifest: tap the cargo HUD, press I, or choose CARGO MANIFEST from Pause to inspect ore icons, quantities, unit prices and the exact extraction total. The game pauses while inspecting cargo; touch and D-pad scrolling are supported.
 - Five optional zone keepsakes: Miner's Token, Glowspore Sample, Engine Cog, Aqueduct Seal and Crystal Bloom. Recover each with TAKE; they use a separate pouch and pay only on successful extraction.

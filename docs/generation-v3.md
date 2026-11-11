@@ -68,8 +68,9 @@ Other rules:
   through. Cracked rock is the visual tell for "the route continues here".
 * Shafts beside unbreakable walls, and the alloy-lined relic approach, use
   ledges, because alloy and bedrock cannot be cut into steps.
-* Deep fissure ropes are frayed: only the top third remains.
+* Deep fissure ropes have rotted away; the Dustworks keeps its full ropes.
 * Authored structures keep their ladders: the gate shafts, ruins, landmarks.
+* After carving, unprotected ladders shorter than three cells or with no rock attachment are removed. Long wooden spans become short wall landings outside the Engine's necessary maintenance routes. The same cleanup runs after trap sealing, before a fresh fairness audit.
 
 ### Rubble Ladder
 

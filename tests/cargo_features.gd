@@ -18,7 +18,18 @@ static func run(t: Node) -> void:
 		return
 	Game.run["cargo"] = {1: 3, 2: 2}
 	Game.run["relic"] = true
-	cargo_button.pressed.emit()
+	# Android emulates these mouse events from a finger on a native Button.
+	var down := InputEventMouseButton.new()
+	down.device = InputEvent.DEVICE_ID_EMULATION
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = cargo_button.get_global_rect().get_center()
+	t.get_viewport().push_input(down, true)
+	var up := InputEventMouseButton.new()
+	up.device = InputEvent.DEVICE_ID_EMULATION
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.position = down.position
+	t.get_viewport().push_input(up, true)
 	t.check(screen.is_open and t.get_tree().paused, "cargo manifest pauses the run")
 	t.check(screen.total_label.text.contains(str(Game.cargo_value(Game.run["cargo"]) + int(Game.contract["reward"]))), "manifest total includes ore and secured relic reward")
 	t.check(screen.rows.get_child_count() >= Balance.ORE.size(), "manifest lists all ore types")
