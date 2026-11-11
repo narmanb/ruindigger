@@ -37,6 +37,8 @@ func section(n: String) -> void:
 func _run() -> void:
 	var suite: String = args.get("suite", "all")
 	var t0 := Time.get_ticks_msec()
+	if suite == "structures":
+		await load("res://tests/structure_features.gd").run(self)
 	if suite == "cargo":
 		await load("res://tests/cargo_features.gd").run(self)
 	if suite == "water_live":
@@ -1030,6 +1032,7 @@ func _gameplay() -> void:
 	await _v05_live()
 	await _floodgate_breach()
 	await load("res://tests/cargo_features.gd").run(self)
+	await load("res://tests/structure_features.gd").run(self)
 	Game.goto("title", true)
 	await _frames(5)
 

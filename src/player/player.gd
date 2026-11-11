@@ -34,6 +34,9 @@ var jet_ready := true
 var wall_lock := 0.0
 var on_ladder := false
 var ladder_regrab_blocked := false
+var _platform_drop_time := 0.0
+var _platform_drop_surface := 0.0
+var _drop_bodies: Array[RID] = []
 var was_on_floor := true
 var jumping := false
 var fall_peak := 0.0
@@ -160,6 +163,7 @@ func _aim_y() -> float:
 func _physics_process(delta: float) -> void:
 	if dead:
 		return
+	_update_platform_drop(delta)
 	invuln = maxf(0.0, invuln - delta)
 	wall_lock = maxf(0.0, wall_lock - delta)
 	_hurt_t = maxf(0.0, _hurt_t - delta)
@@ -184,9 +188,11 @@ func _physics_process(delta: float) -> void:
 		buffer = Balance.JUMP_BUFFER
 	else:
 		buffer -= delta
+	if on_floor and ay > 0.5 and buffer > 0.0:
+		_start_platform_drop()
 
 	# --- ladders ---
-	var ladder_here := _ladder_overlap()
+	var ladder_here := _platform_drop_time <= 0.0 and _ladder_overlap()
 	var grab_assist := bool(Settings.get_value("jump_grabs_ladders"))
 	if not _ladder_overlap(C * 0.5):
 		ladder_regrab_blocked = false
@@ -382,6 +388,43 @@ func _ladder_overlap(margin: float = 0.0) -> bool:
 func _ladder_below() -> bool:
 	var c := grid.world_to_cell(global_position + Vector2(0, HALF.y + 4))
 	return grid.get_mat(c.x, c.y) == Cell.LADDER
+
+
+func _start_platform_drop() -> void:
+	if not mine:
+		return
+	var platforms: Array[RID] = []
+	for i in get_slide_collision_count():
+		var hit := get_slide_collision(i)
+		var body := hit.get_collider_rid()
+		if hit.get_normal().dot(up_direction) > 0.0 and mine.view.is_platform_body(body) and not platforms.has(body):
+			platforms.append(body)
+	if platforms.is_empty():
+		return
+	for body in _drop_bodies:
+		PhysicsServer2D.body_remove_collision_exception(get_rid(), body)
+	for body in platforms:
+		PhysicsServer2D.body_add_collision_exception(get_rid(), body)
+	_drop_bodies = platforms
+	_platform_drop_time = Balance.PLATFORM_DROP_TIME
+	_platform_drop_surface = global_position.y + HALF.y
+	buffer = 0.0
+	coyote = 0.0
+	on_ladder = false
+	ladder_regrab_blocked = true
+	jumping = false
+	velocity.y = maxf(velocity.y, Balance.PLATFORM_DROP_SPEED)
+
+
+func _update_platform_drop(delta: float) -> void:
+	if _platform_drop_time <= 0.0:
+		return
+	_platform_drop_time -= delta
+	if _platform_drop_time <= 0.0 or global_position.y - HALF.y >= _platform_drop_surface + Balance.PLATFORM_DEPTH:
+		for body in _drop_bodies:
+			PhysicsServer2D.body_remove_collision_exception(get_rid(), body)
+		_drop_bodies.clear()
+		_platform_drop_time = 0.0
 
 
 # ---------------------------------------------------------------------------

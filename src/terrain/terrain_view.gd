@@ -14,6 +14,7 @@ var chunks: Dictionary = {}        # Vector2i -> TerrainChunk
 var glow_chunks: Dictionary = {}   # Vector2i -> GlowChunk
 var back_chunks: Dictionary = {}   # Vector2i -> BackChunk (tunnel back-walls + decor)
 var bodies: Dictionary = {}        # Vector2i -> RID
+var platform_bodies: Dictionary = {} # (chunk x, world row) -> one-way-only RID
 var shapes: Dictionary = {}        # Vector2i -> Array[RID]
 var _col_dirty: Dictionary = {}
 var redraw_count := 0              # telemetry for tests
@@ -83,6 +84,11 @@ func _exit_tree() -> void:
 
 
 func _free_body(key: Vector2i) -> void:
+	for y in range(key.y * CHUNK, mini((key.y + 1) * CHUNK, grid.h)):
+		var pk := Vector2i(key.x, y)
+		if platform_bodies.has(pk):
+			PhysicsServer2D.free_rid(platform_bodies[pk])
+			platform_bodies.erase(pk)
 	if shapes.has(key):
 		for s in shapes[key]:
 			PhysicsServer2D.free_rid(s)
@@ -132,6 +138,10 @@ func _rebuild_collision(key: Vector2i) -> void:
 		shapes[key] = []
 	var body: RID = bodies[key]
 	PhysicsServer2D.body_clear_shapes(body)
+	for y in range(key.y * CHUNK, mini((key.y + 1) * CHUNK, grid.h)):
+		var pk := Vector2i(key.x, y)
+		if platform_bodies.has(pk):
+			PhysicsServer2D.body_clear_shapes(platform_bodies[pk])
 	for s in shapes[key]:
 		PhysicsServer2D.free_rid(s)
 	var new_shapes: Array = []
@@ -173,15 +183,30 @@ func _rebuild_collision(key: Vector2i) -> void:
 		idx += 1
 	# one-way platforms (thin top slab)
 	for y in range(y0, y1):
+		var platform_idx := 0
 		for x in range(x0, x1):
 			if grid.get_mat(x, y) == Cell.PLATFORM:
+				var pk := Vector2i(key.x, y)
+				if not platform_bodies.has(pk):
+					var pb := PhysicsServer2D.body_create()
+					PhysicsServer2D.body_set_mode(pb, PhysicsServer2D.BODY_MODE_STATIC)
+					PhysicsServer2D.body_set_space(pb, space)
+					PhysicsServer2D.body_set_collision_layer(pb, 1)
+					PhysicsServer2D.body_set_collision_mask(pb, 0)
+					PhysicsServer2D.body_attach_object_instance_id(pb, get_instance_id())
+					platform_bodies[pk] = pb
+				var platform_body: RID = platform_bodies[pk]
 				var sh2 := PhysicsServer2D.rectangle_shape_create()
 				PhysicsServer2D.shape_set_data(sh2, Vector2(C * 0.5, 3))
-				PhysicsServer2D.body_add_shape(body, sh2, Transform2D(0.0, Vector2((x + 0.5) * C, y * C + 3)))
-				PhysicsServer2D.body_set_shape_as_one_way_collision(body, idx, true, 4.0)
+				PhysicsServer2D.body_add_shape(platform_body, sh2, Transform2D(0.0, Vector2((x + 0.5) * C, y * C + 3)))
+				PhysicsServer2D.body_set_shape_as_one_way_collision(platform_body, platform_idx, true, 4.0)
 				new_shapes.append(sh2)
-				idx += 1
+				platform_idx += 1
 	shapes[key] = new_shapes
+
+
+func is_platform_body(body: RID) -> bool:
+	return platform_bodies.values().has(body)
 
 
 func shape_count(key: Vector2i) -> int:
