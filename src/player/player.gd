@@ -348,7 +348,7 @@ func _swim(delta: float, ax: float) -> void:
 	velocity.y = minf(velocity.y + (Balance.GRAVITY * Balance.WATER_GRAVITY + water_drift.y * Balance.WATER_PLAYER_SMOOTH) * delta, Balance.WATER_MAX_FALL + maxf(0.0, water_drift.y))
 	velocity.y = move_toward(velocity.y, water_drift.y, 120.0 * delta)
 	jet_ready = true
-	if buffer > 0.0 or (_pressed("jump") and velocity.y > -40.0):
+	if _platform_drop_time <= 0.0 and (buffer > 0.0 or (_pressed("jump") and velocity.y > -40.0)):
 		buffer = 0.0
 		velocity.y = -Balance.WATER_SWIM
 		if mine and randf() < 0.5:
@@ -397,8 +397,10 @@ func _start_platform_drop() -> void:
 	for i in get_slide_collision_count():
 		var hit := get_slide_collision(i)
 		var body := hit.get_collider_rid()
-		if hit.get_normal().dot(up_direction) > 0.0 and mine.view.is_platform_body(body) and not platforms.has(body):
-			platforms.append(body)
+		if hit.get_normal().dot(up_direction) > 0.0:
+			for platform: RID in mine.view.platform_row_bodies(body):
+				if not platforms.has(platform):
+					platforms.append(platform)
 	if platforms.is_empty():
 		return
 	for body in _drop_bodies:

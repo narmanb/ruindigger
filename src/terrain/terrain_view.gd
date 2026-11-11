@@ -205,8 +205,17 @@ func _rebuild_collision(key: Vector2i) -> void:
 	shapes[key] = new_shapes
 
 
-func is_platform_body(body: RID) -> bool:
-	return platform_bodies.values().has(body)
+func platform_row_bodies(body: RID) -> Array[RID]:
+	var result: Array[RID] = []
+	var row_key: Variant = platform_bodies.find_key(body)
+	if row_key == null:
+		return result
+	# A character straddling a chunk seam may report only one supporting RID.
+	# Ignore the whole touched row, while lower rows and rock still collide.
+	for key in platform_bodies:
+		if key.y == row_key.y:
+			result.append(platform_bodies[key])
+	return result
 
 
 func shape_count(key: Vector2i) -> int:

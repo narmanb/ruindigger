@@ -39,6 +39,7 @@ func _run() -> void:
 	var t0 := Time.get_ticks_msec()
 	if suite == "structures":
 		await load("res://tests/structure_features.gd").run(self)
+		await load("res://tests/platform_edges.gd").run(self)
 	if suite == "cargo":
 		await load("res://tests/cargo_features.gd").run(self)
 	if suite == "water_live":
@@ -1034,6 +1035,7 @@ func _gameplay() -> void:
 	await _floodgate_breach()
 	await load("res://tests/cargo_features.gd").run(self)
 	await load("res://tests/structure_features.gd").run(self)
+	await load("res://tests/platform_edges.gd").run(self)
 	Game.goto("title", true)
 	await _frames(5)
 
