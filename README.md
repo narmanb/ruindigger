@@ -28,6 +28,7 @@ SIL Open Font License fonts (see *Credits*).
 | Throw charge | K, C (hold down to drop at your feet) | LB / LT | CHARGE |
 | Interact (lift, relic, cache) | E, F | Y | USE (shown when something is in reach) |
 | Raise a Rubble Ladder | L, Q | X | LADDER |
+| Cargo manifest | I | Pause → CARGO MANIFEST | Tap the CARGO HUD |
 | Pause / map | Esc, P / M, Tab | Start / Back | II button / tap the minimap |
 
 * **Drill** hits only the cells touching your body (with aim assist and corner
@@ -50,6 +51,8 @@ SIL Open Font License fonts (see *Credits*).
 * **Sediment** breaks in a few ticks and **basalt** takes several times longer.
   **Ruin alloy** needs the Mk.IV drill and is immune to blasts. **Bedrock** is
   permanent. A **cracked wall** is weak rock hiding a secret.
+* **Cargo manifest:** tap the CARGO HUD, press I, or open it from Pause. Inspect ore quantities, prices, relic status and the exact amount you would bank by extracting. The mine pauses; use the large scrollbar or D-pad to inspect the full list.
+* **Zone keepsakes:** each zone hides a small glowing souvenir with its own name and story. Use TAKE to recover it. Keepsakes use a separate five-slot pouch and appear in the manifest. Their bonus is banked only when you extract; death and abandonment lose them.
 * **Ore** glows. Breaking a seam spills chunks, which fly to you while you have
   cargo space. Each cell pays out once only.
 * **Charges** show a pulsing red blast ring and a fuse that beeps faster as it
@@ -120,13 +123,13 @@ missing result line. Use `GODOT=/path/to/godot`, `TEST_TIMEOUT=<s>` and
 | `gen` | 60 seeds, contracts rotating: dig-first guarantee via `DigCheck` (relic door reachable and the way back within the fairness budgets, both wing gates reachable, zero softlock traps), the Dustworks shaft walkable without digging, the bedrock shelf unbreakable except at its two gates, nothing placed in the bedrock between zones, every lift on a solid protected floor, the two wings measurably different, open standing spawn, no sealed pockets, protected alloy relic shell, crawlers never in rock and under the cap, no ore in protected cells, generated water at rest, no basalt starting unsupported, full-grid determinism, zero repair fallbacks; plus the v2 structure checks (no footprint overlaps, ≥4 archetypes, branches and loops, landmarks off the route, a contained Spore Veins water body, ore budget, no gas by the route, no crawler near spawn) |
 | `game` | live mine: player lands safely; drilling down removes the floor and the player drops into the hole; ore collected; the same cell never pays twice; collision rebuilt; blasts spare alloy and bedrock but clear sediment; rubble is telegraphed and never lands inside the player; the gas warning comes before the cloud and a blast ignites it; crawler investigates noise, chases on sight, never enters rock, loses interest, is stunned by rubble; sentry warns, fires, goes dormant, dies when its power module dies; upward drilling reaches the ceiling; the drill kills a crawler within a second, with at most one bite taken; cutting a boulder's neck drops it onto a crawler; a broken dam floods; a breached floodgate drains and the route survives with no new traps; a Rubble Ladder fills a shaft to the ceiling, builds partially when energy is short and costs nothing where a ladder already stands; the full-screen map pauses, clamps zoom and pan; camera zoom follows the setting; the player swims; extraction banks credits; a new run starts clean; death banks nothing; 900-frame random-input soak |
 
-Last local run (2026-11-10, Linux, Godot 4.6.3, headless), 0.5.0:
-`terrain 32/32, physics 49/49, save 15/15, ui 63/63, gen 3804/3804 (0 repairs),
-game 77/77`; `ALL SUITES PASSED`. The separate `water_live` run passed `4/4`.
-The 500-combination generation sweep had `invalid or repaired: 0` and a maximum
-of `0` trap cells. Generation averaged `1019.06 ms`, with a maximum of `2512 ms`.
-See [docs/generation-v3.md](docs/generation-v3.md) for the measured results and
-profiles of the slow cases. Nothing has been tested on a phone.
+Last full local suite (2026-11-11, Linux, Godot 4.6.3, headless), cargo and
+keepsakes update: `terrain 32/32, physics 49/49, save 15/15, ui 71/71,
+gen 4164/4164 (0 repairs), game 97/97`; `ALL SUITES PASSED`.
+The focused `suite=cargo` passed `18/18`, covering modal pause restoration,
+values, one-time collection, extraction rewards and losses on death/abandonment.
+Historical generation measurements are in
+[docs/generation-v3.md](docs/generation-v3.md). Nothing has been tested on a phone.
 
 Other tools:
 

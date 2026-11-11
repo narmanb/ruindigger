@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.5
+- Cargo manifest: tap the cargo HUD, press I, or choose CARGO MANIFEST from Pause to inspect ore icons, quantities, unit prices and the exact extraction total. The game pauses while inspecting cargo; touch and D-pad scrolling are supported.
+- Five optional zone keepsakes: Miner's Token, Glowspore Sample, Engine Cog, Aqueduct Seal and Crystal Bloom. Recover each with TAKE; they use a separate pouch and pay only on successful extraction.
+- Keepsakes have unique glowing markers and short descriptions in the manifest and results. Their placement is deterministic and checked for reachability and a way back to the lift.
+
 ## 0.5.4
 - Add optional Touch stick vertical assist: reduce sideways drift during mostly vertical pushes, preserving deliberate diagonals. Off by default; gamepad and d-pad unchanged.
 
