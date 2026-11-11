@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.3
+- Show a clear LADDER ATTACHED badge while climbing.
+- Fix overlapping ambience fades stopping the newest track.
+- Audit drill and gas sound cleanup after extraction, death and abandonment.
+
 ## 0.5.2
 - Fix extraction hum continuing after leaving the mine.
 - Place wooden chamber posts on their floor.
