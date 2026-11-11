@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2
+- Fix extraction hum continuing after leaving the mine.
+- Place wooden chamber posts on their floor.
+- Add an optional falling jump-to-grab ladder setting, with re-grab prevented until clear.
+- Steady mostly vertical touch input while climbing; preserve deliberate sideways exits.
+
 ## 0.5.0
 - **Wider world.** The Dustworks and Spore Veins now sit above an unbreakable bedrock shelf. Trek to its far-west or far-east end to descend: west into the Drowned Aqueducts (flooded stone channels, floodgates, cisterns), east into the Crystal Hollows (tall cracks, geodes, hanging shards). Both wings meet in the Forgotten Engine vault, where the relic is. A lift station waits at each wing entrance.
 - **Dig-first.** Below the Dustworks most generated ladders are gone. Route sections are bare drops, plank scaffolds or plugs of cracked rock you drill through.
