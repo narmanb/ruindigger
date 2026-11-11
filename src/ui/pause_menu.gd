@@ -36,7 +36,7 @@ func _ready() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	panel.add_child(v)
-	v.add_child(UIKit.header("PAUSED"))
+	v.add_child(UIKit.header("PAUSED " + str(ProjectSettings.get_setting("application/config/version"))))
 	v.add_child(UIKit.Scanline.new())
 	resume_btn = UIKit.button("RESUME", close)
 	v.add_child(resume_btn)

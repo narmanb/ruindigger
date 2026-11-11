@@ -12,9 +12,13 @@ static func run(t: Node) -> void:
 	t.check(screen != null, "live HUD provides a cargo manifest")
 	if screen == null:
 		return
+	var cargo_button: Button = mine.hud.get("cargo_btn")
+	t.check(cargo_button != null, "live HUD has a clearly labeled cargo button")
+	if cargo_button == null:
+		return
 	Game.run["cargo"] = {1: 3, 2: 2}
 	Game.run["relic"] = true
-	mine.hud.open_cargo()
+	cargo_button.pressed.emit()
 	t.check(screen.is_open and t.get_tree().paused, "cargo manifest pauses the run")
 	t.check(screen.total_label.text.contains(str(Game.cargo_value(Game.run["cargo"]) + int(Game.contract["reward"]))), "manifest total includes ore and secured relic reward")
 	t.check(screen.rows.get_child_count() >= Balance.ORE.size(), "manifest lists all ore types")

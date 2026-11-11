@@ -13,6 +13,7 @@ var hint_label: Label
 var prompt_label: Label
 var touch: TouchControls
 var pause_btn: Button
+var cargo_btn: Button
 var fps_label: Label
 var ladder_label: Label
 var _toast_t := 0.0
@@ -86,6 +87,15 @@ func _ready() -> void:
 	pause_btn.add_theme_font_override("font", UIKit.font_head())
 	pause_btn.pressed.connect(func() -> void: mine.pause_menu.open())
 	root.add_child(pause_btn)
+	cargo_btn = UIKit.button("CARGO", open_cargo, 80)
+	cargo_btn.focus_mode = Control.FOCUS_NONE
+	cargo_btn.anchor_left = 1.0
+	cargo_btn.anchor_right = 1.0
+	cargo_btn.offset_left = -86
+	cargo_btn.offset_right = -6
+	cargo_btn.offset_top = 54
+	cargo_btn.offset_bottom = 84
+	root.add_child(cargo_btn)
 	toast_label = _center_label(13, UIKit.TEXT, 66)
 	banner_label = _center_label(24, UIKit.AMBER, 130, true)
 	hint_label = _center_label(11, UIKit.TEAL, 0)
