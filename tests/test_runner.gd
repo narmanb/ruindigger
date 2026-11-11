@@ -294,7 +294,7 @@ func _grid_hash(g: TerrainGrid) -> int:
 
 func _full_hash(d: Dictionary) -> int:
 	var g: TerrainGrid = d["grid"]
-	return hash(g.mat) ^ hash(g.ore) ^ hash(g.water) ^ hash(str(d["entities"])) ^ hash(str(d.get("water_props", [])))
+	return hash(g.mat) ^ hash(g.ore) ^ hash(g.water) ^ hash(str(d["entities"])) ^ hash(str(d.get("water_props", []))) ^ hash(str(d.get("finds", [])))
 
 
 func _generation(n: int) -> void:
@@ -369,6 +369,18 @@ func _generation(n: int) -> void:
 			var gl: Vector2i = gate["lift"]
 			check(from_spawn[gl.y * g.w + gl.x] < DigCheck.UNREACHED, tag + ": wing entrance %d is reachable" % gate["side"])
 		var void_ok := true
+		check(d.get("finds", []).size() == Balance.KEEPSAKES.size(), tag + ": one keepsake per zone")
+		dig.allow_ladder = true
+		var find_dist := dig.costs_from(sp)
+		var find_escape := dig.escape_set(d["lift"])
+		var find_ids: Dictionary = {}
+		for find in d.get("finds", []):
+			var fc: Vector2i = find["cell"]
+			var fi := g.idx(fc.x, fc.y)
+			var id: int = find["id"]
+			check(not find_ids.has(id) and g.get_stratum(fc.x, fc.y) == id and RouteCheck.body_ok(g, fc.x, fc.y) and Cell.supports(g.get_mat(fc.x, fc.y + 1)) and find_dist[fi] < DigCheck.UNREACHED and find_escape[fi] == 1, tag + ": zone %d keepsake is standing, reachable and escapable" % id)
+			find_ids[id] = true
+		dig.allow_ladder = false
 		for e in d["entities"]:
 			if Balance.zone_of(e["cell"].x, e["cell"].y) < 0 and not (e["type"] in ["sign", "lamp", "beam"]):
 				void_ok = false

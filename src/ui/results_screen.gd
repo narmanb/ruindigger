@@ -30,6 +30,7 @@ func _ready() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(320, 150)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	UIKit.touch_scrollbar(scroll)
 	v.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -46,9 +47,15 @@ func _ready() -> void:
 		list.add_child(UIKit.label(line, 11, Balance.ore_color(int(k)) if ok else UIKit.MUTED))
 	if r.get("relic", false):
 		list.add_child(UIKit.label("Relic recovered: +%d CR" % r.get("relic_bonus", 0) if ok else "Relic lost in the dark", 11, Color(0.4, 1.0, 1.0)))
+	for id in r.get("finds", []):
+		var find: Dictionary = Balance.KEEPSAKES[id]
+		list.add_child(UIKit.label("%s: %s" % [find["name"], "+%d CR" % find["value"] if ok else "LOST"], 11, Color(find["color"]) if ok else UIKit.MUTED))
+		var description := UIKit.label(find["desc"], 10, UIKit.MUTED)
+		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list.add_child(description)
 	list.add_child(UIKit.label("Depth %dm   Time %s   Kills %d" % [r.get("depth", 0), _time(r.get("time", 0.0)), r.get("kills", 0)], 10, UIKit.MUTED))
 	list.add_child(UIKit.label("Seed %d" % r.get("seed", 0), 9, UIKit.MUTED))
-	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0))
+	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0)) + int(r.get("finds_bonus", 0))
 	v.add_child(UIKit.label("EARNED: %d CR    BALANCE: %d CR" % [total, Progress.credits], 12, UIKit.TEAL, true))
 	var b := UIKit.button("RETURN TO OUTPOST", func() -> void: Game.goto("outpost"), 200)
 	v.add_child(b)

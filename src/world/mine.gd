@@ -17,6 +17,7 @@ var glow_layer: CanvasLayer
 var glow_root: Node2D
 var entity_root: Node2D
 var gas: Hazards.GasSystem
+var keepsakes: Array[ZoneKeepsake] = []
 var collapse: Hazards.Collapse
 var water: WaterSim
 var debris: Debris
@@ -154,6 +155,13 @@ func _build_parallax() -> void:
 
 
 func _spawn_entities() -> void:
+	for spec in data.get("finds", []):
+		var find := ZoneKeepsake.new()
+		find.mine = self
+		find.id = int(spec["id"])
+		find.position = grid.cell_center(spec["cell"])
+		entity_root.add_child(find)
+		keepsakes.append(find)
 	for e in data["entities"]:
 		var cell: Vector2i = e["cell"]
 		var pos := Vector2(cell.x * C + 8, cell.y * C + 16)   # bottom-centre of the cell
@@ -627,6 +635,9 @@ func nearest_interactable(pl: Player) -> Dictionary:
 	for c in caches:
 		if not c.used and c.global_position.distance_to(pc) < 22.0:
 			return {"kind": "cache", "node": c, "label": "OPEN CACHE"}
+	for find in keepsakes:
+		if not find.used and find.global_position.distance_to(pc) < 22.0:
+			return {"kind": "find", "node": find, "label": "TAKE"}
 	return {}
 
 
@@ -635,6 +646,8 @@ func player_interact(pl: Player) -> void:
 	if it.is_empty() or ending:
 		return
 	match it["kind"]:
+		"find":
+			it["node"].take()
 		"lift":
 			var l: Entities.Lift = it["node"]
 			if not l.active:

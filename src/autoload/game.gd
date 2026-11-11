@@ -88,6 +88,7 @@ func start_run() -> void:
 		"contract": contract,
 		"charges": charges,
 		"cargo": {},
+		"finds": [],
 		"banked": {},
 		"relic": false,
 		"max_depth": 0,
@@ -114,10 +115,22 @@ func cargo_value(cargo: Dictionary) -> int:
 	return v
 
 
+func finds_value(finds: Array) -> int:
+	var value := 0
+	var seen: Dictionary = {}
+	for id in finds:
+		if typeof(id) == TYPE_INT and id >= 0 and id < Balance.KEEPSAKES.size() and not seen.has(id):
+			seen[id] = true
+			value += int(Balance.KEEPSAKES[id]["value"])
+	return value
+
+
 func end_run(extracted: bool, cause: String = "") -> void:
 	var cargo: Dictionary = run.get("cargo", {}).duplicate()
 	var credits := 0
 	var relic_bonus := 0
+	var finds: Array = run.get("finds", []).duplicate()
+	var finds_bonus := finds_value(finds) if extracted else 0
 	if extracted:
 		credits = cargo_value(cargo)
 		if run.get("relic", false):
@@ -129,12 +142,13 @@ func end_run(extracted: bool, cause: String = "") -> void:
 		Progress.stats["deaths"] = int(Progress.stats.get("deaths", 0)) + 1
 	var depth_m := int(run.get("max_depth", 0) * Balance.METERS_PER_CELL)
 	Progress.stats["best_depth"] = maxi(int(Progress.stats.get("best_depth", 0)), depth_m)
-	Progress.add_credits(credits + relic_bonus)
+	Progress.add_credits(credits + relic_bonus + finds_bonus)
 	Progress.tutorial_done = true
 	Progress.save_progress()
 	last_result = {
 		"extracted": extracted, "cause": cause, "cargo": cargo, "credits": credits,
 		"relic": run.get("relic", false), "relic_bonus": relic_bonus, "depth": depth_m,
+		"finds": finds, "finds_bonus": finds_bonus,
 		"kills": run.get("kills", 0), "time": run.get("time", 0.0), "seed": run.get("seed", 0),
 		"contract": contract.get("name", ""),
 	}

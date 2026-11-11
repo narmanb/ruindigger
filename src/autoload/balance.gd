@@ -63,6 +63,14 @@ const ORE := {
 const CARGO_CAPACITY := [16, 24, 34, 46]
 const PICKUP_MAGNET_RADIUS := 34.0
 const RELIC_BONUS := 260
+const CARGO_SCROLL_SPEED := 240.0
+const KEEPSAKES := [
+	{"name": "Miner's Token", "value": 35, "color": "ffb347", "desc": "A brass shift token from the first Dustworks crews."},
+	{"name": "Glowspore Sample", "value": 50, "color": "6ff3d0", "desc": "A sealed vial of living spores, still glowing in the dark."},
+	{"name": "Engine Cog", "value": 90, "color": "bc8cff", "desc": "A tiny alloy gear that turns without a visible axle."},
+	{"name": "Aqueduct Seal", "value": 70, "color": "5fc0ff", "desc": "A stamped valve seal from the old drowned waterworks."},
+	{"name": "Crystal Bloom", "value": 80, "color": "ef9aff", "desc": "A rare cluster of crystals shaped like an unfolding flower."},
+]
 
 # --- Hull ---
 const HULL := [100.0, 130.0, 165.0, 210.0]

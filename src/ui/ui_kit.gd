@@ -170,3 +170,20 @@ class Scanline extends Control:
 			draw_rect(Rect2(i, 0, 1, 3), Color(color.r, color.g, color.b, 0.35))
 		var x := fmod(t * 60.0, w + 30.0) - 30.0
 		draw_rect(Rect2(x, 0, 30, 3), Color(color.r, color.g, color.b, 0.7))
+
+
+static func touch_scrollbar(scroll: ScrollContainer) -> void:
+	# Match the proven finger-sized scrollbar in Settings.
+	var bar := scroll.get_v_scroll_bar()
+	var track := StyleBoxFlat.new()
+	track.bg_color = UIKit.PANEL_EDGE
+	track.content_margin_left = 16
+	track.content_margin_right = 16
+	bar.add_theme_stylebox_override("scroll", track)
+	var handle := StyleBoxFlat.new()
+	handle.bg_color = UIKit.AMBER
+	handle.set_content_margin_all(16)
+	handle.content_margin_top = 20
+	handle.content_margin_bottom = 20
+	for style in ["grabber", "grabber_highlight", "grabber_pressed"]:
+		bar.add_theme_stylebox_override(style, handle)

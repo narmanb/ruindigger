@@ -2179,6 +2179,7 @@ func _unbreakable(x: int, y: int) -> bool:
 func _dig_valid() -> bool:
 	var dc: DigCheck
 	var from_spawn: PackedFloat32Array
+	var escape: PackedByteArray
 	var clean := false
 	# audit for softlock traps (places you can get into but never out of) and
 	# seal any that turn up; re-audit, since sealing changes the terrain
@@ -2186,7 +2187,7 @@ func _dig_valid() -> bool:
 		dc = DigCheck.new(g, door_open_cells())
 		dc.allow_ladder = true
 		from_spawn = dc.costs_from(data["spawn"])
-		var escape := dc.escape_set(data["lift"])
+		escape = dc.escape_set(data["lift"])
 		var sealed_n := _seal_traps(from_spawn, escape)
 		if sealed_n == 0:
 			clean = true
@@ -2208,6 +2209,7 @@ func _dig_valid() -> bool:
 	data["climb_up_s"] = GenMetrics._near(dc, with_ladder, data["lift"])
 	data["climb_relay_s"] = GenMetrics._near(dc, with_ladder, data["relay"])
 	data["dig_relic_s"] = GenMetrics._near(dc, with_ladder, data["relic"])
+	data["finds"] = ZoneFinds.place(self, from_spawn, escape)
 	return gates_ok and data["dig_down_s"] >= 0.0 and data["dig_down_s"] <= Balance.FAIR_DIG_BUDGET_DOWN \
 		and data["climb_up_s"] >= 0.0 and data["climb_up_s"] <= Balance.FAIR_DIG_BUDGET_UP \
 		and data["dig_relic_s"] >= 0.0 and data["climb_relay_s"] >= 0.0
@@ -2303,6 +2305,8 @@ func _water_environment() -> void:
 	var occupied: Dictionary = {}
 	for entity in data.entities:
 		occupied[entity.cell] = true
+	for find in data.get("finds", []):
+		occupied[find.cell] = true
 	# Upgrade a suitable camp's existing decorative crate rather than duplicating
 	# it. Some seeds carve the route through it; those keep their old decoration.
 	for entity in data.entities.duplicate():
