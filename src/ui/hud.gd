@@ -14,6 +14,7 @@ var prompt_label: Label
 var touch: TouchControls
 var pause_btn: Button
 var fps_label: Label
+var ladder_label: Label
 var _toast_t := 0.0
 var _banner_t := 0.0
 var _hint_t := 0.0
@@ -87,6 +88,12 @@ func _ready() -> void:
 	fps_label = UIKit.label("", 9, UIKit.MUTED)
 	fps_label.position = Vector2(8, 82)
 	root.add_child(fps_label)
+	ladder_label = UIKit.label("LADDER ATTACHED", 10, UIKit.TEAL, true)
+	ladder_label.position = Vector2(8, 98)
+	ladder_label.add_theme_stylebox_override("normal", UIKit.panel_box(UIKit.TEAL))
+	ladder_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ladder_label.visible = false
+	root.add_child(ladder_label)
 	touch = TouchControls.new()
 	touch.mine = mine
 	root.add_child(touch)
@@ -153,6 +160,7 @@ func _process(delta: float) -> void:
 	fps_label.visible = Settings.get_value("show_fps")
 	if fps_label.visible:
 		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+	ladder_label.visible = mine.player != null and mine.player.on_ladder and not mine.player.dead and not mine.ending
 	diag.queue_redraw()
 	depth_panel.queue_redraw()
 
