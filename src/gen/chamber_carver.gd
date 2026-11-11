@@ -285,7 +285,7 @@ func _works(c: Dictionary) -> void:
 		if not gen.reserved.has(Vector2i(x, fy - 3)):
 			solid(x, fy - 3, Cell.SOFT)
 	for x in range(r.position.x + 2, r.end.x - 1, 6):
-		gen.data["entities"].append({"type": "beam", "cell": Vector2i(x, fy - 1)})
+		gen.data["entities"].append({"type": "beam", "cell": Vector2i(x, fy)})
 	for x in range(r.position.x + 5, r.end.x - 1, 12):
 		gen.data["entities"].append({"type": "lamp", "cell": Vector2i(x, fy - 2)})
 	gen.data["entities"].append({"type": "crate", "cell": Vector2i(r.position.x + r.size.x / 3, fy)})
