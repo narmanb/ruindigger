@@ -295,6 +295,9 @@ const METERS_PER_CELL := 2.0
 # --- generation v2 -----------------------------------------------------------
 # chamber archetype weights per stratum (LayoutPlanner); used archetypes are
 # down-weighted x3 so a mine rarely repeats one shape
+const GEN_LADDER_MIN_RUN := 3
+const GEN_LANDING_MAX_RUN := 3
+const GEN_LANDING_WIDTH := 2
 const GEN_ARCH_WEIGHTS := {
 	0: [["works", 3], ["hall", 3], ["terraces", 2], ["fissure", 1]],
 	1: [["terraces", 3], ["hall", 2], ["fissure", 2]],

@@ -7,6 +7,7 @@ static func run(t: Node) -> void:
 	Game.start_run()
 	await t._frames(40)
 	var mine: Node = Game.current
+	audit(t, mine.data, "live seed 7")
 	var g: TerrainGrid = mine.grid
 	var p: Player = mine.player
 	p.invuln = 1e9
@@ -49,3 +50,40 @@ static func run(t: Node) -> void:
 	t.check(above_rock, "Down + Jump never disables collision with solid rock")
 	Game.goto("title", true)
 	await t._frames(3)
+
+
+static func audit(t: Node, d: Dictionary, tag: String) -> void:
+	var g: TerrainGrid = d["grid"]
+	var bad_ladders := 0
+	for x in g.w:
+		var y := 0
+		while y < g.h:
+			if g.get_mat(x, y) != Cell.LADDER:
+				y += 1
+				continue
+			var first := y
+			var anchored := g.is_solid(x, y - 1)
+			var protected_run := false
+			while y < g.h and g.get_mat(x, y) == Cell.LADDER:
+				anchored = anchored or g.is_solid(x - 1, y) or g.is_solid(x + 1, y)
+				protected_run = protected_run or g.has_flag(x, y, Cell.F_PROTECTED)
+				y += 1
+			anchored = anchored or g.is_solid(x, y)
+			if not protected_run and (y - first < 3 or not anchored): bad_ladders += 1
+	t.check(bad_ladders == 0, tag + ": generated ladders have a useful length and rock attachment")
+	var long_planks := 0
+	for y in g.h:
+		var n := 0
+		for x in g.w + 1:
+			if x < g.w and g.get_mat(x, y) == Cell.PLATFORM:
+				n += 1
+			else:
+				if n > 3 and g.get_stratum(x - 1, y) != Balance.Z_ENGINE: long_planks += 1
+				n = 0
+	t.check(long_planks == 0, tag + ": planks outside Engine maintenance routes are short landings")
+	var floating_posts := 0
+	for e in d["entities"]:
+		if e["type"] == "beam":
+			var c: Vector2i = e["cell"]
+			if g.get_mat(c.x, c.y) != Cell.AIR or g.get_mat(c.x, c.y - 1) != Cell.AIR or not g.is_solid(c.x, c.y + 1): floating_posts += 1
+	t.check(floating_posts == 0, tag + ": wooden posts stand on a floor")

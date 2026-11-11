@@ -317,6 +317,7 @@ func _generation(n: int) -> void:
 		worst_ms = maxi(worst_ms, Time.get_ticks_msec() - t0)
 		var g: TerrainGrid = d["grid"]
 		var tag := "seed %d" % seed_value
+		load("res://tests/structure_features.gd").audit(self, d, tag)
 		if int(d["repairs"]) > 0:
 			repaired += 1
 		check(d["valid"], tag + ": validated route spawn->relic->lift")

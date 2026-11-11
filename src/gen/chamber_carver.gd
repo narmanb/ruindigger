@@ -193,24 +193,20 @@ func _fissure(c: Dictionary) -> void:
 			air(x, y)
 	# guaranteed climbing line: a rope ladder down one side of the crack
 	var lx := r.position.x + 1 if ladder_left else r.end.x - 2
-	# below the Dustworks the rope has rotted away except for its top third:
+	# Below the Dustworks the rope has rotted away:
 	# drop down, and bring your own ladder for the climb back
 	var frayed: bool = int(c["stratum"]) > 0
 	c["frayed"] = frayed
-	var rope_end := r.position.y + (r.size.y / 3 if frayed else r.size.y)
+	var rope_end := r.position.y if frayed else r.end.y
 	for y in range(r.position.y, r.end.y):
 		air(lx, y)
 		if y < rope_end and not gen.reserved.has(Vector2i(lx, y)):
 			g.put(lx, y, Cell.LADDER)
 			g.set_flag(lx, y, Cell.F_NO_RUBBLE)
-	# ledges on the other wall every 4 rows, and one plank bridge
+	# Natural ledges on the other wall; no arbitrary mid-cavern plank bridge.
 	var ox := r.end.x - 1 if ladder_left else r.position.x
 	for y in range(r.position.y + 4, r.end.y - 2, 4):
 		solid(ox, y, Cell.HARD)
-	var by := r.position.y + r.size.y / 2
-	for x in range(r.position.x, r.end.x):
-		if not g.is_solid(x, by) and g.get_mat(x, by) != Cell.LADDER:
-			g.put(x, by, Cell.PLATFORM)
 	_floor_row(Rect2i(r.position.x, r.position.y, r.size.x, r.size.y), r.end.y, Cell.HARD)
 	# a short side mouth at the top so the crack opens onto its approach
 	var mouth_dir := -1 if ladder_left else 1

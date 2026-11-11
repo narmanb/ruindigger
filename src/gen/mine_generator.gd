@@ -111,6 +111,7 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	_ensure_water_encounter()
 	_settle_water()
 	_trace("_settle_water()")
+	StructureLayout.clean(g, data["entities"])
 	_stabilize_basalt()
 	_trace("_stabilize_basalt()")
 	_enemies()
@@ -364,10 +365,6 @@ func _shaft() -> void:
 		for x in [sx - 2, sx + 2]:
 			if g.get_mat(x, y) == Cell.AIR:
 				g.put(x, y, Cell.SOFT)
-	for y in range(top + 6, bottom, 7):
-		g.put(sx - 1, y, Cell.PLATFORM)
-		g.put(sx, y, Cell.PLATFORM)
-		data["entities"].append({"type": "beam", "cell": Vector2i(sx - 2, y)})
 	# shaft bottom landing (short side tunnel west)
 	for y in range(bottom - 2, bottom + 1):
 		for x in range(sx - 8, sx + 2):
@@ -1222,6 +1219,11 @@ func _branches_and_loops() -> void:
 						g.put(mx, best_y + dy, Cell.AIR)
 				if not g.is_solid(mx, best_y) and tunnel_ok(mx, best_y):
 					g.put(mx, best_y, Cell.HARD)
+			# Only actual side-room exits need a short landing beside the ladder.
+			if west:
+				for mx in [sx - 1, sx]:
+					if g.get_mat(mx, best_y) == Cell.AIR:
+						g.put(mx, best_y, Cell.PLATFORM)
 			branches += 1
 		elif not c["backbone"]:
 			# side chamber: tunnel to the nearest route cell
@@ -2184,6 +2186,8 @@ func _dig_valid() -> bool:
 	# audit for softlock traps (places you can get into but never out of) and
 	# seal any that turn up; re-audit, since sealing changes the terrain
 	for round in 3:
+		if round > 0:
+			StructureLayout.clean(g, data["entities"])
 		dc = DigCheck.new(g, door_open_cells())
 		dc.allow_ladder = true
 		from_spawn = dc.costs_from(data["spawn"])
