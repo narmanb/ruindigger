@@ -33,6 +33,7 @@ var buffer := 0.0
 var jet_ready := true
 var wall_lock := 0.0
 var on_ladder := false
+var ladder_regrab_blocked := false
 var was_on_floor := true
 var jumping := false
 var fall_peak := 0.0
@@ -186,13 +187,25 @@ func _physics_process(delta: float) -> void:
 
 	# --- ladders ---
 	var ladder_here := _ladder_overlap()
-	if ladder_here and not on_ladder and (ay < -0.5 or (ay > 0.5 and not on_floor)):
+	var grab_assist := bool(Settings.get_value("jump_grabs_ladders"))
+	if not _ladder_overlap(C * 0.5):
+		ladder_regrab_blocked = false
+	if grab_assist and ladder_here and not on_ladder and not on_floor and velocity.y > 0.0 and buffer > 0.0 and not ladder_regrab_blocked:
+		on_ladder = true
+		ladder_regrab_blocked = true
+		velocity = Vector2.ZERO
+		buffer = 0.0
+		jumping = false
+	if ladder_here and not on_ladder and (ay < -0.5 or (ay > 0.5 and not on_floor)) and not (grab_assist and ladder_regrab_blocked):
 		on_ladder = true
 		velocity = Vector2.ZERO
 	if on_ladder and not ladder_here:
 		on_ladder = false
 	if on_ladder:
 		jet_ready = true
+		# A mostly vertical finger push should climb without drifting off the rail.
+		if InputSetup.last_device == "touch" and absf(ay) > 0.5 and absf(ax) < absf(ay) * Balance.TOUCH_LADDER_AXIS_RATIO:
+			ax = 0.0
 		velocity.y = ay * Balance.LADDER_SPEED if absf(ay) > 0.3 else 0.0
 		velocity.x = ax * Balance.RUN_SPEED * 0.6
 		if ladder_here:
@@ -203,6 +216,7 @@ func _physics_process(delta: float) -> void:
 		if buffer > 0.0:
 			buffer = 0.0
 			on_ladder = false
+			ladder_regrab_blocked = grab_assist
 			velocity.y = -Balance.JUMP_VELOCITY * 0.85
 			jumping = true
 			Audio.play("jump", -6.0)
@@ -354,13 +368,14 @@ func feet_cell() -> Vector2i:
 	return grid.world_to_cell(global_position + Vector2(0, HALF.y - 1.0))
 
 
-func _ladder_overlap() -> bool:
+func _ladder_overlap(margin: float = 0.0) -> bool:
 	if not grid:
 		return false
-	for oy in [-8.0, 6.0]:
-		var c := grid.world_to_cell(global_position + Vector2(0, oy))
-		if grid.get_mat(c.x, c.y) == Cell.LADDER:
-			return true
+	for ox in [-margin, 0.0, margin]:
+		for oy in [-8.0, 6.0]:
+			var c := grid.world_to_cell(global_position + Vector2(ox, oy))
+			if grid.get_mat(c.x, c.y) == Cell.LADDER:
+				return true
 	return false
 
 

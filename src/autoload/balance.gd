@@ -21,6 +21,7 @@ const WALL_JUMP_PUSH := 150.0
 const WALL_JUMP_VELOCITY := 285.0
 const WALL_JUMP_LOCK := 0.13
 const LADDER_SPEED := 125.0
+const TOUCH_LADDER_AXIS_RATIO := 0.8
 const INVULN_TIME := 1.0
 const FALL_DAMAGE_SPEED := 9999.0   # no fall damage: we want digging down to feel free
 

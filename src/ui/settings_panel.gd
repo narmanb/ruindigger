@@ -72,6 +72,7 @@ func _ready() -> void:
 	mc.item_selected.connect(func(i: int) -> void: Settings.set_value("move_control", i))
 	row2.add_child(mc)
 	list.add_child(row2)
+	_toggle(list, "Jump grabs ladders (falling)", "jump_grabs_ladders")
 	_slider(list, "Stick / D-pad size", "stick_size", 0.6, 1.8, 0.05)
 	_slider(list, "Stick dead zone", "stick_deadzone", 0.05, 0.35, 0.01)
 	_slider(list, "Button size", "touch_scale", 0.7, 1.5, 0.05)
