@@ -16,6 +16,7 @@ const KEYS := {
 	"interact": [KEY_E, KEY_F],
 	"pause": [KEY_ESCAPE, KEY_P],
 	"map": [KEY_M, KEY_TAB],
+	"inventory": [KEY_I],
 	"ladder": [KEY_L, KEY_Q],
 }
 

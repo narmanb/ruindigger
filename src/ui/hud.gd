@@ -21,6 +21,7 @@ var _hint_t := 0.0
 var _cargo_pulse := 0.0
 var _scaf_pulse := 0.0
 var map_screen: Node
+var cargo_screen: CargoScreen
 
 
 func _ready() -> void:
@@ -35,6 +36,18 @@ func _ready() -> void:
 	diag.position = Vector2(6, 6)
 	diag.size = Vector2(150, 74)
 	root.add_child(diag)
+	var cargo_hit := Control.new()
+	cargo_hit.position = Vector2(6, 34)
+	cargo_hit.size = Vector2(150, 18)
+	cargo_hit.tooltip_text = "Cargo manifest (I)"
+	cargo_hit.mouse_filter = Control.MOUSE_FILTER_STOP
+	cargo_hit.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			open_cargo())
+	root.add_child(cargo_hit)
+	cargo_screen = CargoScreen.new()
+	cargo_screen.mine = mine
+	add_child(cargo_screen)
 	minimap = Minimap.new()
 	minimap.setup(mine)
 	minimap.anchor_left = 0.5
@@ -141,6 +154,11 @@ func open_map() -> void:
 	map_screen.open()
 
 
+func open_cargo() -> void:
+	if not mine.ending and not get_tree().paused:
+		cargo_screen.open()
+
+
 func _process(delta: float) -> void:
 	_toast_t -= delta
 	_banner_t -= delta
@@ -187,7 +205,7 @@ class Diag extends Control:
 		var ccol := Color("6ff3d0").lerp(Color(1, 1, 1), hud._cargo_pulse)
 		if n >= cap:
 			ccol = Color("ffb347")
-		_bar(f, 8, 33, "CARGO", float(n) / cap, ccol, "%d/%d" % [n, cap], false)
+		_bar(f, 8, 33, "CARGO>", float(n) / cap, ccol, "%d/%d" % [n, cap], false)
 		# charges
 		draw_string(f, Vector2(8, 55), "CHRG", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UIKit.MUTED)
 		var ch: int = Game.run.get("charges", 0)

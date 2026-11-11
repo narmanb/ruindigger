@@ -37,6 +37,8 @@ func section(n: String) -> void:
 func _run() -> void:
 	var suite: String = args.get("suite", "all")
 	var t0 := Time.get_ticks_msec()
+	if suite == "cargo":
+		await load("res://tests/cargo_features.gd").run(self)
 	if suite == "water_live":
 		Game.contract = Game.contract_offers[0]
 		Game.contract["seed"] = 7
@@ -1014,6 +1016,7 @@ func _gameplay() -> void:
 	check(Game.current == mine, "soak run still alive (no crash/scene loss)")
 	await _v05_live()
 	await _floodgate_breach()
+	await load("res://tests/cargo_features.gd").run(self)
 	Game.goto("title", true)
 	await _frames(5)
 

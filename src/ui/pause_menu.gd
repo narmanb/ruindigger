@@ -40,6 +40,7 @@ func _ready() -> void:
 	v.add_child(UIKit.Scanline.new())
 	resume_btn = UIKit.button("RESUME", close)
 	v.add_child(resume_btn)
+	v.add_child(UIKit.button("CARGO MANIFEST", func() -> void: mine.hud.cargo_screen.open()))
 	v.add_child(UIKit.button("SETTINGS", _settings))
 	v.add_child(UIKit.button("ABANDON RUN", _abandon))
 	var c: Dictionary = Game.run.get("contract", {})
@@ -58,6 +59,16 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if mine.hud.cargo_screen.is_open:
+		if event.is_action_pressed("pause") or event.is_action_pressed("inventory") or event.is_action_pressed("ui_cancel"):
+			mine.hud.cargo_screen.close()
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("inventory") and not mine.ending:
+		if not is_open or panel.get_parent().visible:
+			mine.hud.cargo_screen.open()
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("pause") and mine.hud.map_screen.is_open:
 		mine.hud.map_screen.close()
 		get_viewport().set_input_as_handled()
@@ -80,7 +91,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
-		if mine and not mine.ending and not is_open and is_inside_tree() and not mine.hud.map_screen.is_open:
+		if mine and not mine.ending and not is_open and is_inside_tree() and not mine.hud.map_screen.is_open and not mine.hud.cargo_screen.is_open:
 			open()
 
 
