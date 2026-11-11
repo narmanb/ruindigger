@@ -75,6 +75,7 @@ func _ready() -> void:
 	_toggle(list, "Jump grabs ladders (falling)", "jump_grabs_ladders")
 	_slider(list, "Stick / D-pad size", "stick_size", 0.6, 1.8, 0.05)
 	_slider(list, "Stick dead zone", "stick_deadzone", 0.05, 0.35, 0.01)
+	_toggle(list, "Touch stick vertical assist", "touch_stick_vertical_assist")
 	_slider(list, "Button size", "touch_scale", 0.7, 1.5, 0.05)
 	_slider(list, "Control opacity", "touch_opacity", 0.25, 1.0, 0.05)
 	list.add_child(UIKit.button("EDIT TOUCH LAYOUT", _edit_layout, 200.0))

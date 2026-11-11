@@ -530,6 +530,7 @@ func _ui() -> void:
 				dpad_ok = false
 	check(dpad_ok, "d-pad maps 8 directions (with finger jitter) to exact axes")
 	check(TouchControls.move_vector(TouchControls.MODE_DPAD, Vector2(3, 2), 40.0, 0.15) == Vector2.ZERO, "d-pad centre is a dead zone")
+	check(TouchControls.move_vector(TouchControls.MODE_DPAD, Vector2(14, -30), 34.0, 0.15, true) == Vector2(1, -1), "touch stick vertical assist leaves d-pad diagonals unchanged")
 	check(TouchControls.move_vector(TouchControls.MODE_FIXED, Vector2(4, 0), 40.0, 0.15).x == 0.0 and TouchControls.move_vector(TouchControls.MODE_FIXED, Vector2(30, 0), 40.0, 0.15).x == 0.75, "stick dead zone and proportional output")
 	check(TouchControls.move_vector(TouchControls.MODE_FLOATING, Vector2(400, 0), 40.0, 0.15).x == 1.0, "stick output saturates at 1")
 	# live synthetic touches
@@ -550,6 +551,17 @@ func _ui() -> void:
 	_touch(tc, 1, tc._btn_pos(jump), false)
 	_touch(tc, 0, Vector2(160, 200), false)
 	check(not Input.is_action_pressed("move_right") and not Input.is_action_pressed("jump"), "releasing fingers releases the actions")
+	Settings.values["touch_stick_vertical_assist"] = true
+	_touch(tc, 0, Vector2(120, 200), true)
+	for offset in [Vector2(14, -30), Vector2(-14, 30)]:
+		_drag(tc, 0, Vector2(120, 200) + offset)
+		check(not Input.is_action_pressed("move_left") and not Input.is_action_pressed("move_right") and Input.is_action_pressed("aim_up" if offset.y < 0 else "aim_down"), "touch vertical assist rejects sideways finger drift %s" % str(offset))
+	_drag(tc, 0, Vector2(150, 170))
+	check(Input.is_action_pressed("move_right") and Input.is_action_pressed("aim_up"), "touch vertical assist preserves deliberate diagonal input")
+	Settings.values["touch_stick_vertical_assist"] = false
+	_drag(tc, 0, Vector2(134, 170))
+	check(Input.is_action_pressed("move_right") and Input.is_action_pressed("aim_up"), "disabling touch vertical assist restores the original stick input")
+	_touch(tc, 0, Vector2(134, 170), false)
 	_touch(tc, 0, Vector2(120, 30), true)
 	check(tc.stick_finger == -1, "floating stick does not spawn over the HUD row")
 	_touch(tc, 0, Vector2(120, 30), false)

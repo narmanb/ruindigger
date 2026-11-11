@@ -21,6 +21,7 @@ const DEFAULTS := {
 	"move_control": 1,      # 0 fixed stick, 1 floating stick, 2 d-pad
 	"stick_size": 1.0,
 	"stick_deadzone": 0.15,
+	"touch_stick_vertical_assist": false,
 	"jump_grabs_ladders": false,
 	# layout offsets (viewport px) dragged in the layout editor
 	"pos_move_x": 0.0, "pos_move_y": 0.0,

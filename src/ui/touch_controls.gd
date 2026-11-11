@@ -183,7 +183,7 @@ func _to_local(p: Vector2) -> Vector2:
 
 
 ## Movement vector for a finger offset d (pure; tests call it directly).
-static func move_vector(mode: int, d: Vector2, radius: float, deadzone: float) -> Vector2:
+static func move_vector(mode: int, d: Vector2, radius: float, deadzone: float, vertical_assist: bool = false) -> Vector2:
 	if mode == MODE_DPAD:
 		if d.length() < radius * 0.22:
 			return Vector2.ZERO
@@ -193,12 +193,14 @@ static func move_vector(mode: int, d: Vector2, radius: float, deadzone: float) -
 	var out := (d / radius).limit_length(1.0)
 	if absf(out.x) <= deadzone:
 		out.x = 0.0
+	if vertical_assist and absf(out.y) > Balance.TOUCH_STICK_VERTICAL_MIN and absf(out.x) < absf(out.y) * Balance.TOUCH_STICK_VERTICAL_RATIO:
+		out.x = 0.0
 	return out
 
 
 func _apply_stick() -> void:
 	if stick_finger != -1:
-		_vec = move_vector(move_mode(), stick_pos - stick_center, move_radius(), float(Settings.get_value("stick_deadzone")))
+		_vec = move_vector(move_mode(), stick_pos - stick_center, move_radius(), float(Settings.get_value("stick_deadzone")), bool(Settings.get_value("touch_stick_vertical_assist")))
 	var x := _vec.x
 	var y := _vec.y
 	_set_axis("move_left", "move_right", x)
