@@ -100,16 +100,16 @@ jobs:
           original = preset.read_text()
           try:
               preset.write_text(original.replace('package/unique_name="com.ruindigger.game"', 'package/unique_name="com.ruindigger.game.scrollfix"').replace('package/name="Ruin Digger"', 'package/name="Ruin Digger Scroll Fix"'))
-              subprocess.run(["timeout", "300", "godot", "--headless", "--export-debug", "Android", "build/android/ruin_digger-scroll-fix-0.5.3.apk"], check=True)
+              subprocess.run(["timeout", "300", "godot", "--headless", "--export-debug", "Android", "build/android/ruin_digger-scroll-fix-0.5.4.apk"], check=True)
           finally:
               preset.write_text(original)
           PY
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose build/android/ruin_digger-scroll-fix-0.5.3.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose build/android/ruin_digger-scroll-fix-0.5.4.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: ruin-digger-scroll-fix-separate-app
-          path: build/android/ruin_digger-scroll-fix-0.5.3.apk
+          path: build/android/ruin_digger-scroll-fix-0.5.4.apk
 
       - uses: actions/upload-artifact@v4
         with:

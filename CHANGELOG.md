@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.4
+- Add optional Touch stick vertical assist: reduce sideways drift during mostly vertical pushes, preserving deliberate diagonals. Off by default; gamepad and d-pad unchanged.
+
 ## 0.5.3
 - Show a clear LADDER ATTACHED badge while climbing.
 - Fix overlapping ambience fades stopping the newest track.
