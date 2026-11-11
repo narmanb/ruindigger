@@ -959,6 +959,7 @@ func _gameplay() -> void:
 	mine.player_interact(pl)
 	await _frames(200)
 	check(Game.current_name == "results", "extraction ends the run on the results screen")
+	check(Audio._flat.all(func(p: AudioStreamPlayer) -> bool: return not p.playing or p.stream != Audio.stream("lift_hum")), "extraction leaves no looping hum in the one-shot pool")
 	check(Game.last_result.get("extracted", false) and Progress.credits == credits_before + 3 * Balance.ORE[1]["value"] + int(Game.contract.get("reward", 260)) or Progress.credits > credits_before, "extraction banks cargo + relic bonus")
 	check(Progress.stats.get("extractions", 0) >= 1, "extraction recorded in persistent stats")
 	# --- a fresh run starts clean; death loses cargo

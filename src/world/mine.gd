@@ -662,7 +662,6 @@ func extract(l: Node2D) -> void:
 	ending = true
 	player.controls_enabled = false
 	player.stop_sounds()
-	Audio.play("lift_hum")
 	Audio.loop("lift_hum", true, -6.0)
 	toast("EXTRACTING...")
 	var tw := create_tween()
