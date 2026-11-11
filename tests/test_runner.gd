@@ -677,7 +677,8 @@ func _gameplay() -> void:
 	section("gameplay")
 	for track in ["amb_dust", "amb_spore", "amb_outpost"]:
 		Audio.music(track, 0.05)
-	await get_tree().create_timer(0.15).timeout
+	# A cold frame can expire a timer before tweens update. Await the fade itself.
+	await Audio._music_tween.finished
 	check(Audio._music_a.playing and not Audio._music_b.playing, "rapid ambience transitions keep the newest track playing")
 	Game.contract = Balance.CONTRACTS[0].duplicate()
 	Game.contract["seed"] = 4242
