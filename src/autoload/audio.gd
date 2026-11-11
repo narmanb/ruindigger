@@ -14,6 +14,7 @@ var _loops: Dictionary = {}       # name -> AudioStreamPlayer
 var _music_a: AudioStreamPlayer
 var _music_b: AudioStreamPlayer
 var _music_name := ""
+var _music_tween: Tween
 var _last_play: Dictionary = {}   # rate limit identical sounds
 
 
@@ -133,11 +134,14 @@ func stop_all_loops() -> void:
 func music(track: String, fade: float = 1.5) -> void:
 	if track == _music_name:
 		return
+	if _music_tween and _music_tween.is_valid():
+		_music_tween.kill()
 	_music_name = track
 	var old := _music_a
 	_music_a = _music_b
 	_music_b = old
 	var tw := create_tween().set_parallel(true)
+	_music_tween = tw
 	tw.tween_property(_music_b, "volume_db", -80.0, fade)
 	if track != "":
 		_music_a.stream = stream(track)
