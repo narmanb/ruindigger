@@ -229,6 +229,20 @@ const ATLAS_COLS := 8   # terrain_atlas.png is 8 x 4 blocks (see tools/assetgen/
 
 
 func block_index(m: int, s: int) -> int:
+	if s == Balance.Z_FIRST:
+		# the sixth biome was added after the atlas order was fixed: slots 21-25
+		match m:
+			Cell.SOFT, Cell.GAS:
+				return 21
+			Cell.HARD, Cell.CRACKED:
+				return 22
+			Cell.LOOSE:
+				return 23
+			Cell.BEDROCK:
+				return 24
+			Cell.ALLOY:
+				return 25
+		return 21
 	match m:
 		Cell.SOFT, Cell.GAS:
 			return s * 3
@@ -405,7 +419,7 @@ class GlowChunk extends Node2D:
 					elif m == Cell.GAS:
 						draw_texture_rect(view.tex_glow, Rect2(p - Vector2(12, 12), Vector2(40, 40)), false, Color(0.75, 0.95, 0.2, 0.3))
 					elif m == Cell.ALLOY and g.edge_mask(x, y) != 0:
-						draw_texture_rect_region(view.tex_alloy_glow, Rect2(p, Vector2(C, C)), Rect2((x % 4) * C, (y % 4) * C, C, C), Color(0.55, 0.4, 1.0, 0.8))
+						draw_texture_rect_region(view.tex_alloy_glow, Rect2(p, Vector2(C, C)), Rect2((x % 4) * C, (y % 4) * C, C, C), Color(0.2, 0.95, 0.85, 0.8) if g.get_stratum(x, y) == Balance.Z_FIRST else Color(0.55, 0.4, 1.0, 0.8))
 				elif m == Cell.AIR and not g.has_flag(x, y, Cell.F_DUG):
 					var hsh := TerrainView.hash2(x, y)
 					var s := g.get_stratum(x, y)

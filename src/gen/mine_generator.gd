@@ -118,6 +118,8 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	_trace("_enemies()")
 	_finalize_hp()
 	_trace("_finalize_hp()")
+	_ancient_descent()
+	_trace("_ancient_descent()")
 	_validate_and_repair()
 	_trace("_validate_and_repair()")
 	_water_environment()
@@ -2173,6 +2175,98 @@ func _unbreakable(x: int, y: int) -> bool:
 		return true
 	var m := g.get_mat(x, y)
 	return m == Cell.ALLOY or m == Cell.BEDROCK or (Cell.is_solid(m) and g.has_flag(x, y, Cell.F_PROTECTED))
+
+
+## The Ancient Descent Platform: an older machine sealed in the rock of the
+## Engine vault, and the optional one-way entrance to The First Civilization.
+## It runs after every other pass with its own RNG and only ever replaces plain
+## rock, so adding it changes nothing else about an existing seed.
+func _ancient_descent() -> void:
+	var drng := RandomNumberGenerator.new()
+	drng.seed = hash("ancient-descent:%d" % int(data["seed"]))
+	var zr := _zr(Balance.Z_ENGINE)
+	var occupied: Dictionary = {}
+	for e in data["entities"]:
+		occupied[e["cell"]] = true
+		if e.has("module"):
+			occupied[e["module"]] = true
+	# try the full-size room first, then a compact one, then tighter clearance
+	var tiers: Array = [[Balance.DESCENT_ROOM, 1], [Balance.DESCENT_ROOM_SMALL, 1], [Balance.DESCENT_ROOM_SMALL, 0]]
+	for attempt in Balance.DESCENT_TRIES * tiers.size():
+		var tier: Array = tiers[attempt / Balance.DESCENT_TRIES]
+		var w: int = tier[0].x
+		var h: int = tier[0].y
+		var r := Rect2i(drng.randi_range(zr.position.x + 3, zr.end.x - w - 3), drng.randi_range(zr.position.y + 2, zr.end.y - h - 1), w, h)
+		if not _plain_rock(r, occupied, int(tier[1])):
+			continue
+		space.claim(r, "landmark", "ancient_descent")
+		var fy := r.end.y - 2                        # feet row inside the room
+		for y in range(r.position.y, r.end.y):
+			for x in range(r.position.x, r.end.x):
+				var c := Vector2i(x, y)
+				var inside := x > r.position.x and x < r.end.x - 1 and y > r.position.y and y <= fy
+				if inside:
+					g.put(x, y, Cell.AIR)
+					g.set_flag(x, y, Cell.F_NO_RUBBLE)
+					reserved[c] = true
+				elif y == r.position.y or y == r.end.y - 1:
+					g.put(x, y, Cell.ALLOY)          # composite lintel and deck
+					if y == r.end.y - 1:
+						g.set_flag(x, y, Cell.F_PROTECTED)
+						support[c] = true
+				no_feature[c] = true
+		# a cracked wall on the side facing the vault's middle is the way in
+		var side := 1 if r.get_center().x < W / 2 else -1
+		var door_x: int = r.end.x - 1 if side == 1 else r.position.x
+		for dy in range(-2, 1):
+			g.put(door_x, fy + dy, Cell.CRACKED)
+		var cell := Vector2i(r.position.x + w / 2, fy)
+		data["descent"] = cell
+		data["entities"].append({"type": "ancient_descent", "cell": cell})
+		data["entities"].append({"type": "lamp", "cell": Vector2i(r.position.x + 2, r.position.y + 1), "color": "ffb070"})
+		data["landmarks"].append({"kind": "ancient_descent", "rect": r})
+		# a short approach from the door, through plain dry rock only
+		var x := door_x + side
+		for k in Balance.DESCENT_APPROACH:
+			var col_ok := true
+			for dy in range(-3, 2):
+				if not _plain_cell(x, fy + dy, occupied):
+					col_ok = false
+			if not col_ok:
+				break
+			for dy in range(-2, 1):
+				g.put(x, fy + dy, Cell.AIR)
+				no_feature[Vector2i(x, fy + dy)] = true
+			x += side
+		_stabilize_basalt()
+		return
+	data["descent"] = Vector2i(-1, -1)
+
+
+func _plain_cell(x: int, y: int, occupied: Dictionary) -> bool:
+	var c := Vector2i(x, y)
+	var m := g.get_mat(x, y)
+	if not (m == Cell.SOFT or m == Cell.HARD) or g.has_flag(x, y, Cell.F_PROTECTED):
+		return false
+	if reserved.has(c) or support.has(c) or sealed.has(c) or occupied.has(c):
+		return false
+	if g.get_stratum(x, y) != Balance.Z_ENGINE or space.kind_at(c) != "":
+		return false
+	# stay clear of water and of anything resting on this cell
+	for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if g.get_water(x + d.x, y + d.y) > 0:
+			return false
+	return g.get_mat(x, y - 1) != Cell.LOOSE
+
+
+func _plain_rock(r: Rect2i, occupied: Dictionary, margin: int = 1) -> bool:
+	if not space.fits(r, margin):
+		return false
+	for y in range(r.position.y, r.end.y):
+		for x in range(r.position.x, r.end.x):
+			if not _plain_cell(x, y, occupied):
+				return false
+	return true
 
 
 ## The mine must be completable with starting gear (DigCheck: drill plus

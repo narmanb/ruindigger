@@ -3,6 +3,8 @@
 Atlas layout (terrain_atlas.png, 2048x1024):
   8x4 grid of 256x256 blocks, one per (material, stratum), at block_slot():
   soft/hard/loose of stratum s at s*3 + 0/1/2, bedrock at 15 + s, alloy at 20.
+  Stratum 5 (The First Civilization) uses slots 21-25: soft, hard, loose,
+  bedrock and its own ancient composite (drawn for ALLOY cells in that zone).
   Strata: 0 Dustworks, 1 Spore Veins, 2 Forgotten Engine, 3 Drowned
   Aqueducts, 4 Crystal Hollows.
   Inside a block: 16x16 tiles of 16px. tile index = mask * 16 + variant,
@@ -42,15 +44,24 @@ RAMPS = {
     ("hard", 4): ["#0f0818", "#261538", "#3f2459", "#5f3a82", "#8a5fb0", "#d1a8f0"],
     ("loose", 4): ["#160a1c", "#33183e", "#522a62", "#77428c", "#a56cc0", "#e4bbf5"],
     ("bedrock", 4): ["#06030a", "#110818", "#1c0f27", "#291838", "#3a244d", "#553a6b"],
+    # The First Civilization: obsidian and charcoal rock, warm cinders, and an
+    # ancient dark-bronze composite far older than the Engine's alloy
+    ("soft", 5): ["#060608", "#121116", "#1d1b22", "#2a2730", "#3c3842", "#5a5560"],
+    ("hard", 5): ["#030305", "#0b0b10", "#15151c", "#22222c", "#34343f", "#5c5c6e"],
+    ("loose", 5): ["#0d0806", "#22140e", "#3a2218", "#583424", "#7c4a30", "#b0714a"],
+    ("bedrock", 5): ["#020202", "#070709", "#0d0d11", "#15151a", "#1f1f26", "#2c2c36"],
+    ("alloy", 5): ["#0a0806", "#1e1911", "#352b1c", "#51422a", "#77633c", "#b59a5e"],
 }
 BLOCKS = list(RAMPS.keys())   # order fixes each block's texture seed: append only
-STRATA = 5
+STRATA = 6
 ATLAS_COLS = 8
 
 
 def block_slot(key):
     """Where a block sits in the atlas (must match TerrainView.block_index)."""
     mat, s = key
+    if s == 5:  # the sixth biome was added after the atlas order was fixed
+        return 21 + ["soft", "hard", "loose", "bedrock", "alloy"].index(mat)
     if mat == "alloy":
         return 20
     if mat == "bedrock":
@@ -175,6 +186,11 @@ def tex_hard(stratum, seed):
         for _ in range(8):
             x, y = r.integers(0, TEX, 2)
             extra.append((x, y, hexc("#c08cff")))
+    if stratum == 5:  # obsidian: glassy conchoidal glints, a few ember flecks
+        lv = np.where((lit > 0.7) & (lv > 0), np.minimum(lv + 2, 5), lv)
+        for _ in range(7):
+            x, y = r.integers(0, TEX, 2)
+            extra.append((x, y, hexc("#ff7a3a")))
     if stratum == 4:  # faceted crystal: hard light on one side of every cell
         lv = np.where((lit > 0.62) & (lv > 0), np.minimum(lv + 1, 5), lv)
         for _ in range(14):
@@ -244,7 +260,20 @@ def tex_alloy(stratum, seed):
                 blk[4:12, 4] = 1
                 blk[11, 4:12] = 4
                 blk[4:12, 11] = 4
-    return lv, []
+            if stratum == 5 and kind == 3:  # First Civilization glyph: nested squares
+                blk[5, 5:11] = 5
+                blk[10, 5:11] = 1
+                blk[5:11, 5] = 5
+                blk[5:11, 10] = 1
+                blk[7:9, 7:9] = 5
+    extra = []
+    if stratum == 5:  # hairline seams of living light between the plates
+        for py in range(4):
+            for px in range(4):
+                if r.random() < 0.35:
+                    for t in range(3, 13):
+                        extra.append((px * 16 + t, py * 16 + 15, hexc("#2fd6c8")))
+    return lv, extra
 
 
 TEXFN = {"soft": tex_soft, "hard": tex_hard, "loose": tex_loose, "bedrock": tex_bedrock, "alloy": tex_alloy}

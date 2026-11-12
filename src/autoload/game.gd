@@ -97,8 +97,27 @@ func start_run() -> void:
 		"ore_mined": 0,
 		"scaffold": Balance.scaffold_capacity(Progress.level("scaffold")),
 		"ladders_built": 0,
+		"stage": "mine",          # "mine" (five zones) or "deep" (The First Civilization)
+		"depth_offset": 0,        # cells already descended in earlier stages
+		"deep_exit": false,
 	}
 	goto("mine")
+
+
+## One-way descent into The First Civilization. The SAME run continues: cargo,
+## relic, finds, charges, scaffold, hull and the contract all carry over.
+func descend(hull_now: float, from_depth_cells: int) -> void:
+	if run.get("stage", "mine") == "deep":
+		return
+	run["stage"] = "deep"
+	run["hp"] = hull_now
+	run["depth_offset"] = from_depth_cells
+	run["max_depth"] = maxi(int(run.get("max_depth", 0)), from_depth_cells)
+	goto("mine")
+
+
+func in_deep() -> bool:
+	return run.get("stage", "mine") == "deep"
 
 
 func cargo_count() -> int:
@@ -131,6 +150,8 @@ func end_run(extracted: bool, cause: String = "") -> void:
 	var relic_bonus := 0
 	var finds: Array = run.get("finds", []).duplicate()
 	var finds_bonus := finds_value(finds) if extracted else 0
+	var deep: bool = run.get("stage", "mine") == "deep"
+	var deep_bonus := Balance.DEEP_EXIT_BONUS if (extracted and deep and run.get("deep_exit", false)) else 0
 	if extracted:
 		credits = cargo_value(cargo)
 		if run.get("relic", false):
@@ -142,13 +163,14 @@ func end_run(extracted: bool, cause: String = "") -> void:
 		Progress.stats["deaths"] = int(Progress.stats.get("deaths", 0)) + 1
 	var depth_m := int(run.get("max_depth", 0) * Balance.METERS_PER_CELL)
 	Progress.stats["best_depth"] = maxi(int(Progress.stats.get("best_depth", 0)), depth_m)
-	Progress.add_credits(credits + relic_bonus + finds_bonus)
+	Progress.add_credits(credits + relic_bonus + finds_bonus + deep_bonus)
 	Progress.tutorial_done = true
 	Progress.save_progress()
 	last_result = {
 		"extracted": extracted, "cause": cause, "cargo": cargo, "credits": credits,
 		"relic": run.get("relic", false), "relic_bonus": relic_bonus, "depth": depth_m,
 		"finds": finds, "finds_bonus": finds_bonus,
+		"deep": deep, "deep_exit": extracted and deep and run.get("deep_exit", false), "deep_bonus": deep_bonus,
 		"kills": run.get("kills", 0), "time": run.get("time", 0.0), "seed": run.get("seed", 0),
 		"contract": contract.get("name", ""),
 	}

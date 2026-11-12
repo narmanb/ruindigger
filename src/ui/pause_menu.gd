@@ -59,6 +59,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if mine.descent_prompt and mine.descent_prompt.is_open:
+		return   # the one-way warning owns input while it is up
 	if mine.hud.cargo_screen.is_open:
 		if event.is_action_pressed("pause") or event.is_action_pressed("inventory") or event.is_action_pressed("ui_cancel"):
 			mine.hud.cargo_screen.close()

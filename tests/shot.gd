@@ -28,7 +28,20 @@ func _ready() -> void:
 		Game.goto.call_deferred(screen, true)
 
 
+var _deep_started := false
+
+
 func _process(_d: float) -> void:
+	# deep=1: descend first, then restart the frame count in the deep stage
+	if args.has("deep"):
+		var cur: Node = Game.current
+		if not _deep_started:
+			if cur and cur.get("player") != null:
+				_deep_started = true
+				Game.descend(100.0, Balance.MAP_H)
+			return
+		if cur == null or cur.get("stage") != "deep" or cur.get("player") == null:
+			return
 	frame += 1
 	if args.has("profile"):
 		var now := Time.get_ticks_usec()

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0 (in progress on feature/first-civilization; see docs/primordial-vault-status.md)
+- **The First Civilization.** A new, optional, one-way stage far below the Forgotten Engine: a separate 200×120 map of great vaults, buried machines and transit tunnels built by a civilization far older than the Engine.
+- Find the Ancient Descent Platform in the Engine vault. It warns you, asks you to confirm, and does not come back. Everything you carry stays at risk.
+- The only way out is the Transit Gate near the bottom. Leaving through it banks the whole run plus a bonus.
+
 ## 0.5.6
 - Add an explicit CARGO button below the depth panel; keep Cargo Manifest in Pause and show the build version on the pause screen.
 - Hold Down and press Jump to drop through a wooden platform. Lower platforms and solid rock still catch you.

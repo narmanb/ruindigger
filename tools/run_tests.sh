@@ -15,7 +15,7 @@ if grep -E "SCRIPT ERROR|Parse Error" "$LOG_DIR/import.log"; then
 fi
 
 status=0
-for suite in terrain physics save ui gen game; do
+for suite in terrain physics save ui gen game deep; do
   log="$LOG_DIR/$suite.log"
   timeout "$TIMEOUT" "$GODOT" --headless res://tests/test_runner.tscn -- suite="$suite" seeds="${SEEDS:-60}" > "$log" 2>&1
   code=$?

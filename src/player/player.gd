@@ -119,6 +119,9 @@ func setup_stats() -> void:
 	heat_cap = Balance.heat_capacity(Progress.level("heat"))
 	max_hp = Balance.hull(Progress.level("hull"))
 	hp = max_hp
+	# a run that continues into another stage keeps the hull it arrived with
+	if Game.run.has("hp"):
+		hp = clampf(float(Game.run["hp"]), 1.0, max_hp)
 
 
 # ---------------------------------------------------------------------------

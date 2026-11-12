@@ -53,9 +53,14 @@ func _ready() -> void:
 		var description := UIKit.label(find["desc"], 10, UIKit.MUTED)
 		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		list.add_child(description)
+	if r.get("deep", false):
+		if ok:
+			list.add_child(UIKit.label("Transit Gate restored: +%d CR" % r.get("deep_bonus", 0), 11, Balance.ZONE_COLORS[Balance.Z_FIRST]))
+		else:
+			list.add_child(UIKit.label("Lost in The First Civilization", 11, UIKit.MUTED))
 	list.add_child(UIKit.label("Depth %dm   Time %s   Kills %d" % [r.get("depth", 0), _time(r.get("time", 0.0)), r.get("kills", 0)], 10, UIKit.MUTED))
 	list.add_child(UIKit.label("Seed %d" % r.get("seed", 0), 9, UIKit.MUTED))
-	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0)) + int(r.get("finds_bonus", 0))
+	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0)) + int(r.get("finds_bonus", 0)) + int(r.get("deep_bonus", 0))
 	v.add_child(UIKit.label("EARNED: %d CR    BALANCE: %d CR" % [total, Progress.credits], 12, UIKit.TEAL, true))
 	var b := UIKit.button("RETURN TO OUTPOST", func() -> void: Game.goto("outpost"), 200)
 	v.add_child(b)

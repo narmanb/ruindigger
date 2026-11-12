@@ -41,6 +41,8 @@ def far_layer(stratum):
         base, dark, accent = "#0c1a2c", "#070f1c", "#14283f"
     elif stratum == 4:
         base, dark, accent = "#1c0d26", "#110818", "#2c153a"
+    elif stratum == 5:
+        base, dark, accent = "#0c0b10", "#050507", "#16141c"
     else:
         base, dark, accent = "#1a1226", "#110b1a", "#251a36"
     img[..., :3] = dither_grad(H, W, base, dark)
@@ -81,6 +83,30 @@ def far_layer(stratum):
                 arch = (np.abs(dx) < span * 0.5) & (ys < y0 - (span * 0.36) * np.sqrt(np.clip(1 - (dx / (span * 0.5)) ** 2, 0, 1)) + 6)
                 fill_mask(img, (pier | arch) & (ys > y0 - span * 0.9) & (ys < y0 + 60), tone)
             fill_mask(img, (ys >= y0 + 58) & (ys < y0 + 62), "#1b4a66")     # waterline glint
+    elif stratum == 5:
+        # the colossal machine: vast concentric rings, a spine of monoliths and
+        # a dull furnace glow rising from below
+        heat = np.clip((ys - 150) / 106.0, 0, 1)
+        img[..., 0] = np.clip(img[..., 0] + heat * 46, 0, 255)
+        img[..., 1] = np.clip(img[..., 1] + heat * 14, 0, 255)
+        for (cx, cy, R) in [(150, 120, 96), (400, 60, 64)]:
+            dx = ((xs - cx + W / 2) % W) - W / 2
+            d = np.sqrt(dx ** 2 + (ys - cy) ** 2)
+            ang = np.arctan2(ys - cy, dx)
+            for k, rr in enumerate([R, R * 0.72, R * 0.45]):
+                ring = np.abs(d - rr) < (5 - k)
+                gap = np.sin(ang * (3 + k * 2) + k) > 0.82
+                fill_mask(img, ring & ~gap, "#060508")
+                fill_mask(img, ring & ~gap & (np.abs(d - rr) < 1) & (np.sin(ang * 24) > 0.6), "#1c7f78")
+            fill_mask(img, d < R * 0.16, "#08060a")
+            fill_mask(img, (d < R * 0.07), "#7a3a1c")
+        for k in range(7):
+            x0 = int(r.integers(0, W))
+            wid = int(r.integers(10, 26))
+            top = int(r.integers(0, 120))
+            m = (((xs - x0) % W) < wid) & (ys > top)
+            fill_mask(img, m, "#07060a")
+            fill_mask(img, m & (((xs - x0) % W) == wid // 2) & (ys % 37 < 9), "#2fd6c8")
     elif stratum == 4:
         # giant crystal spires, some with a lit facet
         for k in range(9):
@@ -118,8 +144,8 @@ def mid_layer(stratum):
     img = np.zeros((H, W, 4), np.float64)
     r = np.random.default_rng(50 + stratum)
     ys, xs = np.mgrid[0:H, 0:W]
-    sil = {0: "#140c07", 1: "#04100e", 2: "#0a0610", 3: "#050c16", 4: "#0c0513"}[stratum]
-    hi = {0: "#2e1e12", 1: "#0f2d2a", 2: "#221636", 3: "#1a3550", 4: "#3a1c52"}[stratum]
+    sil = {0: "#140c07", 1: "#04100e", 2: "#0a0610", 3: "#050c16", 4: "#0c0513", 5: "#040305"}[stratum]
+    hi = {0: "#2e1e12", 1: "#0f2d2a", 2: "#221636", 3: "#1a3550", 4: "#3a1c52", 5: "#3a2e1c"}[stratum]
     if stratum == 0:
         # horizontal pipes & wooden cross beams
         for k in range(3):
@@ -157,6 +183,24 @@ def mid_layer(stratum):
             fill_mask(img, m & ((xs + y0) % 16 == 0), "#081320")
             fall = (np.abs(((xs - gap0 - 72 + W / 2) % W) - W / 2) < 2) & (ys >= y0 + th)
             fill_mask(img, fall & ((ys + xs) % 5 < 3), "#3fa8d8", 150)
+    elif stratum == 5:
+        # near structure: stepped buttresses, hanging conduits with heat pulses
+        for k in range(4):
+            x0 = int(r.integers(0, W))
+            w = int(r.integers(36, 70))
+            y0 = int(r.integers(90, H - 30))
+            for step in range(4):
+                inset = step * (w // 9)
+                m = (((xs - x0 - inset) % W) < w - inset * 2) & (ys >= y0 - step * 14) & (ys < H)
+                fill_mask(img, m, sil)
+                fill_mask(img, m & (ys == y0 - step * 14), hi)
+        for k in range(6):
+            x0 = int(r.integers(0, W))
+            ln = int(r.integers(40, 150))
+            m = (np.abs(((xs - x0 + W / 2) % W) - W / 2) < 2) & (ys < ln)
+            fill_mask(img, m, sil)
+            fill_mask(img, m & ((ys + x0) % 29 < 4), "#d4622a")
+            fill_mask(img, (np.abs(((xs - x0 + W / 2) % W) - W / 2) < 4) & (np.abs(ys - ln) < 3), "#2fd6c8")
     elif stratum == 4:
         # near crystal clusters hanging from above and rising from below
         for k in range(10):
@@ -280,8 +324,8 @@ def outpost_layers():
 
 
 def main():
-    far = np.concatenate([far_layer(s) for s in range(5)], 0)
-    mid = np.concatenate([mid_layer(s) for s in range(5)], 0)
+    far = np.concatenate([far_layer(s) for s in range(6)], 0)
+    mid = np.concatenate([mid_layer(s) for s in range(6)], 0)
     save(to_image(far), "bg_far.png")
     save(to_image(mid), "bg_mid.png")
     save(to_image(fore_layer()), "bg_fore.png")

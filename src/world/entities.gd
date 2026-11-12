@@ -295,3 +295,117 @@ class Prop extends Node2D:
 			l.size = Vector2(40, 10)
 			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			add_child(l)
+
+
+## Ancient Descent Platform: the sealed elevator of an older civilization, found
+## in a side chamber of the Forgotten Engine. Using it is a deliberate, confirmed,
+## one-way trip into The First Civilization. Drawn in code (no sprite needed).
+class AncientDescent extends Node2D:
+	var mine: Node
+	var light: PointLight2D
+	var t := 0.0
+
+	func _ready() -> void:
+		light = PointLight2D.new()
+		light.texture = load("res://assets/gen/light.png")
+		light.texture_scale = 1.0
+		light.color = Color(1.0, 0.62, 0.3)
+		light.energy = 0.9
+		light.position = Vector2(0, -22)
+		add_child(light)
+
+	func _process(d: float) -> void:
+		t += d
+		light.energy = 0.8 + 0.25 * sin(t * 2.2)
+		queue_redraw()
+
+	func _draw() -> void:
+		var bronze := Color("51422a")
+		var edge := Color("b59a5e")
+		var dark := Color("14100a")
+		# platform deck with a stepped rim
+		draw_rect(Rect2(-22, -4, 44, 4), bronze)
+		draw_rect(Rect2(-22, -4, 44, 1), edge)
+		draw_rect(Rect2(-18, -6, 36, 2), dark)
+		# two pylons and a lintel carrying the glyph
+		for sx in [-20.0, 16.0]:
+			draw_rect(Rect2(sx, -40, 4, 36), bronze)
+			draw_rect(Rect2(sx, -40, 1, 36), edge)
+		draw_rect(Rect2(-22, -44, 44, 5), bronze)
+		draw_rect(Rect2(-22, -44, 44, 1), edge)
+		var pulse := 0.55 + 0.45 * sin(t * 2.2)
+		var glow := Color(1.0, 0.55, 0.22, pulse)
+		draw_rect(Rect2(-5, -43, 10, 3), glow)
+		draw_rect(Rect2(-2, -42, 4, 1), Color(1, 0.9, 0.7, pulse))
+		# a shaft of heat haze dropping away under the deck
+		for k in 4:
+			var yy := -34.0 + k * 8.0 + fmod(t * 14.0, 8.0)
+			draw_rect(Rect2(-14, yy, 28, 1), Color(1.0, 0.5, 0.2, 0.18 * pulse))
+
+
+## Transit Gate: the only way out of The First Civilization. It must be powered
+## (the geothermal network decides that) and then woken by the player.
+class TransitGate extends Node2D:
+	var mine: Node
+	var powered := true            # set by the stage's power network when one exists
+	var woken := false
+	var online: bool:
+		get:
+			return powered and woken
+	var light: PointLight2D
+	var t := 0.0
+	var _spin := 0.0
+
+	func _ready() -> void:
+		light = PointLight2D.new()
+		light.texture = load("res://assets/gen/light.png")
+		light.texture_scale = 1.3
+		light.color = Color(0.4, 1.0, 0.95)
+		light.energy = 0.3
+		light.position = Vector2(0, -26)
+		add_child(light)
+
+	func status_text() -> String:
+		if not powered:
+			return "TRANSIT GATE: NO POWER"
+		return "TRANSIT GATE: DORMANT"
+
+	## First use: bring the array up. Returns true if the gate is now online.
+	func wake() -> bool:
+		if not powered or woken:
+			return online
+		woken = true
+		Audio.play("lift_ding")
+		Audio.play("relic", -8.0)
+		mine.toast("TRANSIT ARRAY ONLINE - step in to leave")
+		mine.shake(0.3)
+		return true
+
+	func _process(d: float) -> void:
+		t += d
+		_spin += d * (2.4 if online else (0.5 if powered else 0.1))
+		light.energy = (1.2 if online else (0.5 if powered else 0.15)) + 0.1 * sin(t * 5.0)
+		queue_redraw()
+
+	func _draw() -> void:
+		var bronze := Color("51422a")
+		var edge := Color("b59a5e")
+		var col := Color(0.4, 1.0, 0.95) if online else (Color(1.0, 0.7, 0.3) if powered else Color(0.5, 0.2, 0.15))
+		# plinth
+		draw_rect(Rect2(-26, -4, 52, 4), bronze)
+		draw_rect(Rect2(-26, -4, 52, 1), edge)
+		# the ring: two concentric arcs with rotating gaps
+		var c := Vector2(0, -28)
+		draw_arc(c, 24.0, 0.0, TAU, 40, bronze, 5.0)
+		draw_arc(c, 24.0, 0.0, TAU, 40, edge, 1.0)
+		for k in 3:
+			var a := _spin + k * TAU / 3.0
+			draw_arc(c, 19.0, a, a + 1.3, 12, Color(col, 0.9), 2.0)
+			draw_arc(c, 14.0, -a * 1.4, -a * 1.4 + 0.9, 10, Color(col, 0.6), 1.5)
+		if online:
+			draw_circle(c, 12.0 + sin(t * 4.0), Color(col, 0.22))
+			draw_circle(c, 6.0, Color(1, 1, 1, 0.35))
+		# status pips on the plinth
+		for k in 3:
+			var on := (k == 0 and powered) or (k == 1 and woken) or (k == 2 and online)
+			draw_rect(Rect2(-8 + k * 6, -3, 4, 2), col if on else Color(0.12, 0.1, 0.1))

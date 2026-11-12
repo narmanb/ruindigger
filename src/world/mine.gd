@@ -3,8 +3,8 @@ extends Node2D
 ## camera, and implements the shared rules (damage, explosions, loot).
 
 const C := 16
-const AMBIENT := [Color(0.42, 0.36, 0.33), Color(0.27, 0.35, 0.37), Color(0.27, 0.23, 0.36), Color(0.22, 0.31, 0.42), Color(0.36, 0.25, 0.4)]
-const MUSIC := ["amb_dust", "amb_spore", "amb_engine", "amb_aqueduct", "amb_crystal"]
+const AMBIENT := [Color(0.42, 0.36, 0.33), Color(0.27, 0.35, 0.37), Color(0.27, 0.23, 0.36), Color(0.22, 0.31, 0.42), Color(0.36, 0.25, 0.4), Color(0.35, 0.31, 0.31)]
+const MUSIC := ["amb_dust", "amb_spore", "amb_engine", "amb_aqueduct", "amb_crystal", "amb_first"]
 
 var data: Dictionary
 var grid: TerrainGrid
@@ -40,12 +40,18 @@ var seed_value := 0
 var tutorial_step := 0
 var _tut_t := 0.0
 var headless_test := false
+var stage := "mine"               # which generated stage this scene is running
+var depth_offset := 0             # cells descended before this stage (for depth read-outs)
+var descent: Node2D               # Ancient Descent Platform (main mine only)
+var gate: Node2D                  # Transit Gate (deep stage only)
+var descent_prompt: Node
 
 
 func _ready() -> void:
 	seed_value = int(Game.run.get("seed", 1234))
-	var gen := MineGenerator.new()
-	data = gen.generate(seed_value, Game.run.get("contract", {}))
+	stage = String(Game.run.get("stage", "mine"))
+	depth_offset = int(Game.run.get("depth_offset", 0))
+	data = generate_stage(stage, seed_value, Game.run.get("contract", {}))
 	grid = data["grid"]
 	_build_world()
 	_spawn_entities()
@@ -53,8 +59,21 @@ func _ready() -> void:
 	_spawn_water_props()
 	_build_ui()
 	grid.cell_changed.connect(_on_cell_changed)
-	Audio.play("lift_ding")
-	toast("CONTRACT: %s - recover the relic, then ride a lift out" % Game.run.get("contract", {}).get("name", "SURVEY"))
+	if stage == "deep":
+		Audio.play("rumble")
+		toast("THE FIRST CIVILIZATION - no way back. Find the Transit Gate.")
+		shake(0.5)
+	else:
+		Audio.play("lift_ding")
+		toast("CONTRACT: %s - recover the relic, then ride a lift out" % Game.run.get("contract", {}).get("name", "SURVEY"))
+
+
+## Stage factory: every stage returns the same data contract (grid, spawn,
+## entities, zones, ...), so the rest of this scene is stage-agnostic.
+static func generate_stage(stage_name: String, seed_in: int, contract: Dictionary) -> Dictionary:
+	if stage_name == "deep":
+		return FirstCivGenerator.new().generate(FirstCivGenerator.deep_seed(seed_in), contract)
+	return MineGenerator.new().generate(seed_in, contract)
 
 
 func _exit_tree() -> void:
@@ -136,7 +155,7 @@ func _additive() -> CanvasItemMaterial:
 func _build_parallax() -> void:
 	var far: Texture2D = load("res://assets/gen/bg_far.png")
 	var mid: Texture2D = load("res://assets/gen/bg_mid.png")
-	for s in Balance.ZONE_COUNT:
+	for s in Balance.BIOME_COUNT:
 		for layer in 2:
 			var p := Parallax2D.new()
 			p.scroll_scale = Vector2(0.25, 0.3) if layer == 0 else Vector2(0.5, 0.55)
@@ -174,6 +193,16 @@ func _spawn_entities() -> void:
 				l.position = pos
 				entity_root.add_child(l)
 				lifts.append(l)
+			"ancient_descent":
+				descent = Entities.AncientDescent.new()
+				descent.mine = self
+				descent.position = pos
+				entity_root.add_child(descent)
+			"transit_gate":
+				gate = Entities.TransitGate.new()
+				gate.mine = self
+				gate.position = pos
+				entity_root.add_child(gate)
 			"lamp":
 				var lp := Entities.Lamp.new()
 				lp.mine = self
@@ -258,6 +287,9 @@ func _build_ui() -> void:
 	pause_menu = load("res://src/ui/pause_menu.gd").new()
 	pause_menu.mine = self
 	add_child(pause_menu)
+	descent_prompt = load("res://src/ui/descent_prompt.gd").new()
+	descent_prompt.mine = self
+	add_child(descent_prompt)
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +355,7 @@ func _process(delta: float) -> void:
 		_explore_t = 0.12
 		_explore()
 	Game.run["time"] = float(Game.run.get("time", 0.0)) + delta
-	var depth_cells := int(player.global_position.y / C)
+	var depth_cells := int(player.global_position.y / C) + depth_offset
 	Game.run["max_depth"] = maxi(int(Game.run.get("max_depth", 0)), depth_cells)
 	if Game.run.get("relic", false):
 		_alarm_t -= delta
@@ -364,7 +396,7 @@ func _atmosphere(delta: float) -> void:
 	var y := mid.y
 	var s := grid.get_stratum(clampi(int(mid.x), 0, grid.w - 1), clampi(int(y), 0, grid.h - 1))
 	var target: Color = AMBIENT[s]
-	if y < 12.0:
+	if y < 12.0 and stage == "mine":
 		target = target.lerp(Color(0.55, 0.48, 0.44), clampf((12.0 - y) / 8.0, 0.0, 1.0))
 	modulate_node.color = modulate_node.color.lerp(target, clampf(delta * 3.0, 0.0, 1.0))
 	for entry in parallax:
@@ -377,6 +409,17 @@ func _atmosphere(delta: float) -> void:
 		Audio.music(MUSIC[s])
 		if hud:
 			hud.banner(Balance.STRATUM_NAMES[s])
+	if stage == "deep":
+		# the stage is one biome, so announce its three regions as the player moves
+		var py := int(player.global_position.y / C)
+		var region := 0 if py < Balance.DEEP_BAND_PLANT else (1 if py < Balance.DEEP_BAND_TRANSIT else 2)
+		if region != _deep_region:
+			if _deep_region >= 0 and hud:
+				hud.banner(Balance.DEEP_REGION_NAMES[region])
+			_deep_region = region
+
+
+var _deep_region := -1
 
 
 func _explore() -> void:
@@ -638,6 +681,10 @@ func nearest_interactable(pl: Player) -> Dictionary:
 	for find in keepsakes:
 		if not find.used and find.global_position.distance_to(pc) < 22.0:
 			return {"kind": "find", "node": find, "label": "TAKE"}
+	if descent and descent.global_position.distance_to(pc + Vector2(0, 13)) < 26.0:
+		return {"kind": "descent", "node": descent, "label": "DESCEND"}
+	if gate and gate.global_position.distance_to(pc + Vector2(0, 13)) < 30.0:
+		return {"kind": "gate", "node": gate, "label": "TRANSIT" if gate.online else "GATE"}
 	return {}
 
 
@@ -648,6 +695,14 @@ func player_interact(pl: Player) -> void:
 	match it["kind"]:
 		"find":
 			it["node"].take()
+		"descent":
+			# never a one-press action: the warning must be confirmed
+			descent_prompt.open()
+		"gate":
+			if gate.online:
+				extract_gate()
+			elif not gate.wake():
+				toast(gate.status_text())
 		"lift":
 			var l: Entities.Lift = it["node"]
 			if not l.active:
@@ -682,6 +737,55 @@ func extract(l: Node2D) -> void:
 	tw.tween_callback(func() -> void: player.set_physics_process(false))
 	tw.parallel().tween_property(l, "position:y", l.position.y - 160.0, 1.6).set_delay(0.3).set_trans(Tween.TRANS_SINE)
 	tw.parallel().tween_property(player, "global_position:y", player.global_position.y - 174.0, 1.6).set_delay(0.3).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(func() -> void:
+		Audio.loop("lift_hum", false)
+		Game.end_run(true))
+
+
+## Confirmed one-way descent: a short sequence, then the same run continues in
+## the deep stage. Nothing is banked and nothing is reset.
+func begin_descent() -> void:
+	if ending or stage != "mine":
+		return
+	ending = true
+	player.controls_enabled = false
+	player.invuln = 99.0          # the fall is theatre, never a cheap hit
+	player.stop_sounds()
+	Audio.loop("lift_hum", true, -6.0)
+	Audio.play("rumble")
+	shake(0.6)
+	if hud:
+		hud.banner("DESCENDING")
+	var hull_now := player.hp
+	var from_depth := grid.h
+	var tw := create_tween()
+	tw.tween_property(player, "global_position", descent.global_position + Vector2(0, -14), 0.3)
+	tw.tween_callback(func() -> void: player.set_physics_process(false))
+	tw.parallel().tween_property(descent, "position:y", descent.position.y + 220.0, Balance.DEEP_DESCENT_SECONDS).set_delay(0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(player, "global_position:y", player.global_position.y + 206.0, Balance.DEEP_DESCENT_SECONDS).set_delay(0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(func() -> void:
+		Audio.loop("lift_hum", false)
+		Game.descend(hull_now, from_depth))
+
+
+## Leaving through the Transit Gate ends the same run successfully.
+func extract_gate() -> void:
+	if ending or gate == null or not gate.online:
+		return
+	ending = true
+	player.controls_enabled = false
+	player.stop_sounds()
+	Game.run["deep_exit"] = true
+	Audio.play("relic")
+	Audio.loop("lift_hum", true, -6.0)
+	toast("TRANSIT ARRAY ONLINE")
+	if hud:
+		hud.banner("TRANSIT")
+	fx.flash(gate.global_position + Vector2(0, -20), Color(0.4, 1.0, 0.95), 1.6, 1.2)
+	var tw := create_tween()
+	tw.tween_property(player, "global_position", gate.global_position + Vector2(0, -14), 0.35)
+	tw.tween_callback(func() -> void: player.set_physics_process(false))
+	tw.tween_property(player, "modulate:a", 0.0, 1.1)
 	tw.tween_callback(func() -> void:
 		Audio.loop("lift_hum", false)
 		Game.end_run(true))

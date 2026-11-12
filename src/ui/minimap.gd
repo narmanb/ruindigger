@@ -40,9 +40,9 @@ static func cell_color(g: TerrainGrid, x: int, y: int) -> Color:
 		Cell.PLATFORM:
 			return Color(0.6, 0.45, 0.3, 0.9)
 		Cell.SOFT, Cell.CRACKED:
-			return [Color("7d4c25"), Color("1f5a50"), Color("4a3c56"), Color("2c4a66"), Color("5a2d5c")][s]
+			return [Color("7d4c25"), Color("1f5a50"), Color("4a3c56"), Color("2c4a66"), Color("5a2d5c"), Color("2a2730")][s]
 		Cell.HARD:
-			return [Color("8a8078"), Color("4c6378"), Color("5b4a70"), Color("5d7f9c"), Color("9a5fb0")][s]
+			return [Color("8a8078"), Color("4c6378"), Color("5b4a70"), Color("5d7f9c"), Color("9a5fb0"), Color("4a4a58")][s]
 		Cell.LOOSE:
 			return Color("c9a86e")
 		Cell.ALLOY:
@@ -104,6 +104,11 @@ func _draw() -> void:
 		var rc: Vector2 = mine.relic.global_position / Balance.CELL
 		if grid.has_flag(int(rc.x), int(rc.y), Cell.F_EXPLORED):
 			_marker(origin + (rc - src.position) * sc, Color(0.4, 1.0, 1.0), 3.0, area)
+	for special in [mine.descent, mine.gate]:
+		if special:
+			var sc2: Vector2 = special.global_position / Balance.CELL
+			if grid.has_flag(int(sc2.x), int(sc2.y) - 1, Cell.F_EXPLORED):
+				_marker(origin + (sc2 - src.position) * sc, Balance.ZONE_COLORS[Balance.Z_FIRST], 3.0, area)
 	if int(t * 3.0) % 2 == 0 or full:
 		_marker(origin + (pc - src.position) * sc, Color(1.0, 0.75, 0.3), 2.5, area)
 	draw_rect(Rect2(Vector2.ZERO, area), Color(0.35, 0.28, 0.5), false, 1.0)

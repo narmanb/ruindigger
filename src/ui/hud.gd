@@ -262,7 +262,7 @@ class DepthPanel extends Control:
 		var f := UIKit.font_head()
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.05, 0.04, 0.07, 0.78))
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.35, 0.28, 0.5), false, 1.0)
-		var depth := int(maxf(0.0, pl.global_position.y / Balance.CELL - 9.0) * Balance.METERS_PER_CELL)
+		var depth := int(maxf(0.0, pl.global_position.y / Balance.CELL - 9.0 + mine.depth_offset) * Balance.METERS_PER_CELL)
 		draw_string(f, Vector2(6, 11), "DEPTH", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UIKit.MUTED)
 		draw_string(f, Vector2(44, 12), "%4d M" % depth, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UIKit.AMBER)
 		var s: int = mine.grid.get_stratum(int(pl.global_position.x / Balance.CELL), int(pl.global_position.y / Balance.CELL))
@@ -271,7 +271,12 @@ class DepthPanel extends Control:
 		var target: Vector2
 		var label := ""
 		var col := UIKit.TEAL
-		if not Game.run.get("relic", false) and mine.relic:
+		if mine.gate:
+			# the deep stage has one way out
+			target = mine.gate.global_position
+			label = "GATE"
+			col = Balance.ZONE_COLORS[Balance.Z_FIRST]
+		elif not Game.run.get("relic", false) and mine.relic:
 			target = mine.relic.global_position
 			label = "RELIC"
 			col = Color(0.4, 1.0, 1.0)

@@ -281,8 +281,38 @@ const Z_ENGINE := 2
 const Z_AQUEDUCT := 3
 const Z_CRYSTAL := 4
 const ZONE_COUNT := 5
-const STRATUM_NAMES := ["DUSTWORKS", "SPORE VEINS", "FORGOTTEN ENGINE", "DROWNED AQUEDUCTS", "CRYSTAL HOLLOWS"]
-const ZONE_COLORS := [Color("e0a060"), Color("6ff3d0"), Color("b48cff"), Color("5fb4ff"), Color("ff7ad9")]
+const STRATUM_NAMES := ["DUSTWORKS", "SPORE VEINS", "FORGOTTEN ENGINE", "DROWNED AQUEDUCTS", "CRYSTAL HOLLOWS", "THE FIRST CIVILIZATION"]
+const ZONE_COLORS := [Color("e0a060"), Color("6ff3d0"), Color("b48cff"), Color("5fb4ff"), Color("ff7ad9"), Color("ffb070")]
+# Biome identities (tiles, light, music, backdrop). ZONE_COUNT is the number of
+# zones in the main mine; the sixth identity belongs to the separate deep stage.
+const BIOME_COUNT := 6
+const Z_FIRST := 5
+
+# --- The First Civilization (separate one-way stage under the Engine) --------
+# Its own generated map; nothing here resizes or touches the five-zone mine.
+const DEEP_W := 200
+const DEEP_H := 120
+const DEEP_BAND_PLANT := 40          # row where the thermal plant region begins
+const DEEP_BAND_TRANSIT := 82        # row where the lower transit region begins
+const DEEP_REGION_NAMES := ["ARRIVAL STRUCTURES", "THERMAL PLANT", "LOWER TRANSIT"]
+const DEEP_VAULTS := [6, 8]          # great chambers per map
+const DEEP_VAULT_W := [26, 44]
+const DEEP_VAULT_H := [10, 17]
+const DEEP_MONOLITHS := [7, 11]      # buried blocks of ancient composite
+const DEEP_CAVE_THRESH := 0.46
+const DEEP_HARD_THRESH := 0.05
+const DEEP_ORE_VEINS := 46
+const DEEP_CRAWLERS := 9
+const DEEP_SENTRIES := 3
+const DEEP_WATER_POCKETS := [3, 5]
+const DEEP_PLUG_CHANCE := 0.55       # share of link tunnels left as cracked rock
+const DEEP_DIG_BUDGET := 260.0       # DigCheck seconds, arrival -> Transit Gate
+const DEEP_EXIT_BONUS := 450         # credits for leaving through the Transit Gate
+const DEEP_DESCENT_SECONDS := 2.4    # length of the descent sequence
+const DESCENT_ROOM := Vector2i(11, 7)   # Ancient Descent Platform room in the Engine vault
+const DESCENT_ROOM_SMALL := Vector2i(9, 6)   # used when the vault is crowded
+const DESCENT_APPROACH := 14            # cells of approach corridor carved from its door
+const DESCENT_TRIES := 2500             # placement attempts per room size (cheap rejection sampling)
 const ZONE_RECTS := [
 	Rect2i(28, 2, 72, 70),      # Dustworks
 	Rect2i(28, 72, 72, 70),     # Spore Veins

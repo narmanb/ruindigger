@@ -1,0 +1,254 @@
+extends RefCounted
+## The First Civilization: deep-stage generation, the one-way descent and the
+## Transit Gate extraction. Runs as suite=deep.
+
+static func _hash(d: Dictionary) -> int:
+	var g: TerrainGrid = d["grid"]
+	return hash(g.mat) ^ hash(g.ore) ^ hash(g.water) ^ hash(g.flags) ^ hash(str(d["entities"])) ^ hash(str(d["landmarks"]))
+
+
+static func generation(t: Node, n: int) -> void:
+	t.section("first civilization generation x%d seeds" % n)
+	var worst_ms := 0
+	var total_sealed := 0
+	var repaired := 0
+	for i in n:
+		var run_seed := 1000 + i * 7919
+		var tag := "deep %d" % run_seed
+		var gen := FirstCivGenerator.new()
+		var t0 := Time.get_ticks_msec()
+		var d := gen.generate(FirstCivGenerator.deep_seed(run_seed))
+		worst_ms = maxi(worst_ms, Time.get_ticks_msec() - t0)
+		var g: TerrainGrid = d["grid"]
+		t.check(g.w == Balance.DEEP_W and g.h == Balance.DEEP_H and g.w == 200 and g.h == 120, tag + ": map is 200x120, independent of the main mine (%dx%d)" % [g.w, g.h])
+		t.check(d["valid"], tag + ": valid")
+		repaired += int(d["repairs"])
+		total_sealed += int(d.get("traps_sealed", 0))
+		var biome_ok := true
+		for s in g.stratum:
+			if s != Balance.Z_FIRST:
+				biome_ok = false
+				break
+		t.check(biome_ok, tag + ": every cell carries the sixth biome identity")
+		# arrival: open, standing, on a floor nothing can break
+		var sp: Vector2i = d["spawn"]
+		t.check(RouteCheck.body_ok(g, sp.x, sp.y) and g.is_solid(sp.x, sp.y + 1) and g.has_flag(sp.x, sp.y + 1, Cell.F_PROTECTED), tag + ": arrival is open and stands on a protected floor")
+		# no way back: no lift of any kind, and the shaft above ends in bedrock
+		var lifts := 0
+		var gates := 0
+		for e in d["entities"]:
+			if e["type"] == "lift" or e["type"] == "ancient_descent":
+				lifts += 1
+			if e["type"] == "transit_gate":
+				gates += 1
+		t.check(lifts == 0 and gates == 1, tag + ": no lift, exactly one Transit Gate (%d lifts, %d gates)" % [lifts, gates])
+		var sealed_top := true
+		for x in range(sp.x - 1, sp.x + 2):
+			if g.get_mat(x, 1) != Cell.BEDROCK:
+				sealed_top = false
+		t.check(sealed_top, tag + ": the arrival shaft ends in bedrock")
+		# the gate: near the bottom, on a protected floor, with headroom
+		var gc: Vector2i = d["gate"]
+		var gate_ok := gc.y >= Balance.DEEP_BAND_TRANSIT
+		for x in range(gc.x - 2, gc.x + 3):
+			if not g.is_solid(x, gc.y + 1) or not g.has_flag(x, gc.y + 1, Cell.F_PROTECTED):
+				gate_ok = false
+			for y in range(gc.y - 3, gc.y + 1):
+				if g.is_solid(x, y):
+					gate_ok = false
+		t.check(gate_ok, tag + ": Transit Gate sits in the lower level on a protected floor with headroom")
+		# fairness: reachable within budget, and nowhere you cannot reach the gate from
+		t.check(float(d["dig_to_gate_s"]) >= 0.0 and float(d["dig_to_gate_s"]) <= Balance.DEEP_DIG_BUDGET, tag + ": gate reachable by digging within budget (%.0f s)" % d["dig_to_gate_s"])
+		var dig := DigCheck.new(g)
+		var traps := dig.traps(sp, gc)
+		t.check(traps.is_empty(), tag + ": no cell is cut off from the gate (%d, e.g. %s)" % [traps.size(), str(traps.slice(0, 3))])
+		var pockets := RouteCheck.sealed_pockets(g, sp)
+		t.check(pockets.is_empty(), tag + ": no sealed pockets (%d)" % pockets.size())
+		t.check((d["plan"]["overlaps"] as Array).is_empty(), tag + ": no reserved footprints overlap %s" % str(d["plan"]["overlaps"]))
+		t.check(int(d["plan"]["vaults"]) >= 4, tag + ": at least 4 great vaults (%d)" % d["plan"]["vaults"])
+		# content sanity
+		var in_rock := 0
+		var near_spawn := 0
+		for e in d["entities"]:
+			if e["type"] == "crawler":
+				if g.is_solid(e["cell"].x, e["cell"].y):
+					in_rock += 1
+				if absi(e["cell"].x - sp.x) + absi(e["cell"].y - sp.y) < 30:
+					near_spawn += 1
+		t.check(in_rock == 0 and near_spawn == 0, tag + ": guardians stand in open space, away from arrival")
+		var unsupported := 0
+		for y in range(2, g.h - 4):
+			for x in range(2, g.w - 2):
+				if g.get_mat(x, y) == Cell.HARD and not g.is_solid(x, y + 1) and not Boulders.unsupported_mass(g, Vector2i(x, y)).is_empty():
+					unsupported += 1
+		t.check(unsupported == 0, tag + ": no basalt starts unsupported (%d)" % unsupported)
+		var sim := WaterSim.new(g)
+		var before := sim.total()
+		var steps := sim.settle(40)
+		g.cell_changed.disconnect(sim._on_cell_changed)
+		t.check(steps < 40 and sim.total() == before, tag + ": generated water is at rest and conserved (%d steps)" % steps)
+		var ore := 0
+		for o in g.ore:
+			if o != 0:
+				ore += 1
+		t.check(ore >= 60, tag + ": premium ore present (%d cells)" % ore)
+		if i < 4:
+			var again := FirstCivGenerator.new().generate(FirstCivGenerator.deep_seed(run_seed))
+			t.check(_hash(again) == _hash(d), tag + ": generation is deterministic")
+	print("  deep seeds needing repair: %d / %d, slowest %d ms, trap cells sealed %d" % [repaired, n, worst_ms, total_sealed])
+	t.check(repaired == 0, "the deep stage never needed its repair fallback")
+	t.check(FirstCivGenerator.deep_seed(7) == FirstCivGenerator.deep_seed(7) and FirstCivGenerator.deep_seed(7) != FirstCivGenerator.deep_seed(8), "the deep seed is derived deterministically from the run seed")
+
+
+## The entrance in the main mine: present, in the Engine vault, safe to stand in,
+## reachable, and never a trap.
+static func entrance(t: Node, n: int) -> void:
+	t.section("ancient descent entrance x%d seeds" % n)
+	var missing := 0
+	for i in n:
+		var seed_value := 1000 + i * 7919
+		var tag := "seed %d" % seed_value
+		var gen := MineGenerator.new()
+		var d := gen.generate(seed_value, Balance.CONTRACTS[i % Balance.CONTRACTS.size()])
+		var g: TerrainGrid = d["grid"]
+		var c: Vector2i = d.get("descent", Vector2i(-1, -1))
+		if c.x < 0:
+			missing += 1
+			continue
+		t.check(g.get_stratum(c.x, c.y) == Balance.Z_ENGINE, tag + ": descent platform is in the Forgotten Engine")
+		var room_ok := true
+		for x in range(c.x - 2, c.x + 3):
+			if not g.is_solid(x, c.y + 1) or not g.has_flag(x, c.y + 1, Cell.F_PROTECTED):
+				room_ok = false
+			for y in range(c.y - 2, c.y + 1):
+				if g.is_solid(x, y) or g.get_water(x, y) > 0:
+					room_ok = false
+		t.check(room_ok, tag + ": descent platform has a protected floor, headroom and no water")
+		var dig := DigCheck.new(g, gen.door_open_cells())
+		dig.allow_ladder = true
+		var from_spawn := dig.costs_from(d["spawn"])
+		t.check(from_spawn[c.y * g.w + c.x] < DigCheck.UNREACHED, tag + ": descent platform is reachable from the surface")
+		t.check(dig.cost(c, d["lift"]) >= 0.0, tag + ": you can still walk away from the platform to a lift")
+		var far := absi(c.x - d["relic"].x) + absi(c.y - d["relic"].y) >= 8
+		t.check(far, tag + ": descent platform is separate from the relic chamber")
+	t.check(missing == 0, "every mine has an Ancient Descent Platform (%d of %d missing)" % [missing, n])
+
+
+static func live(t: Node) -> void:
+	t.section("one-way descent and transit gate")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	Game.contract["reward"] = 260
+	Game.start_run()
+	await t._frames(40)
+	var mine: Node = Game.current
+	t.check(mine.stage == "mine" and mine.descent != null and mine.gate == null, "the main mine has a descent platform and no transit gate")
+	if mine.descent == null:
+		return
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	# a normal lift is still a lift: the platform is a different interactable
+	t.check(mine.nearest_interactable(pl).get("kind", "") != "descent", "the descent is not offered from the lift room")
+	Game.run["cargo"] = {1: 3, 3: 2}
+	Game.run["relic"] = true
+	Game.run["charges"] = 3
+	Game.run["scaffold"] = 17
+	Game.run["finds"] = [2]
+	Game.run["kills"] = 4
+	pl.hp = 61.0
+	var time_before := float(Game.run["time"])
+	pl.input_override = {"x": 0.0}
+	pl.global_position = mine.descent.global_position + Vector2(0, -Player.HALF.y - 0.5)
+	pl.velocity = Vector2.ZERO
+	await t._frames(12)
+	var it: Dictionary = mine.nearest_interactable(pl)
+	t.check(it.get("kind", "") == "descent" and it.get("label", "") == "DESCEND", "standing on the platform offers DESCEND (%s)" % str(it.get("label", "")))
+	# one press only raises the warning
+	mine.player_interact(pl)
+	var prompt: Node = mine.descent_prompt
+	t.check(prompt.is_open and t.get_tree().paused and Game.run["stage"] == "mine" and not mine.ending, "using the platform shows the one-way warning and does not descend")
+	t.check(prompt.get_viewport().gui_get_focus_owner() == prompt.stay_btn, "the safe choice (STAY) has focus by default")
+	prompt.close()
+	t.check(not prompt.is_open and not t.get_tree().paused and Game.current == mine and Game.run["stage"] == "mine", "STAY closes the warning and nothing changes")
+	await t._frames(5)
+	mine.player_interact(pl)
+	prompt._confirm()
+	t.check(mine.ending and not pl.controls_enabled, "confirming starts the descent sequence")
+	var guard := 0
+	while (Game.current == mine or Game.current == null or Game.current.get("player") == null) and guard < 600:
+		guard += 1
+		await t.get_tree().physics_frame
+	var deep: Node = Game.current
+	t.check(deep != mine and deep != null and deep.get("stage") == "deep", "the run continues in a new stage (after %d frames)" % guard)
+	if deep == null or deep.get("stage") != "deep":
+		return
+	await t._frames(30)
+	var g: TerrainGrid = deep.grid
+	var dp: Player = deep.player
+	dp.invuln = 1e9
+	t.check(g.w == 200 and g.h == 120, "the deep stage runs its own 200x120 map")
+	t.check(Game.run["cargo"] == {1: 3, 3: 2} and Game.run["relic"] == true and int(Game.run["charges"]) == 3 and int(Game.run["scaffold"]) == 17 and Game.run["finds"] == [2] and int(Game.run["kills"]) == 4,
+		"cargo, relic, charges, scaffold, finds and kills are unchanged by the descent")
+	t.check(int(Game.run["seed"]) == 7 and Game.run["contract"]["id"] == Balance.CONTRACTS[0]["id"], "seed and contract are unchanged")
+	t.check(is_equal_approx(dp.hp, 61.0), "hull carries over (%.0f)" % dp.hp)
+	t.check(float(Game.run["time"]) > time_before, "the run clock keeps counting")
+	t.check(deep.lifts.is_empty() and deep.descent == null and deep.relic == null, "no lift, no way back and no second relic down here")
+	t.check(deep.gate != null and not deep.gate.online, "a dormant Transit Gate exists")
+	t.check(int(Game.run["max_depth"]) >= Balance.MAP_H and deep.depth_offset == Balance.MAP_H, "depth keeps counting from the Engine (%d cells)" % Game.run["max_depth"])
+	t.check(dp.is_on_floor() and not g.is_solid(g.world_to_cell(dp.global_position).x, g.world_to_cell(dp.global_position).y), "the player arrives standing in the arrival hall")
+	t.check(deep.current_stratum == Balance.Z_FIRST, "the stage uses the sixth biome (light, backdrop, music)")
+	# HUD, map and pause still work here
+	var ms: Node = deep.hud.map_screen
+	deep.hud.open_map()
+	t.check(ms.is_open and t.get_tree().paused, "the full-screen map opens in the deep stage")
+	ms.close()
+	deep.pause_menu.open()
+	t.check(deep.pause_menu.is_open, "the pause menu opens in the deep stage")
+	deep.pause_menu.close()
+	t.check(deep.nearest_interactable(dp).is_empty(), "nothing in the arrival hall offers an exit")
+	# the gate: wake it, then leave
+	dp.input_override = {"x": 0.0}
+	dp.global_position = deep.gate.global_position + Vector2(0, -Player.HALF.y - 0.5)
+	dp.velocity = Vector2.ZERO
+	await t._frames(12)
+	var gi: Dictionary = deep.nearest_interactable(dp)
+	t.check(gi.get("kind", "") == "gate", "the Transit Gate can be used from its platform")
+	deep.player_interact(dp)
+	t.check(deep.gate.online and not deep.ending, "the first use wakes the gate without leaving")
+	var credits_before: int = Progress.credits
+	deep.player_interact(dp)
+	t.check(deep.ending, "the second use starts the transit")
+	guard = 0
+	while Game.current_name != "results" and guard < 400:
+		guard += 1
+		await t.get_tree().physics_frame
+	var r: Dictionary = Game.last_result
+	t.check(Game.current_name == "results" and r.get("extracted", false), "leaving through the gate is a successful extraction")
+	t.check(r.get("deep", false) and r.get("deep_exit", false) and int(r.get("deep_bonus", 0)) == Balance.DEEP_EXIT_BONUS, "the result records the deep exit and its bonus")
+	var expect: int = Game.cargo_value({1: 3, 3: 2}) + 260 + Game.finds_value([2]) + Balance.DEEP_EXIT_BONUS
+	t.check(Progress.credits - credits_before == expect, "everything is banked exactly once (%d, expected %d)" % [Progress.credits - credits_before, expect])
+	t.check(int(r.get("depth", 0)) >= int(Balance.MAP_H * Balance.METERS_PER_CELL), "the recorded depth spans both stages (%d m)" % r.get("depth", 0))
+	await t._frames(5)
+	# death in the deep stage loses everything, as in the mine
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 123
+	Game.start_run()
+	await t._frames(30)
+	t.check(Game.run["stage"] == "mine" and int(Game.run["depth_offset"]) == 0 and not Game.run.has("hp"), "a new run starts in the mine with clean stage state")
+	Game.run["cargo"] = {2: 5}
+	Game.descend(80.0, Balance.MAP_H)
+	guard = 0
+	while (Game.current == null or Game.current.get("stage") != "deep" or Game.current.get("player") == null) and guard < 300:
+		guard += 1
+		await t.get_tree().physics_frame
+	await t._frames(20)
+	var credits2: int = Progress.credits
+	Game.current.abandon()
+	guard = 0
+	while Game.current_name != "results" and guard < 300:
+		guard += 1
+		await t.get_tree().physics_frame
+	r = Game.last_result
+	t.check(not r.get("extracted", true) and r.get("deep", false) and int(r.get("deep_bonus", 0)) == 0 and Progress.credits == credits2, "abandoning in the deep stage banks nothing")
+	Game.goto("title", true)
+	await t._frames(5)

@@ -219,6 +219,12 @@ class View extends Control:
 			var rc: Vector2 = mine.relic.global_position / Balance.CELL
 			if grid.has_flag(int(rc.x), int(rc.y), Cell.F_EXPLORED):
 				_mark(to_screen(rc), Color(0.4, 1.0, 1.0), 4.0)
+		for special in [mine.descent, mine.gate]:
+			if special:
+				var sc2: Vector2 = special.global_position / Balance.CELL
+				if grid.has_flag(int(sc2.x), int(sc2.y) - 1, Cell.F_EXPLORED):
+					_mark(to_screen(sc2), Balance.ZONE_COLORS[Balance.Z_FIRST], 5.0)
+					draw_string(f, to_screen(sc2) + Vector2(6, 3), "DESCENT" if special == mine.descent else "TRANSIT GATE", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Balance.ZONE_COLORS[Balance.Z_FIRST])
 		for lm in mine.data.get("landmarks", []):
 			var r: Rect2i = lm["rect"]
 			if _seen(r):
