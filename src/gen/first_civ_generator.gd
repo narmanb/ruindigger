@@ -846,7 +846,36 @@ func _audit() -> bool:
 	if not clean:
 		return false
 	data["dig_to_gate_s"] = GenMetrics._near(dc, from_spawn, data["gate"])
+	_place_first_light(from_spawn, dc.escape_set(data["gate"]))
 	return data["dig_to_gate_s"] >= 0.0 and data["dig_to_gate_s"] <= Balance.DEEP_DIG_BUDGET
+
+
+## The First Light: the zone's unique find, on a dry, safe standing cell in
+## the lower transit level that you can reach and still get to the gate from.
+## Deterministic from the seed; never edits terrain.
+func _place_first_light(from_spawn: PackedFloat32Array, escape: PackedByteArray) -> void:
+	var best := Vector2i(-1, -1)
+	var best_score := -1
+	var occupied: Dictionary = {}
+	for e in data["entities"]:
+		for dy in range(-2, 3):
+			for dx in range(-2, 3):
+				occupied[e["cell"] + Vector2i(dx, dy)] = true
+	for y in range(Balance.DEEP_BAND_TRANSIT, H - 5):
+		for x in range(4, W - 4):
+			var i := y * W + x
+			if from_spawn[i] >= DigCheck.UNREACHED or escape[i] == 0:
+				continue
+			if g.get_mat(x, y) != Cell.AIR or g.get_mat(x, y - 1) != Cell.AIR or not g.is_solid(x, y + 1):
+				continue
+			var c := Vector2i(x, y)
+			if reserved.has(c) or occupied.has(c) or g.water[i] > 0 or g.lava[i] > 0 or g.lava[i + W] > 0:
+				continue
+			var score: int = hash("%d:first-light:%d" % [data["seed"], i]) & 0x7fffffff
+			if score > best_score:
+				best_score = score
+				best = c
+	data["finds"] = [] if best.x < 0 else [{"id": Balance.Z_FIRST, "cell": best}]
 
 
 func _seal_traps(from_spawn: PackedFloat32Array, escape: PackedByteArray) -> int:

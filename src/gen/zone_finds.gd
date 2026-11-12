@@ -24,7 +24,7 @@ static func place(gen: MineGenerator, reachable: PackedFloat32Array, escape: Pac
 				continue
 			var c := Vector2i(x, y)
 			var zone := g.get_stratum(x, y)
-			if zone < 0 or zone >= Balance.KEEPSAKES.size() or occupied.has(c):
+			if zone < 0 or zone >= Balance.ZONE_COUNT or occupied.has(c):
 				continue
 			var score: int = hash("%d:find:%d:%d" % [gen.data["seed"], zone, i]) & 0x7fffffff
 			if gen.space.kind_at(c) in ["chamber", "landmark"]:
@@ -37,7 +37,7 @@ static func place(gen: MineGenerator, reachable: PackedFloat32Array, escape: Pac
 				scores[zone] = score
 				best[zone] = c
 	var finds: Array = []
-	for zone in Balance.KEEPSAKES.size():
+	for zone in Balance.ZONE_COUNT:      # one per main-mine zone (the sixth lives in the deep stage)
 		if best.has(zone):
 			finds.append({"id": zone, "cell": best[zone]})
 	return finds

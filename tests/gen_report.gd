@@ -31,7 +31,7 @@ func _ready() -> void:
 			m["valid"] = 1 if d["valid"] else 0
 			m["repairs"] = d["repairs"]
 			m["keepsakes"] = d.get("finds", []).size()
-			if not d["valid"] or int(d["repairs"]) > 0 or m["keepsakes"] != Balance.KEEPSAKES.size():
+			if not d["valid"] or int(d["repairs"]) > 0 or m["keepsakes"] != Balance.ZONE_COUNT:
 				invalid.append("%d/%s valid=%s repairs=%d" % [seed_value, m["contract"], d["valid"], d["repairs"]])
 			for k in m.keys():
 				if not keys.has(k):

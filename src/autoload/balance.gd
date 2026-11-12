@@ -73,6 +73,8 @@ const KEEPSAKES := [
 	{"name": "Engine Cog", "value": 90, "color": "bc8cff", "desc": "A tiny alloy gear that turns without a visible axle."},
 	{"name": "Aqueduct Seal", "value": 70, "color": "5fc0ff", "desc": "A stamped valve seal from the old drowned waterworks."},
 	{"name": "Crystal Bloom", "value": 80, "color": "ef9aff", "desc": "A rare cluster of crystals shaped like an unfolding flower."},
+	# found only in The First Civilization (one per deep map, in the lower transit level)
+	{"name": "First Light", "value": 250, "color": "ffb070", "desc": "A palm-sized lens of the first civilization. It still holds a warm light, older than any record."},
 ]
 
 # --- Hull ---

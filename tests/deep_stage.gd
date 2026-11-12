@@ -127,6 +127,15 @@ static func generation(t: Node, n: int) -> void:
 				ore += 1
 		t.check(ore >= 60, tag + ": premium ore present (%d cells)" % ore)
 		_plant_checks(t, tag, d, i < 12)
+		var finds: Array = d.get("finds", [])
+		var fl_ok := finds.size() == 1 and int(finds[0]["id"]) == Balance.Z_FIRST
+		if fl_ok:
+			var fc: Vector2i = finds[0]["cell"]
+			fl_ok = fc.y >= Balance.DEEP_BAND_TRANSIT and RouteCheck.body_ok(g, fc.x, fc.y) and g.is_solid(fc.x, fc.y + 1) and g.get_water(fc.x, fc.y) == 0 and g.get_lava(fc.x, fc.y) == 0
+			var fdc := DigCheck.new(g)
+			fdc.allow_ladder = true
+			fl_ok = fl_ok and fdc.costs_from(sp)[fc.y * g.w + fc.x] < DigCheck.UNREACHED and fdc.cost(fc, d["gate"]) >= 0.0
+		t.check(fl_ok, tag + ": the First Light lies dry in the lower transit level, reachable, with a way on to the gate")
 		if i < 4:
 			var again := FirstCivGenerator.new().generate(FirstCivGenerator.deep_seed(run_seed))
 			t.check(_hash(again) == _hash(d), tag + ": generation is deterministic")

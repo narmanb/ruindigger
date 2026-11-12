@@ -15,7 +15,7 @@ game is **THE FIRST CIVILIZATION**. Both mean the same stage.
 | D1 giant deep map + one-way extraction | **Done and tested** (see below). |
 | D2 lava, reaction, steam, cooled rock | **Done and tested** (see "D2" below). |
 | D3 geothermal power puzzle | **Done and tested** (see "D3" below). |
-| D4 atmosphere, artifacts, defenders | Not started. |
+| D4 atmosphere, artifacts, defenders | **Partly done**: the First Light artifact (below). Lore, guardians and balance not started. |
 | D5 third fluid, optimisation | Not started. |
 
 ## D1: what exists
@@ -235,9 +235,10 @@ the plant cold and powered were checked.
 
 ## Next smallest tasks (D4, then D5)
 
-1. D4: a unique First Civilization artifact or keepsake. Add a sixth
-   `KEEPSAKES` entry and place it deep in a vault (do not change the five-zone
-   finds).
+1. ~~D4: unique artifact~~ done: **First Light** (`KEEPSAKES[5]`, 250 CR),
+   one per deep map, on a dry standing cell in the lower transit level that is
+   reachable and leads on to the gate (`FirstCivGenerator._place_first_light`).
+   The main mine still places exactly one keepsake per zone (`ZONE_COUNT`).
 2. D4: more archaeological signs or short records in vaults; a guardian that
    patrols powered corridors and stalls when the engine is offline.
 3. D4: review reward balance (`DEEP_EXIT_BONUS`, premium ore density).
@@ -247,3 +248,10 @@ the plant cold and powered were checked.
    deep stage with active lava and steam; tune `LAVA_BUDGET` and
    `STEAM_MAX_CELLS` if needed.
 6. Build the APK and confirm CI on this branch (not done yet).
+
+## Final results on the branch head
+
+`TEST_TIMEOUT=1200 ./tools/run_tests.sh`: terrain 32/32, physics 49/49, save
+15/15, ui 71/71, gen 4344/4344 (0 repairs), game 111/111, lava 33/33,
+deep 1958/1958 (60 deep seeds, 0 repairs). Also `water_live` 4/4,
+`cargo` 19/19, `structures` 13/13. Version 0.6.0 (code 15).

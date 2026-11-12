@@ -54,6 +54,11 @@ func _draw() -> void:
 			for k in 3:
 				var centre := Vector2((k - 1) * 4, -abs(k - 1) * 2)
 				draw_colored_polygon(PackedVector2Array([centre + Vector2(0, -6), centre + Vector2(3, 0), centre + Vector2(0, 5), centre + Vector2(-3, 0)]), color)
+		5:
+			# a bronze ring holding a warm lens
+			draw_arc(Vector2(0, -1), 5.5, 0, TAU, 16, Color("b59a5e"), 2.0)
+			draw_circle(Vector2(0, -1), 3.5, color)
+			draw_circle(Vector2(-1, -2), 1.2, Color(1, 1, 1, 0.8))
 
 
 func take() -> void:

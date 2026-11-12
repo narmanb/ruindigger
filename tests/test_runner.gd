@@ -379,7 +379,7 @@ func _generation(n: int) -> void:
 			var gl: Vector2i = gate["lift"]
 			check(from_spawn[gl.y * g.w + gl.x] < DigCheck.UNREACHED, tag + ": wing entrance %d is reachable" % gate["side"])
 		var void_ok := true
-		check(d.get("finds", []).size() == Balance.KEEPSAKES.size(), tag + ": one keepsake per zone")
+		check(d.get("finds", []).size() == Balance.ZONE_COUNT, tag + ": one keepsake per zone")
 		dig.allow_ladder = true
 		var find_dist := dig.costs_from(sp)
 		var find_escape := dig.escape_set(d["lift"])
