@@ -367,6 +367,9 @@ class TransitGate extends Node2D:
 
 	func status_text() -> String:
 		if not powered:
+			var engine: Node = mine.get("engine")
+			if engine:
+				return "TRANSIT GATE: NO POWER - %s" % engine.status()
 			return "TRANSIT GATE: NO POWER"
 		return "TRANSIT GATE: DORMANT"
 
@@ -409,3 +412,154 @@ class TransitGate extends Node2D:
 		for k in 3:
 			var on := (k == 0 and powered) or (k == 1 and woken) or (k == 2 and online)
 			draw_rect(Rect2(-8 + k * 6, -3, 4, 2), col if on else Color(0.12, 0.1, 0.1))
+
+
+## A valve console in the Thermal Plant. USE opens (or closes) the floor of its
+## tank so the fluid pours into the basin below. Closing is always possible,
+## so an early mistake can be undone.
+class Valve extends Node2D:
+	var mine: Node
+	var system := "heat"            # "heat" (lava) or "coolant" (water)
+	var outlet: Array = []          # tank-floor cells this valve opens
+	var open := false
+	var t := 0.0
+
+	func label() -> String:
+		var what := "HEAT VALVE" if system == "heat" else "COOLANT VALVE"
+		return ("CLOSE " if open else "OPEN ") + what
+
+	func toggle() -> void:
+		open = not open
+		var g: TerrainGrid = mine.grid
+		for c in outlet:
+			g.set_flag(c.x, c.y, Cell.F_PROTECTED, false)
+			if open:
+				g.set_mat(c.x, c.y, Cell.AIR, false)
+			else:
+				g.set_mat(c.x, c.y, Cell.ALLOY)
+				g.set_flag(c.x, c.y, Cell.F_PROTECTED)
+		Audio.play("lift_ding" if open else "ui_click", -4.0)
+		Audio.play_at("rumble", global_position, -10.0)
+		mine.shake(0.15)
+		if system == "heat":
+			mine.toast("HEAT VALVE OPEN - molten feed to the intake" if open else "HEAT VALVE CLOSED")
+		else:
+			mine.toast("COOLANT VALVE OPEN - water to the condenser" if open else "COOLANT VALVE CLOSED")
+
+	func _process(d: float) -> void:
+		t += d
+		queue_redraw()
+
+	func _draw() -> void:
+		var bronze := Color("51422a")
+		var edge := Color("b59a5e")
+		var col := Color(1.0, 0.55, 0.2) if system == "heat" else Color(0.35, 0.85, 1.0)
+		draw_rect(Rect2(-5, -18, 10, 18), bronze)
+		draw_rect(Rect2(-5, -18, 10, 1), edge)
+		# the wheel turns while the valve is open
+		var c := Vector2(0, -12)
+		draw_arc(c, 4.0, 0, TAU, 12, edge, 1.5)
+		var a := t * 3.0 if open else 0.0
+		for k in 3:
+			var dir := Vector2.RIGHT.rotated(a + k * TAU / 3.0)
+			draw_line(c, c + dir * 4.0, edge, 1.0)
+		draw_rect(Rect2(-3, -4, 6, 2), col if open else Color(0.18, 0.14, 0.12))
+
+
+## The Thermal Engine. It watches its two basins: enough lava in the heat
+## intake and enough water in the coolant basin, held for a moment, and it
+## powers the Transit Gate. Its state is shown on its face and announced.
+class ThermalEngine extends Node2D:
+	var mine: Node
+	var heat_cells: Array = []
+	var cool_cells: Array = []
+	var heat := 0
+	var coolant := 0
+	var online := false
+	var _check := 0.0
+	var _hold := 0.0
+	var _heat_ok := false
+	var _cool_ok := false
+	var t := 0.0
+	var light: PointLight2D
+
+	func _ready() -> void:
+		light = PointLight2D.new()
+		light.texture = load("res://assets/gen/light.png")
+		light.texture_scale = 1.4
+		light.color = Color(1.0, 0.55, 0.25)
+		light.energy = 0.2
+		light.position = Vector2(0, -16)
+		add_child(light)
+
+	func heat_ready() -> bool:
+		return heat >= Balance.PLANT_HEAT_NEED
+
+	func cool_ready() -> bool:
+		return coolant >= Balance.PLANT_COOL_NEED
+
+	func status() -> String:
+		var h := "HEAT INPUT: READY" if heat_ready() else ("HEAT INPUT: LOW" if heat > 0 else "HEAT INPUT: NONE")
+		var c := "COOLANT: READY" if cool_ready() else "COOLANT: INSUFFICIENT"
+		return "%s   %s" % [h, c]
+
+	func measure() -> void:
+		var g: TerrainGrid = mine.grid
+		heat = 0
+		for c in heat_cells:
+			heat += g.get_lava(c.x, c.y)
+		coolant = 0
+		for c in cool_cells:
+			coolant += g.get_water(c.x, c.y)
+
+	func _process(d: float) -> void:
+		t += d
+		_check -= d
+		if _check <= 0.0:
+			_check = Balance.PLANT_CHECK
+			measure()
+			var h := heat_ready()
+			var c := cool_ready()
+			if h != _heat_ok:
+				_heat_ok = h
+				mine.toast("HEAT INPUT: READY" if h else "HEAT INPUT: LOST")
+			if c != _cool_ok:
+				_cool_ok = c
+				mine.toast("COOLANT: READY" if c else "COOLANT: INSUFFICIENT")
+			if h and c:
+				_hold += Balance.PLANT_CHECK
+			else:
+				_hold = 0.0
+			var want := h and c and _hold >= Balance.PLANT_SPINUP
+			if want != online:
+				online = want
+				if online:
+					Audio.play("lift_ding")
+					Audio.play_at("rumble", global_position, -4.0)
+					mine.shake(0.4)
+					mine.toast("THERMAL ENGINE ONLINE - the Transit Gate has power")
+					if mine.hud:
+						mine.hud.banner("POWER RESTORED")
+				else:
+					mine.toast("THERMAL ENGINE STALLED - %s" % status())
+			if mine.gate:
+				mine.gate.powered = online
+		light.energy = (1.3 if online else (0.6 if (_heat_ok or _cool_ok) else 0.2)) + 0.1 * sin(t * 6.0)
+		queue_redraw()
+
+	func _draw() -> void:
+		var bronze := Color("51422a")
+		var edge := Color("b59a5e")
+		# a stacked core with a turning rotor and three status lamps
+		draw_rect(Rect2(-22, -26, 44, 26), bronze)
+		draw_rect(Rect2(-22, -26, 44, 2), edge)
+		var c := Vector2(0, -14)
+		var spin := t * (6.0 if online else 0.4)
+		draw_arc(c, 9.0, 0, TAU, 20, Color(0.1, 0.08, 0.06), 3.0)
+		for k in 4:
+			var dir := Vector2.RIGHT.rotated(spin + k * TAU / 4.0)
+			draw_line(c, c + dir * 8.0, edge, 2.0)
+		var lamps := [[_heat_ok, Color(1.0, 0.5, 0.2)], [_cool_ok, Color(0.35, 0.85, 1.0)], [online, Color(0.4, 1.0, 0.95)]]
+		for k in 3:
+			var on: bool = lamps[k][0]
+			draw_rect(Rect2(-18 + k * 14, -5, 8, 3), lamps[k][1] if on else Color(0.15, 0.1, 0.1))

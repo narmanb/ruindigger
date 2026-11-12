@@ -344,6 +344,13 @@ const STEAM_LIFT := 55.0             # upward shove from dense steam (px/s)
 const DEEP_LAVA_POCKETS := [5, 8]
 const DEEP_LAVA_PITS := 0.6          # chance a lower vault has a lava pit in its floor
 const DEEP_QUENCH_PAIRS := [2, 3]    # water pocket sealed above a lava pocket
+# --- Thermal plant: the power that wakes the Transit Gate ---------------------
+const PLANT_W := 36                  # hall interior (see FirstCivGenerator._thermal_plant)
+const PLANT_H := 12
+const PLANT_HEAT_NEED := 384         # lava units in the heat basin (6 cells)
+const PLANT_COOL_NEED := 384         # water units in the coolant basin (6 cells)
+const PLANT_CHECK := 0.25            # seconds between engine state checks
+const PLANT_SPINUP := 2.0            # seconds both inputs must hold before power flows
 const DESCENT_ROOM := Vector2i(11, 7)   # Ancient Descent Platform room in the Engine vault
 const DESCENT_ROOM_SMALL := Vector2i(9, 6)   # used when the vault is crowded
 const DESCENT_APPROACH := 14            # cells of approach corridor carved from its door

@@ -106,7 +106,7 @@ func _draw() -> void:
 		var rc: Vector2 = mine.relic.global_position / Balance.CELL
 		if grid.has_flag(int(rc.x), int(rc.y), Cell.F_EXPLORED):
 			_marker(origin + (rc - src.position) * sc, Color(0.4, 1.0, 1.0), 3.0, area)
-	for special in [mine.descent, mine.gate]:
+	for special in [mine.descent, mine.gate, mine.engine]:
 		if special:
 			var sc2: Vector2 = special.global_position / Balance.CELL
 			if grid.has_flag(int(sc2.x), int(sc2.y) - 1, Cell.F_EXPLORED):

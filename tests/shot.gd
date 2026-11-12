@@ -167,6 +167,10 @@ func _process(_d: float) -> void:
 					for dy in [4, 5]:
 						mine.damage_cell(Vector2i(xx, qr.position.y + dy), 99.0, 0, false, "shot")
 				break
+	if mine and args.has("valves") and frame == 22 and mine.get("valves") != null:
+		for v in mine.valves:
+			v.toggle()
+		mine.player.invuln = 1e9
 	if mine and args.has("ladder") and frame == target - 30:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:

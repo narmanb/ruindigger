@@ -50,6 +50,8 @@ var depth_offset := 0             # cells descended before this stage (for depth
 var descent: Node2D               # Ancient Descent Platform (main mine only)
 var gate: Node2D                  # Transit Gate (deep stage only)
 var descent_prompt: Node
+var engine: Node2D                # Thermal Engine (deep stage only)
+var valves: Array = []
 
 
 func _ready() -> void:
@@ -60,6 +62,8 @@ func _ready() -> void:
 	grid = data["grid"]
 	_build_world()
 	_spawn_entities()
+	if gate and engine:
+		gate.powered = false      # the Thermal Engine decides
 	_spawn_player()
 	_spawn_water_props()
 	_build_ui()
@@ -213,6 +217,22 @@ func _spawn_entities() -> void:
 				descent.mine = self
 				descent.position = pos
 				entity_root.add_child(descent)
+			"thermal_engine":
+				engine = Entities.ThermalEngine.new()
+				engine.mine = self
+				engine.position = pos
+				var plant: Dictionary = data.get("plant", {})
+				engine.heat_cells = plant.get("heat_basin", [])
+				engine.cool_cells = plant.get("coolant_basin", [])
+				entity_root.add_child(engine)
+			"valve":
+				var v := Entities.Valve.new()
+				v.mine = self
+				v.system = e["system"]
+				v.outlet = e["outlet"]
+				v.position = pos
+				entity_root.add_child(v)
+				valves.append(v)
 			"transit_gate":
 				gate = Entities.TransitGate.new()
 				gate.mine = self
@@ -763,6 +783,9 @@ func nearest_interactable(pl: Player) -> Dictionary:
 			return {"kind": "find", "node": find, "label": "TAKE"}
 	if descent and descent.global_position.distance_to(pc + Vector2(0, 13)) < 26.0:
 		return {"kind": "descent", "node": descent, "label": "DESCEND"}
+	for v in valves:
+		if v.global_position.distance_to(pc + Vector2(0, 13)) < 22.0:
+			return {"kind": "valve", "node": v, "label": v.label()}
 	if gate and gate.global_position.distance_to(pc + Vector2(0, 13)) < 30.0:
 		return {"kind": "gate", "node": gate, "label": "TRANSIT" if gate.online else "GATE"}
 	return {}
@@ -778,6 +801,8 @@ func player_interact(pl: Player) -> void:
 		"descent":
 			# never a one-press action: the warning must be confirmed
 			descent_prompt.open()
+		"valve":
+			it["node"].toggle()
 		"gate":
 			if gate.online:
 				extract_gate()

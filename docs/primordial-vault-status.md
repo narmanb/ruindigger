@@ -14,7 +14,7 @@ game is **THE FIRST CIVILIZATION**. Both mean the same stage.
 | D0 baseline | Done. All suites passed on `7449710` before any change (terrain 32, physics 49, save 15, ui 71, gen 4344, game 111, water_live 4). |
 | D1 giant deep map + one-way extraction | **Done and tested** (see below). |
 | D2 lava, reaction, steam, cooled rock | **Done and tested** (see "D2" below). |
-| D3 geothermal power puzzle | Not started unless a section below says otherwise. |
+| D3 geothermal power puzzle | **Done and tested** (see "D3" below). |
 | D4 atmosphere, artifacts, defenders | Not started. |
 | D5 third fluid, optimisation | Not started. |
 
@@ -175,3 +175,75 @@ about 540 water units boiled off, and steam peaked at about 40 cells.
 * Steam pressure in sealed vents and steam-driven machines are D3 work.
 * No performance measurement on a phone. Lava and steam work is bounded by
   `LAVA_BUDGET` and `STEAM_MAX_CELLS`.
+
+## D3: what exists
+
+* **Thermal Plant hall** (`FirstCivGenerator._thermal_plant`, pass 4b): a
+  36×12 composite hall in the thermal-plant region, joined into the route chain
+  through its single door, which faces the middle of the map. Along the hall,
+  from the far wall to the door: a **lava tank** over the **heat intake** basin,
+  the heat valve console, the **Thermal Engine** (a low block you can hop
+  over), the coolant valve console, a **water tank** over the **coolant**
+  basin, then the walkway. Each tank holds 21 cells, 3.5× what its basin
+  needs (`PLANT_HEAT_NEED`, `PLANT_COOL_NEED`).
+* **Valves** (`Entities.Valve`): USE opens the tank floor so the fluid pours
+  into the basin; USE again closes it (the closed floor displaces whatever
+  fluid is in it). Labels read "OPEN/CLOSE HEAT VALVE" and "... COOLANT
+  VALVE".
+* **Engine** (`Entities.ThermalEngine`): measures both basins every
+  `PLANT_CHECK` s. When both inputs have held for `PLANT_SPINUP` s it comes
+  online and sets `gate.powered`. Lamps on its face (heat, coolant, power) and
+  a turning rotor show the state, with toasts "HEAT INPUT: READY/LOST",
+  "COOLANT: READY/INSUFFICIENT", "THERMAL ENGINE ONLINE / STALLED".
+* **Gate.** Unpowered, the Transit Gate refuses and says which inputs are
+  missing. Powered, the first USE wakes it and the second leaves. The HUD
+  compass points to "PLANT" until the engine is online, then to "GATE". The
+  minimap and full map mark the plant.
+* **Recoverable by design.** Water reaching the heat intake only crusts its
+  surface; the lava beneath still counts, and the crust is drillable. Valves
+  can be closed. Lava is kept out of the coolant basin (`lava_keep_out`).
+  Tanks are sealed containers the trap audit leaves alone.
+
+### D3 tests
+
+* Every deep seed: a plant with one engine and two valves; tanks hold over 3×
+  the need; basins start empty; both consoles are reachable from the arrival,
+  and the gate is reachable from them.
+* First 12 seeds, headless fluid run: opening both valves powers the engine;
+  water spilled on the heat intake crusts its surface; the lava under the
+  crust still meets the need; drilling the crust out keeps it working.
+* Live: the gate starts unpowered and explains why; the player uses both
+  consoles; the engine comes online; the gate wakes and the run extracts with
+  everything banked once.
+
+### D3 results (run on this commit)
+
+`TEST_TIMEOUT=1200 ./tools/run_tests.sh`: terrain 32/32, physics 49/49, save
+15/15, ui 71/71, gen 4344/4344 (0 repairs), game 111/111, lava 33/33,
+deep 1898/1898 (60 deep seeds, 0 repairs). `water_live` 4/4. Screenshots of
+the plant cold and powered were checked.
+
+### Known gaps after D3
+
+* The power network is the plant alone. There is no separate transmission
+  step (exposing a buried conduit); the spec lists that as optional.
+* There is one plant per map, so variety comes from where it sits and the
+  route to it, not from different puzzle layouts.
+* Releasing lava with the valve is safe. Drilling into a sealed lava pocket
+  elsewhere can still flood a tunnel, which the player has to dig around or
+  quench.
+
+## Next smallest tasks (D4, then D5)
+
+1. D4: a unique First Civilization artifact or keepsake. Add a sixth
+   `KEEPSAKES` entry and place it deep in a vault (do not change the five-zone
+   finds).
+2. D4: more archaeological signs or short records in vaults; a guardian that
+   patrols powered corridors and stalls when the engine is offline.
+3. D4: review reward balance (`DEEP_EXIT_BONUS`, premium ore density).
+4. D5: the optional third fluid (Aetheric Slurry / Thermal Gel). Write the
+   interaction table first.
+5. Measure FPS and frame times on an Android device / Retroid Pocket 5 in the
+   deep stage with active lava and steam; tune `LAVA_BUDGET` and
+   `STEAM_MAX_CELLS` if needed.
+6. Build the APK and confirm CI on this branch (not done yet).

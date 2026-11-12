@@ -22,6 +22,8 @@ static func generation(t: Node, n: int) -> void:
 		var g: TerrainGrid = d["grid"]
 		t.check(g.w == Balance.DEEP_W and g.h == Balance.DEEP_H and g.w == 200 and g.h == 120, tag + ": map is 200x120, independent of the main mine (%dx%d)" % [g.w, g.h])
 		t.check(d["valid"], tag + ": valid")
+		if int(d["repairs"]) > 0:
+			print("  REPAIRED deep seed ", run_seed)
 		repaired += int(d["repairs"])
 		total_sealed += int(d.get("traps_sealed", 0))
 		var biome_ok := true
@@ -62,8 +64,17 @@ static func generation(t: Node, n: int) -> void:
 		var dig := DigCheck.new(g)
 		var traps := dig.traps(sp, gc)
 		t.check(traps.is_empty(), tag + ": no cell is cut off from the gate (%d, e.g. %s)" % [traps.size(), str(traps.slice(0, 3))])
-		var pockets := RouteCheck.sealed_pockets(g, sp)
-		t.check(pockets.is_empty(), tag + ": no sealed pockets (%d)" % pockets.size())
+		# the plant's two tanks are sealed containers on purpose
+		var tanks: Array = [d["plant"]["heat_tank"], d["plant"]["coolant_tank"]] if d.has("plant") else []
+		var pockets: Array = []
+		for pc in RouteCheck.sealed_pockets(g, sp):
+			var in_tank := false
+			for tr: Rect2i in tanks:
+				if tr.has_point(pc):
+					in_tank = true
+			if not in_tank:
+				pockets.append(pc)
+		t.check(pockets.is_empty(), tag + ": no sealed pockets outside the plant tanks (%d)" % pockets.size())
 		t.check((d["plan"]["overlaps"] as Array).is_empty(), tag + ": no reserved footprints overlap %s" % str(d["plan"]["overlaps"]))
 		t.check(int(d["plan"]["vaults"]) >= 4, tag + ": at least 4 great vaults (%d)" % d["plan"]["vaults"])
 		# content sanity
@@ -115,12 +126,105 @@ static func generation(t: Node, n: int) -> void:
 			if o != 0:
 				ore += 1
 		t.check(ore >= 60, tag + ": premium ore present (%d cells)" % ore)
+		_plant_checks(t, tag, d, i < 12)
 		if i < 4:
 			var again := FirstCivGenerator.new().generate(FirstCivGenerator.deep_seed(run_seed))
 			t.check(_hash(again) == _hash(d), tag + ": generation is deterministic")
 	print("  deep seeds needing repair: %d / %d, slowest %d ms, trap cells sealed %d" % [repaired, n, worst_ms, total_sealed])
 	t.check(repaired == 0, "the deep stage never needed its repair fallback")
 	t.check(FirstCivGenerator.deep_seed(7) == FirstCivGenerator.deep_seed(7) and FirstCivGenerator.deep_seed(7) != FirstCivGenerator.deep_seed(8), "the deep seed is derived deterministically from the run seed")
+
+
+static func _sum(g: TerrainGrid, cells: Array, lava: bool) -> int:
+	var s := 0
+	for c in cells:
+		s += g.get_lava(c.x, c.y) if lava else g.get_water(c.x, c.y)
+	return s
+
+
+## The Thermal Plant: present, reachable, enough fuel, and (for `simulate`
+## seeds) actually solvable and recoverable in a headless fluid run.
+static func _plant_checks(t: Node, tag: String, d: Dictionary, simulate: bool) -> void:
+	var g: TerrainGrid = d["grid"]
+	var p: Dictionary = d.get("plant", {})
+	t.check(not p.is_empty(), tag + ": a Thermal Plant exists")
+	if p.is_empty():
+		return
+	var valves := 0
+	var engines := 0
+	var consoles: Array = []
+	for e in d["entities"]:
+		if e["type"] == "valve":
+			valves += 1
+			consoles.append(e["cell"])
+		elif e["type"] == "thermal_engine":
+			engines += 1
+	t.check(valves == 2 and engines == 1, tag + ": two valve consoles and one engine (%d, %d)" % [valves, engines])
+	var heat_fuel := 0
+	var cool_fuel := 0
+	var tank: Rect2i = p["heat_tank"]
+	for y in range(tank.position.y, tank.end.y):
+		for x in range(tank.position.x, tank.end.x):
+			heat_fuel += g.get_lava(x, y)
+	tank = p["coolant_tank"]
+	for y in range(tank.position.y, tank.end.y):
+		for x in range(tank.position.x, tank.end.x):
+			cool_fuel += g.get_water(x, y)
+	t.check(heat_fuel >= 3 * Balance.PLANT_HEAT_NEED and cool_fuel >= 3 * Balance.PLANT_COOL_NEED, tag + ": the tanks hold over 3x what the engine needs (heat %d, coolant %d)" % [heat_fuel, cool_fuel])
+	t.check(_sum(g, p["heat_basin"], true) == 0 and _sum(g, p["coolant_basin"], false) == 0, tag + ": the basins start empty (the engine starts cold)")
+	var dig := DigCheck.new(g)
+	dig.allow_ladder = true
+	var from_spawn := dig.costs_from(d["spawn"])
+	var reach := true
+	for c in consoles:
+		if from_spawn[c.y * g.w + c.x] >= DigCheck.UNREACHED or dig.cost(c, d["gate"]) < 0.0:
+			reach = false
+	t.check(reach, tag + ": both valve consoles are reachable, and the gate is reachable from them")
+	if not simulate:
+		return
+	# solve it: open both valves on a copy and let the fluids run
+	var g2 := TerrainGrid.from_dict(g.to_dict())
+	var w2 := WaterSim.new(g2)
+	var l2 := LavaSim.new(g2, w2, SteamField.new(g2))
+	for c in p["coolant_basin"]:
+		l2.keep_out[c] = true
+	for c in p["heat_outlet"] + p["coolant_outlet"]:
+		g2.set_mat(c.x, c.y, Cell.AIR)
+	var solved_at := -1
+	for frame in 1800:
+		w2.update(1.0 / 60.0)
+		l2.update(1.0 / 60.0)
+		if frame % 30 == 0 and _sum(g2, p["heat_basin"], true) >= Balance.PLANT_HEAT_NEED and _sum(g2, p["coolant_basin"], false) >= Balance.PLANT_COOL_NEED:
+			solved_at = frame
+			break
+	t.check(solved_at >= 0, tag + ": opening both valves powers the engine (after %.1f s)" % (solved_at / 60.0))
+	# recover from a mistake: water spilled onto the heat basin crusts its top
+	var heat_cells: Array = p["heat_basin"]
+	for frame in 600:
+		w2.update(1.0 / 60.0)
+		l2.update(1.0 / 60.0)
+	var top := 1 << 20
+	for c in heat_cells:
+		top = mini(top, c.y)
+	for c in heat_cells:
+		if c.y == top:
+			g2.set_water(c.x, c.y - 2, Balance.WATER_MAX)
+			g2.set_water(c.x, c.y - 3, Balance.WATER_MAX)
+	w2.wake_all()
+	l2.wake_all()
+	for frame in 900:
+		w2.update(1.0 / 60.0)
+		l2.update(1.0 / 60.0)
+	var crusted := 0
+	for c in heat_cells:
+		if g2.is_solid(c.x, c.y):
+			crusted += 1
+	t.check(crusted > 0, tag + ": water spilled on the heat intake crusts its surface (%d cells)" % crusted)
+	t.check(_sum(g2, heat_cells, true) >= Balance.PLANT_HEAT_NEED, tag + ": the lava under the crust still powers the engine (%d units)" % _sum(g2, heat_cells, true))
+	for c in heat_cells:
+		if g2.is_solid(c.x, c.y):
+			g2.damage(c.x, c.y, 99.0, 0, false)
+	t.check(_sum(g2, heat_cells, true) >= Balance.PLANT_HEAT_NEED, tag + ": drilling the crust out leaves the intake working")
 
 
 ## The entrance in the main mine: present, in the Engine vault, safe to stand in,
@@ -206,18 +310,21 @@ static func live(t: Node) -> void:
 	t.check(deep != mine and deep != null and deep.get("stage") == "deep", "the run continues in a new stage (after %d frames)" % guard)
 	if deep == null or deep.get("stage") != "deep":
 		return
+	# snapshot the run the moment the new stage exists, before anything down
+	# here (a crawler burning in lava, a falling boulder) can change it
+	var arrived := [Game.run["cargo"].duplicate(), Game.run["relic"], int(Game.run["charges"]), int(Game.run["scaffold"]), Game.run["finds"].duplicate(), int(Game.run["kills"])]
 	await t._frames(30)
 	var g: TerrainGrid = deep.grid
 	var dp: Player = deep.player
 	dp.invuln = 1e9
 	t.check(g.w == 200 and g.h == 120, "the deep stage runs its own 200x120 map")
-	t.check(Game.run["cargo"] == {1: 3, 3: 2} and Game.run["relic"] == true and int(Game.run["charges"]) == 3 and int(Game.run["scaffold"]) == 17 and Game.run["finds"] == [2] and int(Game.run["kills"]) == 4,
-		"cargo, relic, charges, scaffold, finds and kills are unchanged by the descent")
+	t.check(arrived == [{1: 3, 3: 2}, true, 3, 17, [2], 4], "cargo, relic, charges, scaffold, finds and kills are unchanged by the descent (%s)" % str(arrived))
 	t.check(int(Game.run["seed"]) == 7 and Game.run["contract"]["id"] == Balance.CONTRACTS[0]["id"], "seed and contract are unchanged")
 	t.check(is_equal_approx(dp.hp, 61.0), "hull carries over (%.0f)" % dp.hp)
 	t.check(float(Game.run["time"]) > time_before, "the run clock keeps counting")
 	t.check(deep.lifts.is_empty() and deep.descent == null and deep.relic == null, "no lift, no way back and no second relic down here")
-	t.check(deep.gate != null and not deep.gate.online, "a dormant Transit Gate exists")
+	t.check(deep.gate != null and not deep.gate.online and not deep.gate.powered, "a dormant, unpowered Transit Gate exists")
+	t.check(deep.engine != null and deep.valves.size() == 2 and not deep.engine.online, "the Thermal Plant is cold: an engine and two closed valves")
 	t.check(int(Game.run["max_depth"]) >= Balance.MAP_H and deep.depth_offset == Balance.MAP_H, "depth keeps counting from the Engine (%d cells)" % Game.run["max_depth"])
 	t.check(dp.is_on_floor() and not g.is_solid(g.world_to_cell(dp.global_position).x, g.world_to_cell(dp.global_position).y), "the player arrives standing in the arrival hall")
 	t.check(deep.current_stratum == Balance.Z_FIRST, "the stage uses the sixth biome (light, backdrop, music)")
@@ -279,7 +386,7 @@ static func live(t: Node) -> void:
 	t.check(deep.pause_menu.is_open, "the pause menu opens in the deep stage")
 	deep.pause_menu.close()
 	t.check(deep.nearest_interactable(dp).is_empty(), "nothing in the arrival hall offers an exit")
-	# the gate: wake it, then leave
+	# the gate: without power it explains what is missing and stays shut
 	dp.input_override = {"x": 0.0}
 	dp.global_position = deep.gate.global_position + Vector2(0, -Player.HALF.y - 0.5)
 	dp.velocity = Vector2.ZERO
@@ -287,7 +394,29 @@ static func live(t: Node) -> void:
 	var gi: Dictionary = deep.nearest_interactable(dp)
 	t.check(gi.get("kind", "") == "gate", "the Transit Gate can be used from its platform")
 	deep.player_interact(dp)
-	t.check(deep.gate.online and not deep.ending, "the first use wakes the gate without leaving")
+	t.check(not deep.gate.online and not deep.ending and deep.gate.status_text().contains("HEAT INPUT") and deep.gate.status_text().contains("COOLANT"), "an unpowered gate refuses and says which inputs are missing")
+	# restore power: go to each valve console and open it
+	for v in deep.valves:
+		dp.global_position = v.global_position + Vector2(0, -Player.HALF.y - 0.5)
+		dp.velocity = Vector2.ZERO
+		await t._frames(10)
+		var vi: Dictionary = deep.nearest_interactable(dp)
+		t.check(vi.get("kind", "") == "valve" and String(vi.get("label", "")).begins_with("OPEN"), "a valve console offers %s" % vi.get("label", "?"))
+		deep.player_interact(dp)
+		t.check(v.open, "using the console opens the %s valve" % v.system)
+	var powered_at := -1
+	for frame in 2400:
+		await t.get_tree().physics_frame
+		if deep.engine.online:
+			powered_at = frame
+			break
+	t.check(powered_at >= 0 and deep.gate.powered, "molten feed and coolant bring the Thermal Engine online (after %d frames)" % powered_at)
+	t.check(deep.engine.heat_ready() and deep.engine.cool_ready(), "the engine reads both inputs ready (%s)" % deep.engine.status())
+	dp.global_position = deep.gate.global_position + Vector2(0, -Player.HALF.y - 0.5)
+	dp.velocity = Vector2.ZERO
+	await t._frames(12)
+	deep.player_interact(dp)
+	t.check(deep.gate.online and not deep.ending, "with power, the first use wakes the gate without leaving")
 	var credits_before: int = Progress.credits
 	deep.player_interact(dp)
 	t.check(deep.ending, "the second use starts the transit")

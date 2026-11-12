@@ -8,6 +8,8 @@ extends RefCounted
 ## PASS ORDER (load-bearing):
 ##  1 base rock + bedrock rim          2 natural caves
 ##  3 arrival shaft and hall (spawn)   4 Transit Gate hall at the bottom
+##  4b Thermal Plant hall: lava tank over a heat basin, water tank over a
+##     coolant basin, the engine between; valve consoles release the tanks
 ##  5 great vaults                     6 buried monoliths of ancient composite
 ##  7 link tunnels arrival -> vaults -> gate (parts left as cracked rock)
 ##  8 long transit tunnels             9 ore
@@ -56,7 +58,7 @@ func generate(seed_value: int, _contract: Dictionary = {}) -> Dictionary:
 	enc_rng.seed = seed_value ^ 0x34636e65
 	space = GenSpace.new(W, H)
 	data = {"seed": seed_value, "stage": "deep", "entities": [], "grid": g, "route": [], "version": VERSION,
-		"landmarks": [], "water_features": [], "water_props": [], "finds": []}
+		"landmarks": [], "water_features": [], "lava_features": [], "water_props": [], "finds": []}
 	var col: Color = Balance.ZONE_COLORS[_z]
 	data["zones"] = [
 		{"id": _z, "name": Balance.DEEP_REGION_NAMES[0], "rect": Rect2i(2, 2, W - 4, Balance.DEEP_BAND_PLANT - 2), "color": col},
@@ -67,6 +69,7 @@ func generate(seed_value: int, _contract: Dictionary = {}) -> Dictionary:
 	_caves(seed_value)
 	_arrival()
 	_gate_hall()
+	_thermal_plant()
 	_great_vaults()
 	_monoliths()
 	_link_tunnels()
@@ -265,6 +268,106 @@ func _gate_hall() -> void:
 	data["entities"].append({"type": "sign", "cell": Vector2i(x0 + 4, fy), "text": "TRANSIT"})
 
 
+# --- 4b thermal plant -----------------------------------------------------------
+## The geothermal engine that powers the Transit Gate. Layout along the hall,
+## counted from the far wall (i = 0) to the door (i = 35):
+##   lava tank over heat basin 1..7 | heat valve 10 | engine 13..19 |
+##   coolant valve 22 | water tank over coolant basin 25..31 | walkway 32..35
+## Each tank holds 3.5x what its basin needs, so a mistake is recoverable.
+func _plant_x(i: int, L: int, door_right: bool) -> int:
+	return L + i if door_right else L + Balance.PLANT_W - 1 - i
+
+
+func _thermal_plant() -> void:
+	var w: int = Balance.PLANT_W
+	var h: int = Balance.PLANT_H
+	var r := Rect2i()
+	for attempt in 80:
+		var x0 := topo.randi_range(6, W - w - 7)
+		var y0 := topo.randi_range(Balance.DEEP_BAND_PLANT + 2, Balance.DEEP_BAND_TRANSIT - h - 3)
+		var cand := Rect2i(x0, y0, w, h)
+		if space.fits(cand.grow(5), 0):
+			r = cand
+			break
+	if r.size.x == 0:
+		r = Rect2i(W / 2 - w / 2, Balance.DEEP_BAND_PLANT + 4, w, h)
+	space.claim(r.grow(5), "anchor", "thermal_plant")
+	var door_right := r.get_center().x < W / 2      # the door faces the middle of the map
+	var L := r.position.x
+	var T := r.position.y
+	var fy := r.end.y - 1
+	# shell and floor of ancient composite; the room itself open
+	_fill(Rect2i(L - 1, T - 1, w + 2, h + 6), Cell.ALLOY, Cell.F_PROTECTED)
+	for y in range(T, fy + 1):
+		for x in range(L, L + w):
+			g.put(x, y, Cell.AIR)
+			g.set_flag(x, y, Cell.F_PROTECTED, false)
+			g.set_flag(x, y, Cell.F_NO_RUBBLE)
+	var plant := {"hall": r, "door_right": door_right}
+	for sys in ["heat", "coolant"]:
+		var i0 := 1 if sys == "heat" else 25
+		var basin: Array = []
+		var outlet: Array = []
+		for k in 7:
+			var x := _plant_x(i0 + k, L, door_right)
+			# the basin: a pit three cells deep in the floor
+			for dy in range(1, 4):
+				g.put(x, fy + dy, Cell.AIR)
+				g.set_flag(x, fy + dy, Cell.F_PROTECTED, false)
+				basin.append(Vector2i(x, fy + dy))
+			# the tank: three rows of fluid in a composite shell, valve in its floor
+			for dy in range(1, 4):
+				g.put(x, T + dy, Cell.AIR)
+				g.set_flag(x, T + dy, Cell.F_PROTECTED, false)
+				if sys == "heat":
+					g.lava[g.idx(x, T + dy)] = Balance.LAVA_MAX
+				else:
+					g.water[g.idx(x, T + dy)] = Balance.WATER_MAX
+			g.put(x, T, Cell.ALLOY)
+			g.set_flag(x, T, Cell.F_PROTECTED)
+			g.put(x, T + 4, Cell.ALLOY)
+			g.set_flag(x, T + 4, Cell.F_PROTECTED)
+			if k >= 2 and k <= 4:
+				outlet.append(Vector2i(x, T + 4))
+		for side_i in [i0 - 1, i0 + 7]:
+			var sx := _plant_x(side_i, L, door_right)
+			for y in range(T, T + 5):
+				g.put(sx, y, Cell.ALLOY)
+				g.set_flag(sx, y, Cell.F_PROTECTED)
+		plant[sys + "_basin"] = basin
+		plant[sys + "_outlet"] = outlet
+		var tx := mini(_plant_x(i0, L, door_right), _plant_x(i0 + 6, L, door_right))
+		var tank := Rect2i(tx, T + 1, 7, 3)
+		plant[sys + "_tank"] = tank
+		var console_x := _plant_x(10 if sys == "heat" else 22, L, door_right)
+		data["entities"].append({"type": "valve", "cell": Vector2i(console_x, fy), "system": sys, "outlet": outlet})
+		data["entities"].append({"type": "sign", "cell": Vector2i(_plant_x(i0 + 3, L, door_right), fy), "text": "HEAT INTAKE" if sys == "heat" else "COOLANT"})
+		if sys == "heat":
+			data["lava_features"].append({"kind": "heat_tank", "rect": tank, "cells": 21, "volume": 21 * Balance.LAVA_MAX})
+		else:
+			data["water_features"].append({"kind": "coolant_tank", "rect": tank, "cells": 21, "volume": 21 * Balance.WATER_MAX})
+	# the engine: a low composite block you can hop over, between the basins
+	for k in range(13, 20):
+		var x2 := _plant_x(k, L, door_right)
+		for y in [fy - 1, fy]:
+			g.put(x2, y, Cell.ALLOY)
+			g.set_flag(x2, y, Cell.F_PROTECTED)
+	var engine := Vector2i(_plant_x(16, L, door_right), fy - 2)
+	data["entities"].append({"type": "thermal_engine", "cell": engine})
+	data["entities"].append({"type": "lamp", "cell": Vector2i(_plant_x(11, L, door_right), T + 5), "color": "ff8a3a"})
+	data["entities"].append({"type": "lamp", "cell": Vector2i(_plant_x(23, L, door_right), T + 5), "color": "6ff3ff"})
+	# the door, on the side facing the middle of the map
+	var door_x := L + w if door_right else L - 1
+	for dy in range(-2, 1):
+		g.set_flag(door_x, fy + dy, Cell.F_PROTECTED, false)
+		g.put(door_x, fy + dy, Cell.AIR)
+	plant["door"] = Vector2i(door_x, fy)
+	plant["engine"] = engine
+	_reserve(Rect2i(L - 1, T - 1, w + 2, h + 6))
+	data["plant"] = plant
+	data["landmarks"].append({"kind": "thermal_plant", "rect": r})
+
+
 # --- 5 great vaults ------------------------------------------------------------
 ## Huge multi-screen chambers. A band of ancient composite forms each ceiling,
 ## and a hanging colonnade divides the hall without ever blocking the floor.
@@ -376,18 +479,32 @@ func _link_tunnels() -> void:
 	var prev := Vector2(spawn.x, spawn.y - 0.5)
 	var prev_exit_left := Vector2(hall.position.x - 1.5, hall.end.y - 1.5)
 	var prev_exit_right := Vector2(hall.end.x + 1.5, hall.end.y - 1.5)
-	for i in vaults.size():
-		var r: Rect2i = vaults[i]["rect"]
-		var to := _vault_port(r, int(prev.x))
+	# the thermal plant joins the chain at its depth; it is a dead end with one
+	# door, so the chain enters and leaves through that door
+	var chain: Array = vaults.duplicate()
+	var plant: Dictionary = data["plant"]
+	var pr: Rect2i = plant["hall"]
+	var pin := 0
+	while pin < chain.size() and (chain[pin]["rect"] as Rect2i).position.y < pr.position.y:
+		pin += 1
+	chain.insert(pin, {"rect": pr, "plant": true})
+	var pdoor: Vector2i = plant["door"]
+	var plant_port := Vector2(pdoor.x + (1.5 if plant["door_right"] else -0.5), pdoor.y - 0.5)
+	for i in chain.size():
+		var r: Rect2i = chain[i]["rect"]
+		var is_plant: bool = chain[i].get("plant", false)
+		var to := plant_port if is_plant else _vault_port(r, int(prev.x))
 		var from := prev
 		if i == 0:
 			from = prev_exit_left if to.x < spawn.x else prev_exit_right
-		var plug := i > 0 and topo.randf() < Balance.DEEP_PLUG_CHANCE
+		var plug := i > 0 and not is_plant and topo.randf() < Balance.DEEP_PLUG_CHANCE
 		_passage(from, to, plug)
 		if plug:
 			plugs += 1
+		if is_plant:
+			prev = to
+			continue
 		# leave each vault by its far side, so the chain crosses the hall
-		prev = _vault_port(r, int(to.x) - 1 if to.x > r.get_center().x else int(to.x) + 1)
 		prev = Vector2(r.position.x + 1.5 if to.x > r.get_center().x else r.end.x - 1.5, r.end.y - 1.5)
 	var doors: Array = data["gate_doors"]
 	var door: Vector2i = doors[0] if absf(prev.x - doors[0].x) < absf(prev.x - doors[1].x) else doors[1]
@@ -563,7 +680,6 @@ func _fill_lava(inner: Rect2i, kind: String) -> int:
 
 
 func _lava() -> void:
-	data["lava_features"] = []
 	# 1) shallow pits in the floors of plant and transit vaults: visible, glowing,
 	#    one cell deep so a careless step burns but is never a trap
 	for v in vaults:
@@ -641,6 +757,9 @@ func _lava() -> void:
 	data["lava_total"] = ls.total()
 	# lava never enters the halls that hold the way in and the way out
 	var keep: Array = []
+	# the coolant basin must never hold lava, or the engine could never cool
+	for c in data["plant"]["coolant_basin"]:
+		keep.append(c)
 	for key in ["arrival", "gate_hall"]:
 		var hall: Rect2i = data[key]
 		for y in range(hall.position.y, hall.end.y):
@@ -746,6 +865,8 @@ func _seal_traps(from_spawn: PackedFloat32Array, escape: PackedByteArray) -> int
 	if n > 0:
 		# sealing feet can leave the air above them enclosed: fill that too
 		for c in RouteCheck.sealed_pockets(g, data["spawn"]):
+			if _in_container(c):
+				continue      # the plant's tanks are sealed on purpose
 			if reserved.has(c) or g.has_flag(c.x, c.y, Cell.F_PROTECTED):
 				return -1
 			g.put(c.x, c.y, Cell.ALLOY)
@@ -756,6 +877,14 @@ func _seal_traps(from_spawn: PackedFloat32Array, escape: PackedByteArray) -> int
 			if filled.has(e["cell"]) or filled.has(e.get("module", Vector2i(-1, -1))):
 				data["entities"].erase(e)
 	return n
+
+
+func _in_container(c: Vector2i) -> bool:
+	var p: Dictionary = data.get("plant", {})
+	for key in ["heat_tank", "coolant_tank"]:
+		if p.has(key) and (p[key] as Rect2i).has_point(c):
+			return true
+	return false
 
 
 func _validate() -> void:

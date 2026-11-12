@@ -271,7 +271,12 @@ class DepthPanel extends Control:
 		var target: Vector2
 		var label := ""
 		var col := UIKit.TEAL
-		if mine.gate:
+		if mine.gate and mine.engine and not mine.gate.powered:
+			# no power yet: the way out runs through the Thermal Plant
+			target = mine.engine.global_position
+			label = "PLANT"
+			col = Color(1.0, 0.6, 0.25)
+		elif mine.gate:
 			# the deep stage has one way out
 			target = mine.gate.global_position
 			label = "GATE"
