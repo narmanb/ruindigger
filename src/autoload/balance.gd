@@ -309,6 +309,41 @@ const DEEP_PLUG_CHANCE := 0.55       # share of link tunnels left as cracked roc
 const DEEP_DIG_BUDGET := 260.0       # DigCheck seconds, arrival -> Transit Gate
 const DEEP_EXIT_BONUS := 450         # credits for leaving through the Transit Gate
 const DEEP_DESCENT_SECONDS := 2.4    # length of the descent sequence
+# --- Lava, steam and the water/lava reaction (deep stage) ---------------------
+# Lava is a second, much more viscous fluid stored beside water. Where the two
+# touch they are both consumed: the lava crusts into drillable rock and the
+# water flashes to steam. Nothing is created: totals only ever go down.
+const LAVA_MAX := 64                 # units per cell (same scale as water)
+const LAVA_TICK := 0.24              # seconds per lava step (water: 0.06)
+const LAVA_REACT_TICK := 0.06        # contact reactions run as often as water moves
+const LAVA_BUDGET := 700             # active cells processed per step
+const LAVA_FALL := 16                # units a cell can drop per step
+const LAVA_SIDE := 5                 # units a cell can push sideways per step
+const LAVA_SPREAD_MIN := 10          # level difference needed before it creeps sideways
+const LAVA_REACT_UNITS := 16         # water boiled per contact per step
+const LAVA_SOLIDIFY_AT := 48         # cooling a lava cell absorbs before it crusts over (3 contacts)
+const LAVA_ROCK_MIN := 12           # a thinner film just hardens away as steam and slag
+const LAVA_BURN_MIN := 6             # lava level that burns
+const LAVA_BURN_DAMAGE := 9.0
+const LAVA_BURN_INTERVAL := 0.45     # seconds between burns (never instant death)
+const LAVA_ENEMY_DAMAGE := 30.0
+const LAVA_SLOW := 0.55              # horizontal speed kept while wading in lava
+const LAVA_WARN_CELLS := 3           # heat warning distance
+const STEAM_TICK := 0.1
+const STEAM_PER_UNIT := 0.11         # steam density made per unit of water boiled
+const STEAM_DECAY := 0.006           # flat density lost per step
+const STEAM_KEEP := 0.975            # share of density kept per step (proportional decay)
+const STEAM_MIN := 0.04
+const STEAM_MAX_CELLS := 480         # hard cap on live steam cells
+const STEAM_MAX_DENSITY := 3.0
+const STEAM_VENT_SCAN := 16          # cells steam looks along a ceiling for a way up
+const STEAM_SCALD := 1.1             # density that starts to hurt
+const STEAM_DAMAGE := 3.0
+const STEAM_INTERVAL := 0.7
+const STEAM_LIFT := 55.0             # upward shove from dense steam (px/s)
+const DEEP_LAVA_POCKETS := [5, 8]
+const DEEP_LAVA_PITS := 0.6          # chance a lower vault has a lava pit in its floor
+const DEEP_QUENCH_PAIRS := [2, 3]    # water pocket sealed above a lava pocket
 const DESCENT_ROOM := Vector2i(11, 7)   # Ancient Descent Platform room in the Engine vault
 const DESCENT_ROOM_SMALL := Vector2i(9, 6)   # used when the vault is crowded
 const DESCENT_APPROACH := 14            # cells of approach corridor carved from its door

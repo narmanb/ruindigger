@@ -148,6 +148,25 @@ func _process(_d: float) -> void:
 		mine.hud.open_map()
 		if args.has("mapzoom"):
 			mine.hud.map_screen.view.zoom_by(float(args["mapzoom"]) / 2.0, Vector2(320, 180))
+	# quench=1: open a viewing pocket beside the first quench pair and drill out
+	# its divider, so the water pours onto the lava (deep stage)
+	if mine and args.has("quench") and frame == 20 and mine.get("data") != null:
+		for lm in mine.data.get("landmarks", []):
+			if lm["kind"] == "quench_pair":
+				var qr: Rect2i = lm["rect"]
+				var vx := qr.end.x + 4
+				var vy := qr.end.y - 1
+				for yy in range(qr.position.y, qr.end.y + 1):
+					for xx in range(qr.end.x + 1, qr.end.x + 9):
+						mine.grid.set_mat(xx, yy, Cell.AIR if yy < qr.end.y else Cell.HARD, true)
+				mine.player.global_position = Vector2(vx * 16 + 8, (vy + 1) * 16 - Player.HALF.y - 0.5)
+				mine.player.invuln = 1e9
+				mine.camera.global_position = Vector2((qr.get_center().x + 3) * 16, qr.get_center().y * 16)
+				mine.camera.reset_smoothing()
+				for xx in range(qr.position.x + 1, qr.end.x - 1):
+					for dy in [4, 5]:
+						mine.damage_cell(Vector2i(xx, qr.position.y + dy), 99.0, 0, false, "shot")
+				break
 	if mine and args.has("ladder") and frame == target - 30:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:
@@ -175,6 +194,8 @@ func _process(_d: float) -> void:
 			print("GL software scene: frame median %.2f ms, p95 %.2f ms; physics median %.2f ms, p95 %.2f ms" % [wall_times[wall_times.size() / 2], wall_times[p95], physics_times[physics_times.size() / 2], physics_times[p95]])
 			if mine and mine.has_method("water_diagnostics"):
 				print("WATER DIAGNOSTICS: ", mine.water_diagnostics(), "; total erosion calls: ", mine.erosion.total_edits)
+		if args.has("quench") and mine and mine.get("lava") != null:
+			print("QUENCH rock_formed=%d boiled=%d steam_cells=%d steam_peak=%d player=%s" % [mine.lava.rock_formed, mine.lava.water_boiled, mine.steam.cells.size(), mine.steam.peak_cells, str(mine.grid.world_to_cell(mine.player.global_position))])
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(args.get("out", "/tmp/claude-0/shot.png"))
 		get_tree().quit()

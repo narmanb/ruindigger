@@ -18,6 +18,7 @@ var ore: PackedByteArray
 var flags: PackedByteArray
 var stratum: PackedByteArray
 var water: PackedByteArray         # 0..WATER_MAX in open cells
+var lava: PackedByteArray          # 0..LAVA_MAX in open cells (deep stage only)
 var chunks_w: int
 var chunks_h: int
 var _dirty: Dictionary = {}        # Vector2i chunk -> true
@@ -42,6 +43,8 @@ func _init(width: int = 8, height: int = 8) -> void:
 	stratum.resize(n)
 	water = PackedByteArray()
 	water.resize(n)
+	lava = PackedByteArray()
+	lava.resize(n)
 	chunks_w = ceili(float(w) / CHUNK)
 	chunks_h = ceili(float(h) / CHUNK)
 
@@ -124,6 +127,17 @@ func set_water(x: int, y: int, v: int) -> void:
 		return
 	water[i] = clampi(v, 0, 255)
 	_water_dirty[Vector2i(x / CHUNK, y / CHUNK)] = true
+
+
+func get_lava(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return 0
+	return lava[y * w + x]
+
+
+func set_lava(x: int, y: int, v: int) -> void:
+	if in_bounds(x, y):
+		lava[y * w + x] = clampi(v, 0, 255)
 
 
 func take_water_dirty() -> Array:
@@ -315,6 +329,7 @@ func to_dict() -> Dictionary:
 		"stratum": Marshalls.raw_to_base64(stratum),
 		"hp": Marshalls.raw_to_base64(hp.to_byte_array()),
 		"water": Marshalls.raw_to_base64(water),
+		"lava": Marshalls.raw_to_base64(lava),
 	}
 
 
@@ -327,4 +342,6 @@ static func from_dict(d: Dictionary) -> TerrainGrid:
 	g.hp = Marshalls.base64_to_raw(d["hp"]).to_float32_array()
 	if d.has("water"):
 		g.water = Marshalls.base64_to_raw(d["water"])
+	if d.has("lava"):
+		g.lava = Marshalls.base64_to_raw(d["lava"])
 	return g

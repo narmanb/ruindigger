@@ -4,7 +4,7 @@ extends RefCounted
 
 static func _hash(d: Dictionary) -> int:
 	var g: TerrainGrid = d["grid"]
-	return hash(g.mat) ^ hash(g.ore) ^ hash(g.water) ^ hash(g.flags) ^ hash(str(d["entities"])) ^ hash(str(d["landmarks"]))
+	return hash(g.mat) ^ hash(g.ore) ^ hash(g.water) ^ hash(g.lava) ^ hash(g.flags) ^ hash(str(d["entities"])) ^ hash(str(d["landmarks"]))
 
 
 static func generation(t: Node, n: int) -> void:
@@ -87,6 +87,29 @@ static func generation(t: Node, n: int) -> void:
 		var steps := sim.settle(40)
 		g.cell_changed.disconnect(sim._on_cell_changed)
 		t.check(steps < 40 and sim.total() == before, tag + ": generated water is at rest and conserved (%d steps)" % steps)
+		# lava: present, at rest, never touching water, never in the entry or exit halls
+		var lava_cells := 0
+		var touching := 0
+		for y in range(1, g.h - 1):
+			for x in range(1, g.w - 1):
+				if g.get_lava(x, y) <= 0:
+					continue
+				lava_cells += 1
+				for dd in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					if g.get_water(x + dd.x, y + dd.y) > 0:
+						touching += 1
+		t.check(lava_cells >= 20 and int(d.get("quench_pairs", 0)) >= 1, tag + ": lava and at least one quench pair exist (%d lava cells, %d pairs)" % [lava_cells, d.get("quench_pairs", 0)])
+		t.check(touching == 0, tag + ": generated lava never touches water (%d contacts)" % touching)
+		var in_halls := 0
+		for c in d["lava_keep_out"]:
+			if g.get_lava(c.x, c.y) > 0:
+				in_halls += 1
+		t.check(in_halls == 0 and (d["lava_keep_out"] as Array).size() > 0, tag + ": no lava in the arrival or gate halls")
+		var ls := LavaSim.new(g)
+		var lava0 := ls.total()
+		var lsteps := ls.settle(30)
+		g.cell_changed.disconnect(ls._on_cell_changed)
+		t.check(lsteps < 30 and ls.total() == lava0 and ls.rock_formed == 0, tag + ": generated lava is at rest and conserved (%d steps)" % lsteps)
 		var ore := 0
 		for o in g.ore:
 			if o != 0:
@@ -147,6 +170,7 @@ static func live(t: Node) -> void:
 		return
 	var pl: Player = mine.player
 	pl.invuln = 1e9
+	var main_has_lava: bool = mine.lava != null or mine.steam != null
 	# a normal lift is still a lift: the platform is a different interactable
 	t.check(mine.nearest_interactable(pl).get("kind", "") != "descent", "the descent is not offered from the lift room")
 	Game.run["cargo"] = {1: 3, 3: 2}
@@ -197,6 +221,55 @@ static func live(t: Node) -> void:
 	t.check(int(Game.run["max_depth"]) >= Balance.MAP_H and deep.depth_offset == Balance.MAP_H, "depth keeps counting from the Engine (%d cells)" % Game.run["max_depth"])
 	t.check(dp.is_on_floor() and not g.is_solid(g.world_to_cell(dp.global_position).x, g.world_to_cell(dp.global_position).y), "the player arrives standing in the arrival hall")
 	t.check(deep.current_stratum == Balance.Z_FIRST, "the stage uses the sixth biome (light, backdrop, music)")
+	t.check(deep.lava != null and deep.steam != null and not main_has_lava, "lava and steam run in the deep stage only")
+	# live lava: wading burns on a fair cadence and slows you; water on lava crusts
+	var lx := 30
+	var ly := 30
+	for y in range(ly - 4, ly + 3):
+		for x in range(lx - 6, lx + 7):
+			g.set_flag(x, y, Cell.F_PROTECTED, false)
+			g.set_water(x, y, 0)
+			g.set_lava(x, y, 0)
+			g.set_mat(x, y, Cell.BEDROCK if (y == ly + 2 or x == lx - 6 or x == lx + 6 or y == ly - 4) else Cell.AIR)
+	for e in deep.enemies.duplicate():
+		if is_instance_valid(e) and Rect2(Vector2(lx - 8, ly - 6) * 16, Vector2(18, 10) * 16).has_point(e.global_position):
+			deep.enemies.erase(e)
+			e.queue_free()
+	for x in range(lx - 2, lx + 3):
+		g.set_lava(x, ly + 1, Balance.LAVA_MAX)
+	deep.lava.wake_all()
+	dp.invuln = 0.0
+	dp.hp = dp.max_hp
+	dp.global_position = Vector2(lx * 16 + 8, (ly + 2) * 16 - Player.HALF.y - 0.5)
+	dp.velocity = Vector2.ZERO
+	var hp0 := dp.hp
+	await t._frames(20)
+	var first_hit := dp.max_hp - dp.hp
+	t.check(first_hit > 0.0 and first_hit <= Balance.LAVA_BURN_DAMAGE + 0.01, "standing in lava burns, one burn at a time (%.0f)" % first_hit)
+	await t._frames(60)
+	var burned := hp0 - dp.hp
+	t.check(burned > first_hit and burned < Balance.LAVA_BURN_DAMAGE * 4.0 and not dp.dead, "burns repeat on a fair cadence, never an instant kill (%.0f over ~1.3 s)" % burned)
+	dp.hp = dp.max_hp
+	dp.invuln = 1e9
+	dp.global_position = Vector2((lx - 4) * 16 + 8, (ly + 2) * 16 - Player.HALF.y - 0.5)
+	# a cistern's worth of water (three rows) over five cells of lava
+	for x in range(lx - 2, lx + 3):
+		for y in range(ly - 3, ly):
+			g.set_water(x, y, Balance.WATER_MAX)
+	deep.water.wake_all()
+	var formed := 0
+	for k in 300:
+		await t.get_tree().physics_frame
+		formed = deep.lava.rock_formed
+		if formed >= 3:
+			break
+	t.check(formed >= 3, "water poured on live lava forms new rock in the running game (%d cells)" % formed)
+	var crust_ok := false
+	for x in range(lx - 2, lx + 3):
+		if g.get_mat(x, ly + 1) == Cell.HARD:
+			crust_ok = true
+	t.check(crust_ok, "the crust forms where the lava was")
+	dp.invuln = 1e9
 	# HUD, map and pause still work here
 	var ms: Node = deep.hud.map_screen
 	deep.hud.open_map()

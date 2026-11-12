@@ -44,6 +44,8 @@ func _run() -> void:
 		load("res://tests/deep_stage.gd").generation(self, int(args.get("seeds", "40")))
 		load("res://tests/deep_stage.gd").entrance(self, int(args.get("seeds", "40")))
 		await load("res://tests/deep_stage.gd").live(self)
+	if suite == "lava":
+		load("res://tests/lava_fluids.gd").run(self)
 	if suite == "cargo":
 		await load("res://tests/cargo_features.gd").run(self)
 	if suite == "water_live":

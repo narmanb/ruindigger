@@ -20,6 +20,11 @@ var gas: Hazards.GasSystem
 var keepsakes: Array[ZoneKeepsake] = []
 var collapse: Hazards.Collapse
 var water: WaterSim
+var lava: LavaSim                 # deep stage only (null where there is no lava)
+var steam: SteamField
+var _burn_t := 0.0
+var _scald_t := 0.0
+var _heat_warn_t := 0.0
 var debris: Debris
 var erosion: WaterErosion
 var _water_fx_t := 0.0
@@ -105,6 +110,16 @@ func _build_world() -> void:
 	var water_view := WaterRenderer.new()
 	add_child(water_view)
 	water_view.setup(grid, water, self)
+	if stage == "deep":
+		steam = SteamField.new(grid)
+		lava = LavaSim.new(grid, water, steam)
+		for c in data.get("lava_keep_out", []):
+			lava.keep_out[c] = true
+		lava.occupied = _cell_occupied
+		lava.wake_all()
+		var lava_view := LavaRenderer.new()
+		add_child(lava_view)
+		lava_view.setup(grid, lava, steam, glow_root)
 	entity_root = Node2D.new()
 	add_child(entity_root)
 	collapse = Hazards.Collapse.new()
@@ -300,6 +315,16 @@ var _ladder_t := 0.0
 
 func _physics_process(delta: float) -> void:
 	_grow_ladders(delta)
+	if lava:
+		lava.update(delta)
+		steam.update(delta)
+		for c in lava.formed_cells:
+			var p := grid.cell_center(c)
+			fx.dust(p, Color(0.85, 0.85, 0.9), 6)
+			fx.sparks(p, Vector2.UP, Color(1.0, 0.55, 0.2))
+			Audio.play_at("gas_hiss", p, -8.0, 0.2, 0.15)
+		lava.formed_cells.clear()
+		_heat_feedback(delta)
 	if water:
 		water.update(delta)
 		erosion.update(delta)
@@ -308,6 +333,61 @@ func _physics_process(delta: float) -> void:
 			fx.splash(sp)
 			if randf() < 0.2:
 				Audio.play_at("step", sp, -14.0, 0.4, 0.05)
+
+
+## Is a player, enemy or prop in this cell? New rock must never form there.
+func _cell_occupied(c: Vector2i) -> bool:
+	var r := Rect2(c.x * C, c.y * C, C, C).grow(2.0)
+	if player and Rect2(player.global_position - Player.HALF, Player.HALF * 2.0).intersects(r):
+		return true
+	for e in enemies:
+		if is_instance_valid(e) and e.has_method("hit_rect") and e.hit_rect().intersects(r):
+			return true
+	for p in debris.props:
+		if is_instance_valid(p) and r.has_point(p.global_position):
+			return true
+	return false
+
+
+## Lava burns on contact (on a fair cadence, never instantly), dense steam
+## scalds and lifts, and heat is announced before it hurts.
+func _heat_feedback(delta: float) -> void:
+	if player == null or player.dead or ending:
+		return
+	_burn_t = maxf(0.0, _burn_t - delta)
+	_scald_t = maxf(0.0, _scald_t - delta)
+	_heat_warn_t = maxf(0.0, _heat_warn_t - delta)
+	var pc := grid.world_to_cell(player.global_position)
+	var feet := grid.world_to_cell(player.global_position + Vector2(0, Player.HALF.y - 1.0))
+	var lava_here := maxi(grid.get_lava(feet.x, feet.y), grid.get_lava(pc.x, pc.y))
+	if lava_here >= Balance.LAVA_BURN_MIN:
+		if _burn_t <= 0.0:
+			_burn_t = Balance.LAVA_BURN_INTERVAL
+			player.invuln = 0.0
+			player.take_damage(Balance.LAVA_BURN_DAMAGE, player.global_position + Vector2(0, 12), "molten rock")
+			fx.sparks(player.global_position + Vector2(0, 10), Vector2.UP, Color(1.0, 0.55, 0.2))
+	elif _heat_warn_t <= 0.0:
+		var r := Balance.LAVA_WARN_CELLS
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if grid.get_lava(pc.x + dx, pc.y + dy) >= Balance.LAVA_BURN_MIN:
+					_heat_warn_t = 6.0
+					toast("HEAT WARNING - molten rock nearby")
+					break
+			if _heat_warn_t > 0.0:
+				break
+	var d := steam.density(pc) + steam.density(Vector2i(pc.x, pc.y - 1))
+	if d >= Balance.STEAM_SCALD:
+		player.velocity.y -= Balance.STEAM_LIFT * delta * 10.0 * minf(d, 2.0)
+		if _scald_t <= 0.0:
+			_scald_t = Balance.STEAM_INTERVAL
+			player.take_damage(Balance.STEAM_DAMAGE, Vector2.INF, "scalding steam")
+	for e in enemies:
+		if not is_instance_valid(e) or not e.has_method("hit"):
+			continue
+		var ec := grid.world_to_cell(e.global_position)
+		if grid.get_lava(ec.x, ec.y) >= Balance.LAVA_BURN_MIN and randf() < delta / Balance.LAVA_BURN_INTERVAL:
+			e.hit(Balance.LAVA_ENEMY_DAMAGE, e.global_position + Vector2(0, 8), false)
 
 
 func _water_feedback(delta: float) -> void:

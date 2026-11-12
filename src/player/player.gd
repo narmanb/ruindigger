@@ -293,6 +293,8 @@ func _move_normal(delta: float, ax: float, on_floor: bool) -> void:
 		_swim(delta, ax)
 		return
 	var target := ax * Balance.RUN_SPEED
+	if grid.get_lava(feet_cell().x, feet_cell().y) >= Balance.LAVA_BURN_MIN:
+		target *= Balance.LAVA_SLOW     # wading through molten rock
 	if drilling and on_floor and drill_dir.y != 0:
 		target *= 0.15
 	target += water_drift.x

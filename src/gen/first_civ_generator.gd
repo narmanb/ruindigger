@@ -12,6 +12,8 @@ extends RefCounted
 ##  7 link tunnels arrival -> vaults -> gate (parts left as cracked rock)
 ##  8 long transit tunnels             9 ore
 ## 10 water pockets and cooling basins, settled with the water sim
+## 10b lava: pits in lower vault floors, sealed pockets, and quench pairs (a
+##    water pocket over a lava pocket); never touching water; settled
 ## 11 basalt stabilisation            12 guardians, lamps, records
 ## 13 hit points                      14 validation: seal every cell that
 ##    cannot reach the gate, then prove arrival -> gate within the dig budget
@@ -71,6 +73,7 @@ func generate(seed_value: int, _contract: Dictionary = {}) -> Dictionary:
 	_transit_tunnels()
 	_ore()
 	_water()
+	_lava()
 	_stabilize_basalt()
 	_guardians_and_records()
 	for i in g.mat.size():
@@ -534,6 +537,116 @@ func _water() -> void:
 	data["settle_steps"] = sim.settle(300)
 	g.cell_changed.disconnect(sim._on_cell_changed)
 	data["water_total"] = sim.total()
+
+
+# --- 10b lava ------------------------------------------------------------------
+func _dry_rock_box(r: Rect2i) -> bool:
+	if not _rock_box(r):
+		return false
+	for y in range(r.position.y - 1, r.end.y + 1):
+		for x in range(r.position.x - 1, r.end.x + 1):
+			if g.get_water(x, y) > 0:
+				return false
+	return true
+
+
+func _fill_lava(inner: Rect2i, kind: String) -> int:
+	var cells := 0
+	for y in range(inner.position.y, inner.end.y):
+		for x in range(inner.position.x, inner.end.x):
+			g.put(x, y, Cell.AIR)
+			g.lava[g.idx(x, y)] = Balance.LAVA_MAX
+			no_feature[Vector2i(x, y)] = true
+			cells += 1
+	data["lava_features"].append({"kind": kind, "rect": inner, "cells": cells, "volume": cells * Balance.LAVA_MAX})
+	return cells
+
+
+func _lava() -> void:
+	data["lava_features"] = []
+	# 1) shallow pits in the floors of plant and transit vaults: visible, glowing,
+	#    one cell deep so a careless step burns but is never a trap
+	for v in vaults:
+		if int(v["band"]) == 0 or not (v["basin"] as Array).is_empty() or water_rng.randf() > Balance.DEEP_LAVA_PITS:
+			continue
+		var r: Rect2i = v["rect"]
+		var pw := mini(r.size.x - 12, water_rng.randi_range(3, 7))
+		if pw < 3:
+			continue
+		var px := r.position.x + water_rng.randi_range(5, r.size.x - pw - 5)
+		var pit := Rect2i(px, r.end.y, pw, 1)
+		var ok := true
+		for y in range(pit.position.y, pit.end.y + 1):
+			for x in range(pit.position.x - 1, pit.end.x + 1):
+				if not g.is_solid(x, y) or not writable(x, y) or g.get_water(x, y) > 0 or g.get_water(x, y - 1) > 0:
+					ok = false
+		if not ok:
+			continue
+		_fill_lava(pit, "lava_pit")
+		for x in range(pit.position.x - 1, pit.end.x + 1):
+			g.put(x, pit.end.y, Cell.HARD)
+			no_feature[Vector2i(x, pit.end.y)] = true
+		data["landmarks"].append({"kind": "lava_pit", "rect": pit})
+	# 2) quench pairs: water sealed directly above lava, a thin rock divider
+	#    between. Drill the divider and the water pours down into a crust bridge.
+	var want_pairs := water_rng.randi_range(Balance.DEEP_QUENCH_PAIRS[0], Balance.DEEP_QUENCH_PAIRS[1])
+	var pairs := 0
+	var tries := 0
+	while pairs < want_pairs and tries < 500:
+		tries += 1
+		var w := water_rng.randi_range(5, 8)
+		var x0 := water_rng.randi_range(6, W - w - 7)
+		var y0 := water_rng.randi_range(Balance.DEEP_BAND_PLANT, H - 18)
+		var whole := Rect2i(x0 - 1, y0 - 1, w + 2, 9)     # water 3, divider 2, lava 2, shells
+		if not _dry_rock_box(whole):
+			continue
+		space.claim(whole, "water", "quench%d" % pairs)
+		_mark_no_feature(whole)
+		var wet := Rect2i(x0, y0, w, 3)
+		var cells := 0
+		for y in range(wet.position.y, wet.end.y):
+			for x in range(wet.position.x, wet.end.x):
+				g.put(x, y, Cell.AIR)
+				g.water[g.idx(x, y)] = Balance.WATER_MAX
+				cells += 1
+		data["water_features"].append({"kind": "quench_cistern", "rect": wet, "cells": cells, "volume": cells * Balance.WATER_MAX})
+		for x in range(x0, x0 + w):
+			g.put(x, y0 + 3, Cell.CRACKED)                   # the divider tells you where to drill
+			g.put(x, y0 + 4, Cell.SOFT)
+		_fill_lava(Rect2i(x0, y0 + 5, w, 2), "quench_lava")
+		data["landmarks"].append({"kind": "quench_pair", "rect": whole})
+		pairs += 1
+	data["quench_pairs"] = pairs
+	# 3) sealed lava pockets deeper in the rock
+	var want := water_rng.randi_range(Balance.DEEP_LAVA_POCKETS[0], Balance.DEEP_LAVA_POCKETS[1])
+	var made := 0
+	tries = 0
+	while made < want and tries < 600:
+		tries += 1
+		var pw2 := water_rng.randi_range(4, 9)
+		var ph := water_rng.randi_range(2, 4)
+		var x1 := water_rng.randi_range(5, W - pw2 - 6)
+		var y1 := water_rng.randi_range(Balance.DEEP_BAND_PLANT, H - ph - 10)
+		var shell := Rect2i(x1, y1, pw2 + 2, ph + 2)
+		if not _dry_rock_box(shell):
+			continue
+		space.claim(shell, "water", "lava%d" % made)
+		_mark_no_feature(shell)
+		_fill_lava(Rect2i(x1 + 1, y1 + 1, pw2, ph), "lava_pocket")
+		made += 1
+	data["lava_pockets"] = made
+	var ls := LavaSim.new(g)
+	data["lava_settle_steps"] = ls.settle(300)
+	g.cell_changed.disconnect(ls._on_cell_changed)
+	data["lava_total"] = ls.total()
+	# lava never enters the halls that hold the way in and the way out
+	var keep: Array = []
+	for key in ["arrival", "gate_hall"]:
+		var hall: Rect2i = data[key]
+		for y in range(hall.position.y, hall.end.y):
+			for x in range(hall.position.x - 1, hall.end.x + 1):
+				keep.append(Vector2i(x, y))
+	data["lava_keep_out"] = keep
 
 
 # --- 11 basalt -----------------------------------------------------------------

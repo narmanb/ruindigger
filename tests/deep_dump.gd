@@ -17,7 +17,7 @@ func _ready() -> void:
 	var d := gen.generate(FirstCivGenerator.deep_seed(run_seed))
 	print("deep generated in %d ms, valid=%s repairs=%d" % [Time.get_ticks_msec() - t0, d["valid"], d["repairs"]])
 	print("dig_to_gate_s=", d.get("dig_to_gate_s"), " traps_sealed=", d.get("traps_sealed", 0), " plan=", d["plan"],
-		" water=", d.get("water_total"), " settle=", d.get("settle_steps"), " crawlers=", d.get("crawlers"), " sentries=", d.get("sentries"))
+		" water=", d.get("water_total"), " settle=", d.get("settle_steps"), " crawlers=", d.get("crawlers"), " sentries=", d.get("sentries"), " lava=", d.get("lava_total"), " pockets=", d.get("lava_pockets"), " pairs=", d.get("quench_pairs"), " lava_settle=", d.get("lava_settle_steps"))
 	var g: TerrainGrid = d["grid"]
 	var cols := {0: Color(0.05, 0.04, 0.07), 1: Color(0.22, 0.2, 0.25), 2: Color(0.34, 0.34, 0.4), 3: Color(0.6, 0.4, 0.25),
 		4: Color(0.7, 0.58, 0.32), 5: Color(0.02, 0.02, 0.03), 6: Color(0.7, 0.9, 0.2), 7: Color(0.9, 0.5, 0.3),
@@ -28,6 +28,8 @@ func _ready() -> void:
 			var c: Color = cols[g.get_mat(x, y)]
 			if not Cell.is_solid(g.get_mat(x, y)) and g.get_water(x, y) > 0:
 				c = Color(0.2, 0.45, 1.0)
+			if not Cell.is_solid(g.get_mat(x, y)) and g.get_lava(x, y) > 0:
+				c = Color(1.0, 0.4, 0.08)
 			var o := g.get_ore(x, y)
 			if o != 0:
 				c = Balance.ore_color(o)

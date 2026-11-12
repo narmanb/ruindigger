@@ -4,6 +4,7 @@
 - **The First Civilization.** A new, optional, one-way stage far below the Forgotten Engine: a separate 200×120 map of great vaults, buried machines and transit tunnels built by a civilization far older than the Engine.
 - Find the Ancient Descent Platform in the Engine vault. It warns you, asks you to confirm, and does not come back. Everything you carry stays at risk.
 - The only way out is the Transit Gate near the bottom. Leaving through it banks the whole run plus a bonus.
+- **Lava, steam and new rock.** Lava is a slow, heavy second fluid. Where water meets it, the lava crusts into drillable rock and the water flashes to steam. Breach a cistern over a lava pit to build a bridge, or plug a lava flow with water. Lava burns on contact (on a steady cadence, never instantly) and dense steam scalds.
 
 ## 0.5.6
 - Add an explicit CARGO button below the depth panel; keep Cargo Manifest in Pause and show the build version on the pause screen.

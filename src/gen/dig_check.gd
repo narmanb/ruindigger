@@ -26,6 +26,7 @@ const T_WALK := 0.11
 const T_CLIMB := 0.13
 const T_JUMP := 0.3
 const T_GAS := 8.0
+const T_LAVA := 12.0              # wading through a lava cell (several burns)
 const UNREACHED := 1e20
 
 var g: TerrainGrid
@@ -44,6 +45,7 @@ var allow_ladder := false
 var _ladder_cell_s := 0.0
 var _ladder_max := 0
 var near_rock := PackedByteArray()  # diggable rock within 3 cells (energy source)
+var hot := PackedFloat32Array()    # extra seconds for a body cell in lava
 var _nb := PackedInt32Array()      # scratch: neighbours of the last expanded state
 var _nc := PackedFloat32Array()
 var _nn := 0
@@ -81,6 +83,13 @@ func _init(grid: TerrainGrid, open_cells: Dictionary = {}) -> void:
 			else:
 				kind[i] = DIGGABLE
 				dig[i] = float(info.get("hp", 1.0)) / power
+	# lava: open space you can wade through, but every cell entered costs a
+	# burn's worth of time, so a guaranteed way only uses it when nothing else
+	# exists (and the dig budget then shows it). Nobody stands ON lava.
+	hot.resize(n)
+	for i in n:
+		if g.lava[i] > 0 and g.mat[i] == Cell.AIR:
+			hot[i] = T_LAVA
 	var earn: float = float(Balance.MATERIAL[Cell.SOFT]["hp"]) / power / float(Balance.SCAFFOLD_GAIN[Cell.SOFT])
 	_ladder_cell_s = T_CLIMB + earn * Balance.SCAFFOLD_CELL_COST
 	_ladder_max = (int(Balance.SCAFFOLD_CAPACITY[0]) - Balance.SCAFFOLD_ACTIVATE_COST) / Balance.SCAFFOLD_CELL_COST
@@ -132,7 +141,7 @@ func _push(i: int, c: float) -> void:
 		_nb.resize(_nn * 2)
 		_nc.resize(_nn * 2)
 	_nb[_nn] = i
-	_nc[_nn] = c
+	_nc[_nn] = c + hot[i] + (hot[i - W] if i >= W else 0.0)
 	_nn += 1
 
 
