@@ -17,6 +17,7 @@ static func run(t: Node) -> void:
 	await modifiers(t)
 	await gadgets(t)
 	await relics(t)
+	await feet(t)
 
 
 static func economy(t: Node) -> void:
@@ -496,6 +497,36 @@ static func relics(t: Node) -> void:
 	Game.run["gadget_cd"] = 10.0
 	await t._frames(30)
 	t.check(float(Game.run["gadget_cd"]) < 10.0 - 0.8, "Quick Coil recharges gadgets twice as fast (%.2f left)" % float(Game.run["gadget_cd"]))
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+static func feet(t: Node) -> void:
+	t.section("feet on the ground")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(60)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var view: TerrainView = mine.view
+	var g: TerrainGrid = mine.grid
+	var cy := int(floor((pl.global_position.y + Player.HALF.y + 1.0) / 16.0))
+	var want := 99
+	for fx in [-3.0, 0.0, 3.0]:
+		var c := g.world_to_cell(Vector2(pl.global_position.x + fx, cy * 16.0 + 1.0))
+		if g.is_solid(c.x, c.y):
+			want = mini(want, view.surface_depth(pl.global_position.x + fx, cy))
+	t.check(pl.is_on_floor() and want >= 0 and want <= Balance.FOOT_SINK_MAX, "the rock under the feet sits %d px below the cell top" % want)
+	t.check(is_equal_approx(pl._sink, float(mini(want, Balance.FOOT_SINK_MAX))) and is_equal_approx(pl.body_sprite.position.y, round(pl._sink)), "the sprite sinks onto the visible rock (%.1f px)" % pl._sink)
+	t.check(view.surface_depth(pl.global_position.x, cy + 1) == 0, "buried cells report no surface")
+	pl.velocity.y = -200.0
+	pl.global_position.y -= 40.0
+	await t._frames(3)
+	t.check(pl._sink < want or want == 0, "in the air the sprite lifts back")
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

@@ -185,6 +185,7 @@ const SCAFFOLD_ACTIVATE_COST := 2
 const SCAFFOLD_CELL_COST := 1
 const SCAFFOLD_MAX_LEN := 120
 const SCAFFOLD_BUILD_RATE := 60.0   # cells per second
+const FOOT_SINK_MAX := 4             # px the sprite may sink onto rough ground
 const CAMERA_LOOK_AHEAD := 0.11     # fraction of the visible width
 const CHARGE_PRICE := 25
 const CHARGES_FREE := 2

@@ -264,6 +264,38 @@ func tile_rect(m: int, s: int, mask: int, x: int, y: int) -> Rect2:
 	return Rect2((bi % ATLAS_COLS) * 256 + (t % 16) * C, (bi / ATLAS_COLS) * 256 + (t / 16) * C, C, C)
 
 
+## How far below the top of its cell the drawn surface sits at world x, in
+## pixels, for an exposed solid cell in row `cy` (0 when the cell is not an
+## exposed top). The tiles' top edges are rough and rounded at the corners;
+## the player uses this to plant its feet on the rock you can see. Read from
+## the atlas image itself, so it always matches the art.
+var _atlas_img: Image
+var _depth_cache: Dictionary = {}
+
+
+func surface_depth(wx: float, cy: int) -> int:
+	var x := int(floor(wx / C))
+	if not grid.in_bounds(x, cy) or not grid.is_solid(x, cy) or grid.is_solid(x, cy - 1):
+		return 0
+	var m := grid.get_mat(x, cy)
+	var r := tile_rect(m, grid.get_stratum(x, cy), grid.edge_mask(x, cy), x, cy)
+	var col := clampi(int(wx) - x * int(C), 0, int(C) - 1)
+	var key := Vector2i(int(r.position.x) + col, int(r.position.y))
+	if _depth_cache.has(key):
+		return _depth_cache[key]
+	if _atlas_img == null:
+		_atlas_img = tex_atlas.get_image()
+		if _atlas_img == null:
+			return 0
+		if _atlas_img.is_compressed():
+			_atlas_img.decompress()
+	var d := 0
+	while d < int(C) - 1 and _atlas_img.get_pixel(key.x, key.y + d).a < 0.5:
+		d += 1
+	_depth_cache[key] = d
+	return d
+
+
 func prop_rect(n: String) -> Rect2:
 	var r: Array = props_meta.get(n, [0, 0, 1, 1])
 	return Rect2(r[0], r[1], r[2], r[3])

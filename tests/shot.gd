@@ -273,6 +273,9 @@ func _process(_d: float) -> void:
 		if args["gadget"] != "1":
 			Game.run["loadout"]["active"] = String(args["gadget"])
 		mine.use_gadget(mine.player)
+	if mine and args.has("feet") and frame == target - 1:
+		var pl: Player = mine.player
+		print("FEET bottom=%.2f cell_top=%.2f sink=%.2f floor=%s" % [pl.global_position.y + Player.HALF.y, floor((pl.global_position.y + Player.HALF.y + 1.0) / 16.0) * 16.0, pl._sink, str(pl.is_on_floor())])
 	if mine and args.has("ladder") and frame == target - 30:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:

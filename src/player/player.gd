@@ -644,6 +644,32 @@ func die(cause: String) -> void:
 
 
 # ---------------------------------------------------------------------------
+## The visible ground is rough: lower the sprites onto the rock under the
+## feet (the collider still stands on the cell top). Uses the higher foot.
+var _sink := 0.0
+
+
+func _foot_sink() -> float:
+	if not is_on_floor() or on_ladder or mine == null:
+		return 0.0
+	var view = mine.get("view")
+	if not (view is TerrainView):
+		return 0.0
+	var feet_y := global_position.y + HALF.y + 1.0
+	var cy := int(floor(feet_y / Balance.CELL))
+	# only when the collider really stands on that cell's top
+	if absf(cy * Balance.CELL - (global_position.y + HALF.y)) > 1.5:
+		return 0.0
+	var best := 99
+	for fx in [-3.0, 0.0, 3.0]:
+		var wx: float = global_position.x + fx
+		var c: Vector2i = grid.world_to_cell(Vector2(wx, feet_y))
+		if not grid.is_solid(c.x, c.y):
+			continue
+		best = mini(best, (view as TerrainView).surface_depth(wx, cy))
+	return 0.0 if best == 99 else float(mini(best, Balance.FOOT_SINK_MAX))
+
+
 func _animate(delta: float, ax: float) -> void:
 	_anim_t += delta
 	var anims: Dictionary = meta.get("anims", {})
@@ -677,6 +703,8 @@ func _animate(delta: float, ax: float) -> void:
 	var vib := Vector2.ZERO
 	if drilling:
 		vib = Vector2(randf_range(-0.6, 0.6), randf_range(-0.5, 0.5)).round()
+	_sink = move_toward(_sink, _foot_sink(), delta * 60.0)
+	vib.y += round(_sink)
 	body_sprite.position = vib
 	# drill arm at the shoulder point of this frame
 	var shoulders: Array = meta.get("shoulders", [])

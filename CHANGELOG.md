@@ -1,6 +1,9 @@
 # Changelog
 
 ## 0.7.0 (feature/fun-pass; see docs/plans/fun-pass-plan.md)
+**Feet on the ground**
+- The digger now stands on the rock you can see. Tile tops are drawn rough and rounded, which left a 1 to 4 pixel gap under the feet. The sprite now sinks onto the drawn surface under its feet, read from the tile art itself, and eases back up in the air. Collision is unchanged.
+
 **Loot economy**
 - The ore rack holds **60** units to start (upgrades 90 / 130 / 180).
 - **Deeper ore is worth more.** Ore is graded by the zone it was mined in: Spore Veins x1.3, Aqueducts and Hollows x1.7, Forgotten Engine x2.3, The First Civilization x3.5. The manifest and results show the grade (e.g. "Cobalt x1.7").
