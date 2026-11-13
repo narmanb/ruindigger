@@ -18,12 +18,14 @@ const KEYS := {
 	"map": [KEY_M, KEY_TAB],
 	"inventory": [KEY_I],
 	"ladder": [KEY_L, KEY_Q],
+	"gadget": [KEY_G, KEY_V],
 }
 
 const PAD_BUTTONS := {
 	"jump": [JOY_BUTTON_A],
 	"interact": [JOY_BUTTON_Y],
 	"ladder": [JOY_BUTTON_X],
+	"gadget": [JOY_BUTTON_LEFT_STICK],
 	"charge": [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_B],
 	"drill": [JOY_BUTTON_RIGHT_SHOULDER],
 	"pause": [JOY_BUTTON_START],

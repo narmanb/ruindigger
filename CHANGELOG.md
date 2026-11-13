@@ -23,6 +23,17 @@
 - Crawlers drown in deep water and are scalded by dense steam.
 - Kills by rubble, boulders, gas, lava, water, steam or floating props are **terrain kills** ("TERRAIN KILL - crushed").
 
+**Gadgets**
+- Pack one **active** and one **passive** gadget at the Supply Locker.
+- Active gadgets use the new **GADGET** button (G / V on keyboard, left-stick click on a pad, and a touch button labelled with the gadget). They recharge after use.
+  - **SONAR** (22 s): a ping reveals the map within 24 cells and marks ore, gas pockets and loose rock for 7 seconds, even through walls.
+  - **CRYO** (28 s): a thrown canister bursts on contact. It crusts lava into rock, clears steam, freezes foes for 5 s and vents your heat if you are close.
+- Passives:
+  - **MAGNET:** ore is pulled in from three times as far.
+  - **PLATING:** falling rock does half damage.
+  - **COOLANT:** drilling builds 30% less heat.
+- The HUD shows the gadget's state ("SONAR READY" or a countdown) and your passive.
+
 **Dive modifiers**
 - On the contract board you can pick up to **2 modifiers** for the next dive. Each makes the dive harder and pays a bonus on ore credits:
   - FLOODED: brimming water pockets and basins, +20%

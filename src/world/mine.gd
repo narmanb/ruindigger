@@ -479,6 +479,7 @@ func _process(delta: float) -> void:
 		_explore()
 	Game.run["time"] = float(Game.run.get("time", 0.0)) + delta
 	_update_orders(delta)
+	Game.run["gadget_cd"] = maxf(0.0, float(Game.run.get("gadget_cd", 0.0)) - delta)
 	var depth_cells := int(player.global_position.y / C) + depth_offset
 	Game.run["max_depth"] = maxi(int(Game.run.get("max_depth", 0)), depth_cells)
 	if Game.run.get("relic", false):
@@ -754,6 +755,100 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 	noise(pos, 16.0)
 	if ignite:
 		gas.ignite_near(pos, r)
+
+
+# --- gadgets ----------------------------------------------------------------
+func has_passive(id: String) -> bool:
+	return String(Game.run.get("loadout", {}).get("passive", "")) == id
+
+
+func active_gadget() -> String:
+	return String(Game.run.get("loadout", {}).get("active", ""))
+
+
+func use_gadget(pl: Player) -> void:
+	var id := active_gadget()
+	if id == "" or pl.dead or ending:
+		return
+	var cd := float(Game.run.get("gadget_cd", 0.0))
+	if cd > 0.0:
+		toast("%s recharging - %ds" % [Balance.GADGETS[id]["name"], ceili(cd)])
+		Audio.play("ui_deny")
+		return
+	Game.run["gadget_cd"] = float(Balance.GADGETS[id]["cooldown"])
+	match id:
+		"sonar":
+			sonar(pl.global_position)
+		"cryo":
+			var cr := Hazards.Cryo.new()
+			cr.mine = self
+			cr.vel = Vector2(Balance.CRYO_THROW.x * pl.facing, Balance.CRYO_THROW.y) + pl.velocity * 0.4
+			cr.position = pl.global_position + Vector2(pl.facing * 6, -8)
+			entity_root.add_child(cr)
+			Audio.play("throw")
+
+
+## Reveal the map nearby and mark what matters in the rock.
+func sonar(pos: Vector2) -> Node2D:
+	var c := grid.world_to_cell(pos)
+	var r := Balance.SONAR_RADIUS
+	var ping := Hazards.SonarPing.new()
+	ping.position = pos
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			if dx * dx + dy * dy > r * r:
+				continue
+			var cc := c + Vector2i(dx, dy)
+			if not grid.in_bounds(cc.x, cc.y):
+				continue
+			grid.explore(cc.x, cc.y)
+			if ping.marks.size() >= Balance.SONAR_MAX_MARKS:
+				continue
+			var m := grid.get_mat(cc.x, cc.y)
+			var col := Color(0, 0, 0, 0)
+			var o := grid.get_ore(cc.x, cc.y)
+			if o != 0 and Cell.is_solid(m):
+				col = Balance.ore_color(o)
+			elif m == Cell.GAS:
+				col = Color(0.75, 1.0, 0.25)
+			elif m == Cell.LOOSE:
+				col = Color(1.0, 0.6, 0.25)
+			if col.a > 0.0:
+				ping.marks.append([grid.cell_center(cc) - pos, col])
+	entity_root.add_child(ping)
+	Audio.play("lift_ding", -6.0, 0.3, 0.0)
+	toast("SONAR - %d marks" % ping.marks.size())
+	return ping
+
+
+func cryo_burst(pos: Vector2) -> void:
+	var c := grid.world_to_cell(pos)
+	var r := Balance.CRYO_RADIUS
+	var ri := ceili(r)
+	var crusted := 0
+	for dy in range(-ri, ri + 1):
+		for dx in range(-ri, ri + 1):
+			var cc := c + Vector2i(dx, dy)
+			if Vector2(dx, dy).length() > r or not grid.in_bounds(cc.x, cc.y):
+				continue
+			if lava and grid.get_lava(cc.x, cc.y) > 0:
+				if lava.quench(cc):
+					crusted += 1
+			if steam:
+				steam.cells.erase(cc)
+	for e in enemies:
+		if is_instance_valid(e) and e.global_position.distance_to(pos) <= (r + 1.0) * C:
+			e.stun(Balance.CRYO_STUN)
+			if e is Crawler:
+				e.flash = 1.0
+	if player and player.global_position.distance_to(pos) <= (r + 1.5) * C:
+		player.heat = 0.0
+		player.overheated = false
+	fx.burst(pos, Color(0.6, 0.95, 1.0), 16)
+	fx.flash(pos, Color(0.5, 0.9, 1.0), 0.9, 0.35)
+	Audio.play_at("gas_hiss", pos, -2.0, 0.2, 0.1)
+	if crusted > 0:
+		toast("CRYO - %d cells of lava crusted" % crusted)
 
 
 func spawn_lure(pos: Vector2, v: Vector2) -> Node2D:

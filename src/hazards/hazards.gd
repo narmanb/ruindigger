@@ -130,6 +130,71 @@ class Lure extends Node2D:
 			draw_arc(Vector2.ZERO, 6.0 + (1.0 - pulse) * 26.0, 0, TAU, 24, Color(0.4, 1.0, 0.9, pulse * 0.6), 1.0)
 
 
+## Cryo canister (gadget): bursts on the first thing it touches. Lava in range
+## crusts, steam clears, foes freeze, and the digger's heat is vented.
+class Cryo extends Node2D:
+	var mine: Node
+	var vel := Vector2.ZERO
+	var age := 0.0
+
+	func _physics_process(delta: float) -> void:
+		age += delta
+		vel.y = minf(vel.y + 700.0 * delta, 380.0)
+		var np := global_position + vel * delta
+		var g: TerrainGrid = mine.grid
+		var c := g.world_to_cell(np)
+		var hit_enemy := false
+		for e in mine.enemies:
+			if is_instance_valid(e) and e.has_method("hit_rect") and e.hit_rect().has_point(np):
+				hit_enemy = true
+		if g.solid_at(np) or g.get_lava(c.x, c.y) > 0 or g.get_water(c.x, c.y) >= Balance.WATER_MAX / 2 or hit_enemy or age > 3.0:
+			mine.cryo_burst(global_position)
+			queue_free()
+			return
+		global_position = np
+		rotation += delta * 9.0
+		queue_redraw()
+
+	func _draw() -> void:
+		draw_rect(Rect2(-3, -4, 6, 8), Color("cfe8f2"))
+		draw_rect(Rect2(-3, -4, 6, 2), Color("6fd8ff"))
+		draw_circle(Vector2(0, 1), 1.5, Color(0.5, 0.95, 1.0))
+
+
+## Sonar ping (gadget): an expanding ring, then marks on ore, gas and loose
+## rock for a few seconds. Drawn above the rock so it reads through walls.
+class SonarPing extends Node2D:
+	var marks: Array = []        # [Vector2 local, Color]
+	var t := 0.0
+
+	func _ready() -> void:
+		z_index = 7
+
+	func _process(delta: float) -> void:
+		t += delta
+		if t >= Balance.SONAR_SHOW:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var ring := t * 420.0
+		var reach := Balance.SONAR_RADIUS * Balance.CELL
+		if ring < reach:
+			draw_arc(Vector2.ZERO, ring, 0, TAU, 64, Color(0.45, 1.0, 0.85, 0.7 * (1.0 - ring / reach)), 2.0)
+		var fade := clampf((Balance.SONAR_SHOW - t) / 1.5, 0.0, 1.0)
+		for m in marks:
+			var p: Vector2 = m[0]
+			if p.length() > ring:
+				continue
+			var col: Color = m[1]
+			col.a = fade * (0.75 + 0.25 * sin(t * 6.0 + p.x * 0.1))
+			draw_rect(Rect2(p - Vector2(5, 5), Vector2(10, 10)), col, false, 2.0)
+			var inner := col
+			inner.a *= 0.35
+			draw_rect(Rect2(p - Vector2(3, 3), Vector2(6, 6)), inner)
+
+
 ## Gas: breaking a gas sac starts a telegraphed vent, then a lingering cloud.
 ## Any explosion touching a vent or cloud ignites it (big, readable fireball).
 class GasSystem extends Node2D:
@@ -367,7 +432,7 @@ class Collapse extends Node2D:
 				r.position.y += b["off"]
 				var pl: Player = mine.player
 				if pl and not pl.dead and Rect2(pl.global_position - Player.HALF, Player.HALF * 2.0).intersects(r.grow(-2.0)):
-					pl.take_damage(Balance.BOULDER_PLAYER_DAMAGE, r.get_center(), "falling basalt")
+					pl.take_damage(Balance.BOULDER_PLAYER_DAMAGE * (Balance.PLATING_MULT if mine.has_passive("plating") else 1.0), r.get_center(), "falling basalt")
 					hit = true
 				for e in mine.enemies:
 					if is_instance_valid(e) and e.hit_rect().intersects(r.grow(-1.0)):
@@ -489,7 +554,7 @@ class Collapse extends Node2D:
 		if pl and not pl.dead:
 			var pr := Rect2(pl.global_position - Player.HALF, Player.HALF * 2.0)
 			if pr.intersects(rect):
-				pl.take_damage(Balance.RUBBLE_PLAYER_DAMAGE, rect.get_center(), "falling rubble")
+				pl.take_damage(Balance.RUBBLE_PLAYER_DAMAGE * (Balance.PLATING_MULT if mine.has_passive("plating") else 1.0), rect.get_center(), "falling rubble")
 				pl.velocity.y = maxf(pl.velocity.y, 60.0)
 				return true
 		for e in mine.enemies:

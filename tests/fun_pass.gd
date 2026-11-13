@@ -15,6 +15,7 @@ static func run(t: Node) -> void:
 	await pressure(t)
 	await terrain_weapons(t)
 	await modifiers(t)
+	await gadgets(t)
 
 
 static func economy(t: Node) -> void:
@@ -314,6 +315,78 @@ static func modifiers(t: Node) -> void:
 	var pay := int(round(150 * 0.55))
 	t.check(int(Game.last_result.get("mod_pay", 0)) == pay and Progress.credits - before == 150 + pay + int(Game.last_result.get("orders_bonus", 0)), "modifiers raise ore pay (+%d CR)" % int(Game.last_result.get("mod_pay", 0)))
 	Game.modifiers = []
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+static func gadgets(t: Node) -> void:
+	t.section("gadgets")
+	# cryo crusts lava with the normal accounting
+	var g := TerrainGrid.new(10, 8)
+	for y in 8:
+		for x in 10:
+			g.put(x, y, Cell.BEDROCK if (x == 0 or y == 0 or x == 9 or y == 7) else Cell.AIR)
+			g.stratum[g.idx(x, y)] = Balance.Z_FIRST
+	for x in range(1, 9):
+		g.lava[g.idx(x, 6)] = Balance.LAVA_MAX
+	var ls := LavaSim.new(g, null, null)
+	var start := 8 * Balance.LAVA_MAX
+	t.check(ls.quench(Vector2i(4, 6)) and g.get_mat(4, 6) == Cell.HARD and g.get_lava(4, 6) == 0, "cryo turns a lava cell into rock")
+	var left := 0
+	for x in range(1, 9):
+		left += g.get_lava(x, 6)
+	t.check(left + ls.lava_frozen + ls.lava_lost == start and not ls.quench(Vector2i(4, 2)), "quenching keeps the lava accounting and ignores dry cells")
+	# live
+	Game.loadout = {"active": "sonar", "passive": "magnet"}
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(20)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	t.check(mine.active_gadget() == "sonar" and mine.has_passive("magnet"), "the run carries the packed loadout")
+	var ping: Node2D = null
+	mine.use_gadget(pl)
+	for e in mine.entity_root.get_children():
+		if e is Hazards.SonarPing:
+			ping = e
+	var gc: Vector2i = mine.grid.world_to_cell(pl.global_position)
+	t.check(ping != null and mine.grid.has_flag(gc.x + 20, gc.y, Cell.F_EXPLORED) and float(Game.run["gadget_cd"]) > 0.0, "sonar reveals the map nearby and starts its cooldown")
+	var cd := float(Game.run["gadget_cd"])
+	mine.use_gadget(pl)
+	var pings := 0
+	for e in mine.entity_root.get_children():
+		if e is Hazards.SonarPing:
+			pings += 1
+	t.check(pings == 1 and float(Game.run["gadget_cd"]) <= cd, "a gadget cannot be used while recharging")
+	# the magnet passive pulls ore from much further
+	Game.run["cargo"] = {}
+	var far: Entities.Pickup = mine.spawn_pickup(pl.global_position + Vector2(80, -4), 2)
+	far.vel = Vector2.ZERO
+	await t._frames(70)
+	t.check(Game.cargo_count() == 1, "MAGNET collects ore from 80 px away")
+	Game.run["loadout"]["passive"] = "plating"
+	var far2: Entities.Pickup = mine.spawn_pickup(pl.global_position + Vector2(80, -4), 2)
+	far2.vel = Vector2.ZERO
+	await t._frames(70)
+	t.check(Game.cargo_count() == 1 and is_instance_valid(far2), "without MAGNET that ore stays put")
+	# a cryo burst freezes foes and vents heat
+	pl.heat = pl.heat_cap * 0.9
+	var cr: Crawler = null
+	for e in mine.enemies:
+		if e is Crawler:
+			cr = e
+			break
+	if cr != null:
+		mine.cryo_burst(cr.global_position)
+		t.check(cr.state == Crawler.S.STUNNED, "a cryo burst freezes a crawler")
+	mine.cryo_burst(pl.global_position)
+	t.check(pl.heat == 0.0, "a cryo burst at your feet vents your heat")
+	Game.loadout = Balance.GADGET_DEFAULT.duplicate()
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

@@ -15,6 +15,7 @@ var current_name := ""
 var contract: Dictionary = {}
 var contract_offers: Array = []
 var modifiers: Array = []          # ids chosen on the contract board for the next dive
+var loadout: Dictionary = Balance.GADGET_DEFAULT.duplicate()   # gadgets packed at the supply locker
 var run: Dictionary = {}
 var last_result: Dictionary = {}
 var _fade: ColorRect
@@ -125,6 +126,8 @@ func start_run() -> void:
 		"modifiers": modifiers.duplicate(),
 		"charges": charges,
 		"lures": Balance.LURES_PER_RUN,
+		"loadout": loadout.duplicate(),
+		"gadget_cd": 0.0,
 		"cargo": {},
 		"finds": [],
 		"banked": {},

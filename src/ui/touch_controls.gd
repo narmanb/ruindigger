@@ -47,6 +47,7 @@ static func default_buttons() -> Array:
 		{"name": "CHARGE", "action": "charge", "off": Vector2(-44, -128), "r": 19.0, "finger": -1},
 		{"name": "USE", "action": "interact", "off": Vector2(-112, -100), "r": 19.0, "finger": -1},
 		{"name": "LADDER", "action": "ladder", "off": Vector2(-172, -74), "r": 19.0, "finger": -1},
+		{"name": "GADGET", "action": "gadget", "off": Vector2(-172, -136), "r": 17.0, "finger": -1},
 	]
 
 
@@ -351,9 +352,17 @@ func _draw() -> void:
 				col = Color(1.0, 0.35, 0.3)
 			"ladder":
 				col = Color(0.95, 0.8, 0.35)
+			"gadget":
+				col = Color(0.55, 0.85, 1.0)
 		var dim := 1.0
 		if b["action"] == "ladder" and mine and mine.player and not edit_mode and not mine.player.can_build_ladder():
 			dim = 0.4
+		if b["action"] == "gadget" and not edit_mode:
+			var gid := String(Game.run.get("loadout", {}).get("active", ""))
+			if gid != "":
+				label = String(Balance.GADGETS[gid]["name"])
+			if float(Game.run.get("gadget_cd", 0.0)) > 0.0:
+				dim = 0.4
 		draw_circle(p, br, Color(col.r * 0.25, col.g * 0.25, col.b * 0.25, (0.65 if bheld else 0.4) * op))
 		draw_arc(p, br, 0, TAU, 32, Color(col.r, col.g, col.b, (1.0 if bheld else 0.75) * op * dim), 2.0 if not bheld else 3.0)
 		var fs := 8 if label.length() > 5 else 9

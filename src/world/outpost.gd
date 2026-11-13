@@ -289,6 +289,14 @@ func drill_enemies(_r: Rect2, _d: float, _b: Player) -> void:
 	pass
 
 
+func has_passive(_id: String) -> bool:
+	return false
+
+
+func use_gadget(_pl: Node) -> void:
+	pass
+
+
 func noise(_p: Vector2, _r: float) -> void:
 	pass
 
@@ -474,6 +482,26 @@ func _supply_panel() -> Control:
 			Audio.play("ui_deny"), 220)
 	b.disabled = Progress.credits < Balance.CHARGE_PRICE or Progress.charges + Balance.CHARGES_FREE >= Balance.CHARGES_MAX
 	v.add_child(b)
+	v.add_child(UIKit.label("GADGETS - one active (GADGET button, G) and one passive", 10, UIKit.TEAL, true))
+	for kind in ["active", "passive"]:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		v.add_child(row)
+		for id: String in Balance.GADGETS.keys():
+			var gd: Dictionary = Balance.GADGETS[id]
+			if gd["kind"] != kind:
+				continue
+			var on: bool = Game.loadout.get(kind, "") == id
+			var gb := UIKit.button(("> " if on else "") + String(gd["name"]), func() -> void:
+				Game.loadout[kind] = id
+				Audio.play("ui_confirm")
+				_open_panel(_supply_panel()), 112)
+			gb.tooltip_text = String(gd["desc"])
+			row.add_child(gb)
+	var desc := UIKit.label("   %s: %s\n   %s: %s" % [Balance.GADGETS[Game.loadout["active"]]["name"], Balance.GADGETS[Game.loadout["active"]]["desc"], Balance.GADGETS[Game.loadout["passive"]]["name"], Balance.GADGETS[Game.loadout["passive"]]["desc"]], 9, UIKit.MUTED)
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.custom_minimum_size.x = 360
+	v.add_child(desc)
 	v.add_child(UIKit.button("CLOSE", _close_panel))
 	return fr[0]
 

@@ -106,6 +106,24 @@ const MODIFIERS := [
 	{"id": "deep_veins", "name": "DEEP VEINS", "desc": "+40% ore, but the mine wakes 30% faster.", "ore": 1.4, "pressure": 1.3, "bonus": 0.0},
 ]
 const MODIFIER_KEYS := ["ore", "crawlers", "gas", "water", "pressure"]
+# --- Gadgets: one active (GADGET button, on a cooldown) + one passive ---
+const GADGETS := {
+	"sonar": {"name": "SONAR", "kind": "active", "cooldown": 22.0, "desc": "Ping: reveals the map nearby and marks ore, gas and loose rock."},
+	"cryo": {"name": "CRYO", "kind": "active", "cooldown": 28.0, "desc": "Throw a canister: crusts lava, clears steam, freezes foes, vents your heat."},
+	"magnet": {"name": "MAGNET", "kind": "passive", "desc": "Ore is pulled in from three times as far."},
+	"plating": {"name": "PLATING", "kind": "passive", "desc": "Falling rock and rubble do half damage."},
+	"coolant": {"name": "COOLANT", "kind": "passive", "desc": "Drilling builds 30% less heat."},
+}
+const GADGET_DEFAULT := {"active": "sonar", "passive": "magnet"}
+const SONAR_RADIUS := 24             # cells revealed and scanned
+const SONAR_SHOW := 7.0              # seconds the marks stay up
+const SONAR_MAX_MARKS := 160
+const CRYO_RADIUS := 3.5             # cells
+const CRYO_STUN := 5.0
+const CRYO_THROW := Vector2(160, -170)
+const MAGNET_MULT := 3.0
+const PLATING_MULT := 0.5
+const COOLANT_MULT := 0.7
 # --- Lure (throwable noise maker; USE with nothing nearby) ---
 const LURES_PER_RUN := 3
 const LURE_TIME := 9.0               # seconds it keeps pinging once it lands

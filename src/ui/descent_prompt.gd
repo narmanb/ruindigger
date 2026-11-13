@@ -70,7 +70,7 @@ func close() -> void:
 	is_open = false
 	root.visible = false
 	get_tree().paused = false
-	for a in ["drill", "jump", "charge", "interact", "ladder"]:
+	for a in ["drill", "jump", "charge", "interact", "ladder", "gadget"]:
 		Input.action_release(a)
 
 

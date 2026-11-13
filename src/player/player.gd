@@ -241,6 +241,8 @@ func _physics_process(delta: float) -> void:
 		mine.player_interact(self)
 	if _just("ladder") and mine:
 		mine.build_ladder(self)
+	if _just("gadget") and mine:
+		mine.use_gadget(self)
 
 	move_and_slide()
 	var now_floor := is_on_floor()
@@ -489,6 +491,8 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 	if _touching_solid() and not is_on_floor() and drill_dir.y <= 0:
 		velocity.y = minf(velocity.y, 0.0 if drill_dir.y < 0 else 25.0)
 		jet_ready = true
+	if mine and mine.has_passive("coolant"):
+		heat_mult *= Balance.COOLANT_MULT
 	heat = minf(heat_cap, heat + Balance.HEAT_PER_SEC * heat_mult * delta)
 	if heat >= heat_cap:
 		overheated = true

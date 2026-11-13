@@ -1,8 +1,8 @@
 # Fun pass: from digging simulator to game
 
-Status: **S1, S2, S3, S5 built; S4 partly built** (lures, drowning, steam,
-terrain kills) on branch `feature/fun-pass`, version 0.7.0. See "Build log"
-at the end. S6 to S8 not started. Written after playing 0.6.3 and the
+Status: **S1, S2, S3, S5, S6 built; S4 partly built** (lures, drowning,
+steam, terrain kills) on branch `feature/fun-pass`, version 0.7.0. See "Build
+log" at the end. S7 and S8 not started. Written after playing 0.6.3 and the
 owner's notes. Every segment below is independent enough to ship on its own;
 we do not have to do it all, or in one go.
 
@@ -198,8 +198,9 @@ chosen and are easy to change in `Balance`:
 2. Extraction ends the run in this game, so pressure has no "bank at a lift"
    reset. It eases while you are above your deepest zone, and half of it
    carries into The First Civilization. It does not carry between dives.
-3. No gadget slots yet (S6). The lure is a free consumable instead, thrown
-   with USE when nothing is nearby.
+3. Gadgets (S6) use one active slot and one passive slot, chosen free at
+   the Supply Locker. There is nothing to buy yet. The lure is separate: a
+   free consumable thrown with USE when nothing is nearby.
 4. Everything applies to both the main mine and The First Civilization.
    Modifiers change generation only in the main mine; BRITTLE and BLACKOUT
    also apply in the deep stage.
@@ -224,6 +225,13 @@ What is in each segment:
   board grid, results line. FLOODED scales pocket counts, fills every pocket
   and basin, and tries placement harder (pocket count alone was capped by
   space).
+
+* **S6:** `Balance.GADGETS`, `Game.loadout` and the run's `loadout` and
+  `gadget_cd`. New input action `gadget`, plus a touch button. Mine
+  `use_gadget`, `sonar`, `cryo_burst`, `has_passive`. `Hazards.Cryo` and
+  `Hazards.SonarPing`. `LavaSim.quench` crusts lava with the normal
+  accounting. Passives hook into the pickup magnet, rubble and boulder
+  damage, and drill heat.
 
 Tests: suite `fun` (in `run_tests.sh`) covers all of the above. A one-off
 sweep of 90 maps (each modifier x 15 seeds) gave 0 invalid or repaired.

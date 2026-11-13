@@ -44,7 +44,8 @@ class Pickup extends Node2D:
 		var pl: Player = mine.player
 		var to := pl.global_position - global_position if pl else Vector2.INF
 		var room: bool = Game.can_take(ore, mine.cargo_cap())
-		if pl and not pl.dead and age > 0.35 and room and to.length() < Balance.PICKUP_MAGNET_RADIUS:
+		var reach := Balance.PICKUP_MAGNET_RADIUS * (Balance.MAGNET_MULT if mine.has_passive("magnet") else 1.0)
+		if pl and not pl.dead and age > 0.35 and room and to.length() < reach:
 			vel = vel.lerp(to.normalized() * 260.0, 10.0 * delta)
 			global_position += vel * delta
 			resting = false

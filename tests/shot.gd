@@ -264,6 +264,10 @@ func _process(_d: float) -> void:
 					ch.visible = false
 					print("hid ", nm)
 		print("POUR formed=%d sunk=%d swapped=%d boiled=%d frozen=%d steam_peak=%d" % [mine.lava.rock_formed, mine.lava.sunk, mine.lava.swapped, mine.lava.water_boiled, mine.lava.lava_frozen, mine.steam.peak_cells])
+	if mine and args.has("gadget") and frame == target - 12:
+		if args["gadget"] != "1":
+			Game.run["loadout"]["active"] = String(args["gadget"])
+		mine.use_gadget(mine.player)
 	if mine and args.has("ladder") and frame == target - 30:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:

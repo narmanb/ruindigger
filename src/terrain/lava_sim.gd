@@ -422,6 +422,19 @@ func _move_crust(c: Vector2i, to: Vector2i) -> void:
 	wake(c.x, c.y)
 
 
+## Freeze the lava in one cell right now (cryo gadget). Same rules and
+## accounting as a water reaction. Returns true if any lava was there.
+func quench(c: Vector2i) -> bool:
+	if not grid.in_bounds(c.x, c.y):
+		return false
+	var i := c.y * grid.w + c.x
+	if grid.lava[i] <= 0:
+		return false
+	_crust(c, i)
+	wake(c.x, c.y)
+	return true
+
+
 func _crust(c: Vector2i, i: int) -> void:
 	var v: int = grid.lava[i]
 	if v < Balance.LAVA_ROCK_MIN:
