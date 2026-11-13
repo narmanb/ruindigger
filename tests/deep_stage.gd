@@ -109,7 +109,7 @@ static func generation(t: Node, n: int) -> void:
 				for dd in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 					if g.get_water(x + dd.x, y + dd.y) > 0:
 						touching += 1
-		t.check(lava_cells >= 20 and int(d.get("quench_pairs", 0)) >= 1, tag + ": lava and at least one quench pair exist (%d lava cells, %d pairs)" % [lava_cells, d.get("quench_pairs", 0)])
+		t.check(lava_cells >= 20 and int(d.get("quench_pairs", 0)) >= 1 and int(d.get("sluices", 0)) >= 1, tag + ": lava, water-over-lava and lava-over-water features exist (%d lava cells, %d quench pairs, %d sluices)" % [lava_cells, d.get("quench_pairs", 0), d.get("sluices", 0)])
 		t.check(touching == 0, tag + ": generated lava never touches water (%d contacts)" % touching)
 		var in_halls := 0
 		for c in d["lava_keep_out"]:

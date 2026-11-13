@@ -171,6 +171,22 @@ func _process(_d: float) -> void:
 		for v in mine.valves:
 			v.toggle()
 		mine.player.invuln = 1e9
+	# sluice=1: open a viewing pocket beside the first sluice and drill a hole
+	# in its divider, so the lava pours down into the water pool (deep stage)
+	if mine and args.has("sluice") and frame == 20 and mine.get("data") != null:
+		for lm in mine.data.get("landmarks", []):
+			if lm["kind"] == "sluice":
+				var sr: Rect2i = lm["rect"]
+				for yy in range(sr.position.y, sr.end.y + 1):
+					for xx in range(sr.end.x + 1, sr.end.x + 9):
+						mine.grid.set_mat(xx, yy, Cell.AIR if yy < sr.end.y else Cell.HARD, true)
+				var vx := sr.end.x + 4
+				mine.player.global_position = Vector2(vx * 16 + 8, sr.end.y * 16 - Player.HALF.y - 0.5)
+				mine.player.invuln = 1e9
+				var cx := sr.position.x + sr.size.x / 2
+				for dy in [3, 4]:
+					mine.damage_cell(Vector2i(cx, sr.position.y + dy), 99.0, 0, false, "shot")
+				break
 	if mine and args.has("ladder") and frame == target - 30:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:

@@ -91,8 +91,14 @@ func wake_all() -> void:
 				active[Vector2i(x, y)] = true
 
 
+## Open to water: not rock, and not lava. Lava is far denser, so water rests
+## on its surface (where LavaSim reacts the two) instead of sinking through it.
 func _open(x: int, y: int) -> bool:
-	return grid.in_bounds(x, y) and not Cell.is_solid(grid.get_mat(x, y))
+	return grid.in_bounds(x, y) and not Cell.is_solid(grid.get_mat(x, y)) and grid.lava[y * grid.w + x] == 0
+
+
+func _blocked(x: int, y: int) -> bool:
+	return not grid.in_bounds(x, y) or grid.is_solid(x, y) or grid.lava[y * grid.w + x] > 0
 
 
 func _on_cell_changed(x: int, y: int, _old: int, new_m: int) -> void:
@@ -196,12 +202,12 @@ func update_drops(delta: float) -> void:
 		for k in samples:
 			var np := p + v * dt
 			var c := grid.world_to_cell(np)
-			if grid.is_solid(c.x, c.y):
+			if _blocked(c.x, c.y):
 				land = grid.world_to_cell(p)
 				break
 			p = np
 			motion.record(c, v, float(drop_vol[i]) / Balance.WATER_MAX * dt / Balance.WATER_TICK)
-			if grid.get_water(c.x, c.y) >= Balance.WATER_MAX / 3 or (grid.is_solid(c.x, c.y + 1) and p.y > c.y * 16.0 + 12.0):
+			if grid.get_water(c.x, c.y) >= Balance.WATER_MAX / 3 or (_blocked(c.x, c.y + 1) and p.y > c.y * 16.0 + 12.0):
 				land = c
 				break
 		if land.x >= 0:

@@ -9,6 +9,11 @@ extends RefCounted
 ## the boiled water leaves as steam. A thin film of lava just hardens away. One
 ## reaction per lava cell per step, so contacts are never counted twice.
 ##
+## New crust is heavier than lava and water, so it FOUNDERS: a crust cell with
+## liquid under it sinks through, exposing fresh lava to the water again, and
+## the reaction keeps going until one of the two runs out (lots of steam, rock
+## piling up at the bottom). Crust only holds near the shore: see _held().
+##
 ## Accounting (nothing is ever created):
 ##   lava now + lava_frozen + lava_lost == lava at the start
 ##   water_boiled is the water this sim removed from the grid
@@ -29,6 +34,8 @@ var lava_frozen := 0                # units of lava that became rock or slag
 var lava_lost := 0                  # units squeezed out by terrain placed on top
 var water_boiled := 0
 var rock_formed := 0                # cells of new rock
+var crust: Dictionary = {}          # reaction-made rock that may still founder
+var sunk := 0                       # crust moves (one cell down each)
 var deferred := 0                   # crusts postponed because something was in the way
 var formed_cells: Array[Vector2i] = []   # rock cells made this step (FX / tests)
 
@@ -163,6 +170,7 @@ func react_step() -> void:
 func flow_step() -> void:
 	steps += 1
 	last_moves = 0
+	_founder()
 	if active.is_empty():
 		quenched.clear()
 		return
@@ -255,6 +263,81 @@ func _react(c: Vector2i) -> bool:
 	return reacted
 
 
+func _is_crust(c: Vector2i) -> bool:
+	return crust.has(c) and grid.get_mat(c.x, c.y) == Cell.HARD
+
+
+## Does this crust cell hold? Crust sticks to the shore: a short run attached
+## to rock on one side holds (CRUST_CANTILEVER), and a run wedged between rock
+## on both sides holds up to CRUST_MAX_SPAN. Anything else founders.
+func _held(c: Vector2i) -> bool:
+	var x0 := c.x
+	while _is_crust(Vector2i(x0 - 1, c.y)):
+		x0 -= 1
+	var x1 := c.x
+	while _is_crust(Vector2i(x1 + 1, c.y)):
+		x1 += 1
+	var n := x1 - x0 + 1
+	var l := Vector2i(x0 - 1, c.y)
+	var r := Vector2i(x1 + 1, c.y)
+	var la := grid.is_solid(l.x, l.y) and not crust.has(l)
+	var ra := grid.is_solid(r.x, r.y) and not crust.has(r)
+	if la and ra and n <= Balance.CRUST_MAX_SPAN:
+		return true
+	# per cell: close enough to the shore it is attached to
+	return (la and c.x - x0 < Balance.CRUST_CANTILEVER) or (ra and x1 - c.x < Balance.CRUST_CANTILEVER)
+
+
+## Let unsupported crust sink one cell through the liquid under it (lava or
+## water swaps up into its place). Bottom-up, bounded per step.
+func _founder() -> void:
+	if crust.is_empty():
+		return
+	var cells: Array = crust.keys()
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y > b.y)
+	var moved := 0
+	for c: Vector2i in cells:
+		if moved >= Balance.CRUST_SINK_BUDGET:
+			break
+		if grid.get_mat(c.x, c.y) != Cell.HARD:
+			crust.erase(c)          # drilled, blasted or otherwise gone
+			continue
+		var b := Vector2i(c.x, c.y + 1)
+		if not grid.in_bounds(b.x, b.y) or grid.is_solid(b.x, b.y) or keep_out.has(b):
+			crust.erase(c)          # landed: it is ordinary rock now
+			continue
+		var bi := b.y * grid.w + b.x
+		var lv: int = grid.lava[bi]
+		var wv: int = grid.water[bi]
+		if lv < Balance.LAVA_ROCK_MIN and wv < 8:
+			continue                # nothing to sink through (rockfall handles open air)
+		if _held(c):
+			continue
+		if occupied.is_valid() and (occupied.call(b) or occupied.call(Vector2i(c.x, c.y - 1))):
+			continue                # never drop out from under, or onto, an actor
+		# swap: the liquid rises into the crust's old cell, the crust drops
+		grid.lava[bi] = 0
+		grid.set_water(b.x, b.y, 0)
+		grid.set_mat(b.x, b.y, Cell.HARD)
+		grid.ore[bi] = 0
+		grid.flags[bi] &= ~Cell.F_DUG
+		grid.set_mat(c.x, c.y, Cell.AIR)
+		var ci := c.y * grid.w + c.x
+		grid.lava[ci] = lv
+		grid.set_water(c.x, c.y, wv)
+		cool.erase(c)
+		cool.erase(b)
+		crust.erase(c)
+		crust[b] = true
+		sunk += 1
+		moved += 1
+		if lv > 0:
+			active[c] = true
+		if water:
+			water.wake(c.x, c.y)
+		wake(c.x, c.y)
+
+
 func _crust(c: Vector2i, i: int) -> void:
 	var v: int = grid.lava[i]
 	if v < Balance.LAVA_ROCK_MIN:
@@ -276,3 +359,4 @@ func _crust(c: Vector2i, i: int) -> void:
 	grid.flags[i] &= ~Cell.F_DUG
 	rock_formed += 1
 	formed_cells.append(c)
+	crust[c] = true

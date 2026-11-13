@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 (feature/first-civilization)
+- **Crust founders.** New rock from a lava/water reaction is heavier than both liquids, so it sinks through them unless it is held at the shore (attached to rock on one side within 3 cells, or wedged across a gap of 7 or less). Fresh lava keeps meeting the water: wide pools boil for a long time, throw off big steam plumes and fill with rock from the bottom, while narrow channels still crust over into bridges.
+- **Water floats on lava.** Water used to sink through lava cells and react at the bottom of the pool; now it rests on the surface, where the reaction happens.
+- Each rock block now takes a full cell of water (was 48 units), and steam is denser with a higher cap (700 cells).
+- **More lava and water** in The First Civilization: more water and lava pockets, more water-over-lava pairs, more lava pits, and new **sluices**: lava sealed above a water pool. Drill the divider and watch it pour down, crust, sink and boil the pool.
+
 ## 0.6.0 (in progress on feature/first-civilization; see docs/primordial-vault-status.md)
 - **The First Civilization.** A new, optional, one-way stage far below the Forgotten Engine: a separate 200×120 map of great vaults, buried machines and transit tunnels built by a civilization far older than the Engine.
 - Find the Ancient Descent Platform in the Engine vault. It warns you, asks you to confirm, and does not come back. Everything you carry stays at risk.

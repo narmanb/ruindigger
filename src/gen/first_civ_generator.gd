@@ -733,6 +733,36 @@ func _lava() -> void:
 		data["landmarks"].append({"kind": "quench_pair", "rect": whole})
 		pairs += 1
 	data["quench_pairs"] = pairs
+	# 2b) sluices: lava sealed ABOVE a water pool. Drill the divider and watch
+	#     the lava pour down into the water, crust, sink and boil it away.
+	var want_sl := water_rng.randi_range(Balance.DEEP_SLUICE_PAIRS[0], Balance.DEEP_SLUICE_PAIRS[1])
+	var sluices := 0
+	tries = 0
+	while sluices < want_sl and tries < 500:
+		tries += 1
+		var sw := water_rng.randi_range(5, 8)
+		var sx := water_rng.randi_range(6, W - sw - 7)
+		var sy := water_rng.randi_range(Balance.DEEP_BAND_PLANT, H - 20)
+		var box := Rect2i(sx - 1, sy - 1, sw + 2, 11)      # lava 2, divider 2, water 5, shells
+		if not _dry_rock_box(box):
+			continue
+		space.claim(box, "water", "sluice%d" % sluices)
+		_mark_no_feature(box)
+		_fill_lava(Rect2i(sx, sy, sw, 2), "sluice_lava")
+		for x in range(sx, sx + sw):
+			g.put(x, sy + 2, Cell.SOFT)
+			g.put(x, sy + 3, Cell.CRACKED)                 # drill here, from the pool side or below
+		var pool := Rect2i(sx, sy + 4, sw, 5)
+		var pcells := 0
+		for y in range(pool.position.y, pool.end.y):
+			for x in range(pool.position.x, pool.end.x):
+				g.put(x, y, Cell.AIR)
+				g.water[g.idx(x, y)] = Balance.WATER_MAX
+				pcells += 1
+		data["water_features"].append({"kind": "sluice_pool", "rect": pool, "cells": pcells, "volume": pcells * Balance.WATER_MAX})
+		data["landmarks"].append({"kind": "sluice", "rect": box})
+		sluices += 1
+	data["sluices"] = sluices
 	# 3) sealed lava pockets deeper in the rock
 	var want := water_rng.randi_range(Balance.DEEP_LAVA_POCKETS[0], Balance.DEEP_LAVA_POCKETS[1])
 	var made := 0

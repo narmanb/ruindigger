@@ -166,15 +166,20 @@ static func run(t: Node) -> void:
 	l3.step()
 	l3.step()
 	t.check(l3.rock_formed == 0, "a lake over lava does not convert instantly")
-	for k in 60:
-		w3.step()
-		l3.wake_all()
-		l3.step()
-	var crust := 0
+	# a wide lake: the crust is too wide to hold, so it founders, fresh lava
+	# meets the water again, and the reaction runs until a fluid runs out
+	for frame in 2400:
+		w3.update(1.0 / 60.0)
+		l3.update(1.0 / 60.0)
+	var bottom_rock := 0
 	for x in range(1, 29):
-		if g3.is_solid(x, 9):
-			crust += 1
-	t.check(crust >= 20 and _lava_total(g3) > 28 * 2 * Balance.LAVA_MAX, "sustained contact builds a crust and leaves the lava beneath molten (%d crust cells, %d lava units left)" % [crust, _lava_total(g3)])
+		if g3.get_mat(x, 12) == Cell.HARD:
+			bottom_rock += 1
+	t.check(l3.sunk > 0 and bottom_rock >= 10, "a wide crust founders: rock sinks to the bottom of the lava (%d sink moves, %d rock cells on the floor)" % [l3.sunk, bottom_rock])
+	var start3 := 28 * 4 * Balance.WATER_MAX
+	t.check(w3.total() < start3 * 4 / 10 and _lava_total(g3) < start3 * 4 / 10, "the reaction keeps going far past the first crust: most of both fluids is used (water left %d, lava left %d of %d each)" % [w3.total(), _lava_total(g3), start3])
+	t.check(l3.rock_formed >= 60, "a wide lake makes a lot of new rock (%d cells)" % l3.rock_formed)
+	t.check(_lava_total(g3) + l3.lava_frozen + l3.lava_lost == 28 * 4 * Balance.LAVA_MAX, "lava accounting balances through foundering")
 	t.check(w3.total() + l3.water_boiled + w3.lost == 28 * 4 * Balance.WATER_MAX, "water is only ever consumed, never created (now %d incl. drops, boiled %d, squeezed out %d)" % [w3.total(), l3.water_boiled, w3.lost])
 	# --- a waterfall onto a lava channel builds a bridge you can stand on
 	var g4 := _box(30, 20)
@@ -238,6 +243,81 @@ static func run(t: Node) -> void:
 		l5.update(1.0 / 60.0)
 	t.check(l5.rock_formed >= 2 and l5.water_boiled > 0, "lava poured into a wet shaft forms a crust (%d rock cells)" % l5.rock_formed)
 	t.check(_lava_total(g5) + l5.lava_frozen + l5.lava_lost == 10 * Balance.LAVA_MAX, "lava accounting balances in the shaft")
+
+	# --- a narrow channel: the crust wedges between the walls and holds
+	var gn := _box(16, 14)
+	for y in range(1, 13):
+		for x in range(1, 15):
+			if x < 5 or x > 9:
+				gn.put(x, y, Cell.HARD)       # a 5-wide channel, x 5..9
+	for x in range(5, 10):
+		for y in range(9, 13):
+			gn.lava[gn.idx(x, y)] = Balance.LAVA_MAX
+		for y in range(7, 9):
+			gn.water[gn.idx(x, y)] = Balance.WATER_MAX
+	var wn := WaterSim.new(gn)
+	var ln := LavaSim.new(gn, wn, SteamField.new(gn))
+	ln.wake_all()
+	for frame in 1800:
+		wn.update(1.0 / 60.0)
+		ln.update(1.0 / 60.0)
+	var held_row := -1
+	for y in range(6, 13):
+		var full := true
+		for x in range(5, 10):
+			if gn.get_mat(x, y) != Cell.HARD:
+				full = false
+		if full:
+			held_row = y
+			break
+	var below_lava := 0
+	for y in range(held_row + 1, 13):
+		for x in range(5, 10):
+			below_lava += gn.get_lava(x, y)
+	t.check(held_row >= 0 and below_lava > 0, "in a narrow channel the crust wedges wall to wall and holds as a bridge over molten lava (row %d, %d lava units under it)" % [held_row, below_lava])
+	# --- lava above water: it pours down, crusts in the pool, and the rock sinks
+	var gs := _box(16, 22)
+	for x in range(1, 15):
+		gs.put(x, 8, Cell.HARD)               # divider between the two
+	for x in range(5, 11):
+		for y in range(5, 8):
+			gs.lava[gs.idx(x, y)] = Balance.LAVA_MAX
+		for y in range(15, 21):
+			gs.water[gs.idx(x, y)] = Balance.WATER_MAX
+	for y in range(1, 21):
+		if y != 8:
+			for x in [4, 11]:
+				gs.put(x, y, Cell.HARD)
+	for y in range(9, 21):
+		for x in range(1, 4):
+			gs.put(x, y, Cell.HARD)
+		for x in range(12, 15):
+			gs.put(x, y, Cell.HARD)
+	var wsl := WaterSim.new(gs)
+	var sts := SteamField.new(gs)
+	var lsl := LavaSim.new(gs, wsl, sts)
+	lsl.wake_all()
+	var lava_start := _lava_total(gs)
+	gs.set_mat(7, 8, Cell.AIR)                # drill a hole in the divider
+	var steam_peak := 0
+	for frame in 2400:
+		wsl.update(1.0 / 60.0)
+		lsl.update(1.0 / 60.0)
+		sts.update(1.0 / 60.0)
+		steam_peak = maxi(steam_peak, sts.cells.size())
+	var pool_rock := 0
+	for y in range(15, 21):
+		for x in range(5, 11):
+			if gs.get_mat(x, y) == Cell.HARD:
+				pool_rock += 1
+	var upper_lava := 0
+	for y in range(5, 8):
+		for x in range(5, 11):
+			upper_lava += gs.get_lava(x, y)
+	t.check(upper_lava < lava_start / 2, "lava above water pours down through the hole (upper reservoir %d of %d units left)" % [upper_lava, lava_start])
+	t.check(pool_rock >= 3 and lsl.sunk > 0, "the crust sinks through the water and piles up in the pool (%d rock cells in the pool)" % pool_rock)
+	t.check(steam_peak > 15, "pouring lava into water raises a big plume (peak %d steam cells)" % steam_peak)
+	t.check(_lava_total(gs) + lsl.lava_frozen + lsl.lava_lost == lava_start and wsl.total() + lsl.water_boiled + wsl.lost == 36 * Balance.WATER_MAX, "lava and water accounting both balance")
 
 	t.section("solidification safety and steam")
 	# rock never forms in a keep-out cell or where an actor stands

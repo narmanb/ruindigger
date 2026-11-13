@@ -261,3 +261,27 @@ the plant cold and powered were checked.
 15/15, ui 71/71, gen 4344/4344 (0 repairs), game 111/111, lava 33/33,
 deep 1958/1958 (60 deep seeds, 0 repairs). Also `water_live` 4/4,
 `cargo` 19/19, `structures` 13/13. Version 0.6.0 (code 15).
+
+## 0.6.1: foundering crust, floating water, more fluids
+
+* `LavaSim._founder()`: reaction-made rock (`crust`) sinks one cell per lava
+  step through lava or water (the liquid swaps up), unless `_held()`: attached
+  to non-crust rock within `CRUST_CANTILEVER` cells, or a run wedged between
+  rock on both sides no wider than `CRUST_MAX_SPAN`. Landed crust becomes
+  ordinary rock. Never sinks from under or onto an actor; bounded by
+  `CRUST_SINK_BUDGET`.
+* `WaterSim._open()` excludes lava cells and droplets land on lava, so water
+  rests on lava instead of sinking through it (no effect in the main mine,
+  which has no lava).
+* `LAVA_SOLIDIFY_AT` 64 (one cell of water per block), `STEAM_PER_UNIT`
+  0.16, `STEAM_MAX_CELLS` 700.
+* Generation: `DEEP_WATER_POCKETS` [4,7], `DEEP_LAVA_POCKETS` [6,10],
+  `DEEP_LAVA_PITS` 0.8, `DEEP_QUENCH_PAIRS` [3,5], new `DEEP_SLUICE_PAIRS`
+  [2,4] (lava over a water pool with a cracked divider).
+* Tests (suite `lava`, 41): a wide lake founders, keeps reacting and makes a
+  lot of rock; a narrow channel bridges over molten lava; lava over water pours
+  down, sinks as rock and raises a big plume, with accounting balanced. Ran
+  three times in a row to check stability. Deep suite checks sluices exist.
+* Results: `TEST_TIMEOUT=1200 ./tools/run_tests.sh`: terrain 32/32, physics
+  49/49, save 15/15, ui 71/71, gen 4344/4344 (0 repairs), game 111/111,
+  lava 41/41, deep 1958/1958 (0 repairs).
