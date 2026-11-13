@@ -40,10 +40,11 @@ func _ready() -> void:
 	var cargo: Dictionary = r.get("cargo", {})
 	if cargo.is_empty():
 		list.add_child(UIKit.label("No cargo recovered.", 11, UIKit.MUTED))
-	for k in cargo.keys():
-		var info: Dictionary = Balance.ORE[int(k)]
+	var keys: Array = cargo.keys()
+	keys.sort_custom(func(a: Variant, b: Variant) -> bool: return Balance.ore_value(int(a)) > Balance.ore_value(int(b)))
+	for k in keys:
 		var n := int(cargo[k])
-		var line := "%-10s x%-3d  %s" % [info["name"], n, ("%d CR" % (n * int(info["value"]))) if ok else "LOST"]
+		var line := "%-14s x%-3d  %s" % [Balance.ore_label(int(k)), n, ("%d CR" % (n * Balance.ore_value(int(k)))) if ok else "LOST"]
 		list.add_child(UIKit.label(line, 11, Balance.ore_color(int(k)) if ok else UIKit.MUTED))
 	if r.get("relic", false):
 		list.add_child(UIKit.label("Relic recovered: +%d CR" % r.get("relic_bonus", 0) if ok else "Relic lost in the dark", 11, Color(0.4, 1.0, 1.0)))

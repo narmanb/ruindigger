@@ -404,7 +404,7 @@ func die() -> void:
 	Audio.play_at("crawler_die", global_position)
 	mine.fx.burst(global_position, Color(0.55, 0.5, 0.6), 14)
 	mine.fx.burst(global_position, Color(0.85, 0.35, 0.45), 10)
-	mine.spawn_pickup(global_position, 5)
+	mine.spawn_ore(global_position, 5)
 	mine.on_enemy_killed(self)
 	var tw := create_tween()
 	tw.tween_property(spr, "scale", Vector2(1.3, 0.2), 0.18)

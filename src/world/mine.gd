@@ -582,8 +582,9 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 		var o: int = res["ore"]
 		if o != 0:
 			var n: int = int(Balance.ORE[o]["drops"])
+			var key := Balance.ore_key(o, maxi(0, s))
 			for i in n:
-				spawn_pickup(pos + Vector2(randf_range(-3, 3), randf_range(-3, 3)), o)
+				spawn_pickup(pos + Vector2(randf_range(-3, 3), randf_range(-3, 3)), key)
 			fx.glints(pos, Balance.ore_color(o))
 			fx.flash(pos, Balance.ore_color(o), 0.45, 0.25)
 			Audio.play_at("ore_rare" if o == Cell.ORE_AETHER else "ore", pos, -3.0)
@@ -743,24 +744,50 @@ func spawn_charge(pos: Vector2, v: Vector2) -> void:
 	entity_root.add_child(ch)
 
 
-func spawn_pickup(pos: Vector2, ore: int) -> void:
+## A fresh ore drop, graded by the zone it came from.
+func spawn_ore(pos: Vector2, ore: int) -> Entities.Pickup:
+	var c := grid.world_to_cell(pos)
+	return spawn_pickup(pos, Balance.ore_key(ore, maxi(0, grid.get_stratum(c.x, c.y))))
+
+
+func spawn_pickup(pos: Vector2, ore: int) -> Entities.Pickup:
 	var p := Entities.Pickup.new()
 	p.mine = self
 	p.ore = ore
 	p.vel = Vector2(randf_range(-60, 60), randf_range(-140, -60))
 	p.position = pos
 	entity_root.add_child(p)
+	return p
 
 
 func collect(p: Node) -> void:
 	var cargo: Dictionary = Game.run["cargo"]
-	cargo[p.ore] = int(cargo.get(p.ore, 0)) + 1
+	var key: int = p.ore
+	if Game.cargo_count() >= cargo_cap():
+		# full: swap out one unit of the cheapest ore for this better one; the
+		# cheap unit drops as a loose pickup you can still take back later
+		var cheap := Game.cheapest_cargo()
+		if cheap < 0 or Balance.ore_value(key) <= Balance.ore_value(cheap):
+			return
+		cargo[cheap] = int(cargo[cheap]) - 1
+		if int(cargo[cheap]) <= 0:
+			cargo.erase(cheap)
+		var dropped := spawn_pickup(p.global_position + Vector2(0, -6), cheap)
+		if dropped:
+			dropped.age = -Balance.SWAP_DROP_IGNORE
+		Game.run["swaps"] = int(Game.run.get("swaps", 0)) + 1
+		toast("SWAPPED %s FOR %s" % [Balance.ore_label(cheap).to_upper(), Balance.ore_label(key).to_upper()])
+	cargo[key] = int(cargo.get(key, 0)) + 1
 	Audio.play("pickup", -6.0, 0.1, 0.02)
 	if hud:
 		hud.pulse_cargo()
-	if Game.cargo_count() >= cargo_cap():
-		toast("CARGO FULL - extract at a lift to bank it")
+	if Game.cargo_count() >= cargo_cap() and int(Game.run.get("swaps", 0)) == 0 and not _full_warned:
+		_full_warned = true
+		toast("CARGO FULL - better ore now replaces your cheapest")
 	p.queue_free()
+
+
+var _full_warned := false
 
 
 func on_enemy_killed(e: Node) -> void:

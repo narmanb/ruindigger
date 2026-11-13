@@ -63,7 +63,12 @@ const ORE := {
 	4: {"name": "Fossil", "value": 22, "color": "efe5c4", "drops": 1},
 	5: {"name": "Scrap", "value": 4, "color": "b8c4d4", "drops": 1},
 }
-const CARGO_CAPACITY := [16, 24, 34, 46]
+const CARGO_CAPACITY := [60, 90, 130, 180]
+# Ore grade: the same ore is worth more the deeper the zone it came from.
+# Indexed by stratum (zone id). A cargo key packs ore id + 16 * grade.
+const ORE_GRADE_MULT := [1.0, 1.3, 2.3, 1.7, 1.7, 3.5]
+const ORE_KEY_STRIDE := 16
+const SWAP_DROP_IGNORE := 1.5      # s a swapped-out unit ignores the magnet
 const PICKUP_MAGNET_RADIUS := 34.0
 const RELIC_BONUS := 260
 const CARGO_SCROLL_SPEED := 240.0
@@ -87,7 +92,7 @@ const UPGRADES := {
 	"heat": {"name": "HEAT SINK", "costs": [100, 240, 480],
 		"desc": ["Stock radiator", "+45% heat capacity", "+100% capacity, faster cooling", "+170% capacity, cryo vents"]},
 	"cargo": {"name": "CARGO RACK", "costs": [90, 220, 450],
-		"desc": ["16 ore units", "24 ore units", "34 ore units", "46 ore units"]},
+		"desc": ["60 ore units", "90 ore units", "130 ore units", "180 ore units"]},
 	"hull": {"name": "HULL PLATING", "costs": [110, 260, 520],
 		"desc": ["100 hull", "130 hull", "165 hull", "210 hull"]},
 	"scaffold": {"name": "SCAFFOLD HOPPER", "costs": [90, 210, 430],
@@ -463,9 +468,38 @@ func hull(level: int) -> float:
 
 
 func ore_color(id: int) -> Color:
-	if ORE.has(id):
-		return Color(ORE[id]["color"])
+	var base := id % ORE_KEY_STRIDE
+	if ORE.has(base):
+		return Color(ORE[base]["color"])
 	return Color.WHITE
+
+
+## Cargo key for an ore picked up in a zone. Grade 0 keys equal the plain ore
+## id, so old cargo dictionaries and tests keep working.
+func ore_key(ore: int, zone: int) -> int:
+	return ore + ORE_KEY_STRIDE * clampi(zone, 0, ORE_GRADE_MULT.size() - 1)
+
+
+func ore_base(key: int) -> int:
+	return key % ORE_KEY_STRIDE
+
+
+func ore_grade(key: int) -> int:
+	return clampi(key / ORE_KEY_STRIDE, 0, ORE_GRADE_MULT.size() - 1)
+
+
+func ore_value(key: int) -> int:
+	var base := ore_base(key)
+	if not ORE.has(base):
+		return 0
+	return int(round(float(ORE[base]["value"]) * float(ORE_GRADE_MULT[ore_grade(key)])))
+
+
+func ore_label(key: int) -> String:
+	var base := ore_base(key)
+	var n: String = ORE[base]["name"] if ORE.has(base) else "?"
+	var m: float = ORE_GRADE_MULT[ore_grade(key)]
+	return n if is_equal_approx(m, 1.0) else "%s x%s" % [n, String.num(m, 1)]
 
 
 ## Zone at a cell, or -1 for the solid bedrock outside every zone.

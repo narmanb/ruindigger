@@ -63,7 +63,7 @@ func _ready() -> void:
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows.add_theme_constant_override("separation", 6)
 	scroll.add_child(rows)
-	var note := UIKit.label("Unbanked cargo is lost on death or abandonment. Extract to bank it.\nD-pad / arrows scroll. Back closes.", 10, UIKit.MUTED)
+	var note := UIKit.label("Deeper zones grade ore higher (x1.3 to x3.5). When full, better ore replaces your cheapest.\nUnbanked cargo is lost on death or abandonment. D-pad / arrows scroll. Back closes.", 10, UIKit.MUTED)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(note)
 
@@ -79,8 +79,20 @@ func refresh() -> void:
 	capacity_label.text = "ORE RACK: %d / %d    KEEPSAKES: %d / %d" % [Game.cargo_count(), mine.cargo_cap(), finds.size(), Balance.KEEPSAKES.size()]
 	total_label.text = "EXTRACT NOW: %d CR" % (ore_value + relic_value + Game.finds_value(finds))
 	relic_label.text = "Relic secured: +%d CR" % relic_value if Game.run.get("relic", false) else "Relic not recovered - bonus not included"
+	var keys: Array = []
+	for k in cargo.keys():
+		if int(cargo[k]) > 0:
+			keys.append(int(k))
+	keys.sort_custom(func(a: int, b: int) -> bool: return Balance.ore_value(a) > Balance.ore_value(b))
 	for id in Balance.ORE:
-		var info: Dictionary = Balance.ORE[id]
+		var carried := false
+		for k: int in keys:
+			if Balance.ore_base(k) == int(id):
+				carried = true
+		if not carried:
+			keys.append(int(id))
+	for id: int in keys:
+		var info: Dictionary = Balance.ORE[Balance.ore_base(id)]
 		var n := int(cargo.get(id, 0))
 		var row := HBoxContainer.new()
 		row.custom_minimum_size.y = 30
@@ -89,16 +101,16 @@ func refresh() -> void:
 		var atlas := AtlasTexture.new()
 		atlas.atlas = load("res://assets/gen/pickups.png")
 		var width := atlas.atlas.get_width() / 5
-		atlas.region = Rect2((int(id) - 1) * width, 0, width, atlas.atlas.get_height())
+		atlas.region = Rect2((Balance.ore_base(id) - 1) * width, 0, width, atlas.atlas.get_height())
 		icon.texture = atlas
 		icon.custom_minimum_size = Vector2(24, 24)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		row.add_child(icon)
-		var name_label := UIKit.label(str(info["name"]), 12, Balance.ore_color(id) if n > 0 else UIKit.MUTED)
+		var name_label := UIKit.label(Balance.ore_label(id) if n > 0 else str(info["name"]), 12, Balance.ore_color(id) if n > 0 else UIKit.MUTED)
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_label)
-		row.add_child(UIKit.label("x%d @ %d CR    %d CR" % [n, info["value"], n * int(info["value"])], 11, UIKit.TEXT if n > 0 else UIKit.MUTED))
+		row.add_child(UIKit.label("x%d @ %d CR    %d CR" % [n, Balance.ore_value(id), n * Balance.ore_value(id)], 11, UIKit.TEXT if n > 0 else UIKit.MUTED))
 	if cargo.is_empty():
 		rows.add_child(UIKit.label("Your ore rack is empty.", 11, UIKit.MUTED))
 	rows.add_child(UIKit.Scanline.new())

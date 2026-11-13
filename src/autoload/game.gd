@@ -130,8 +130,31 @@ func cargo_count() -> int:
 func cargo_value(cargo: Dictionary) -> int:
 	var v := 0
 	for k in cargo.keys():
-		v += int(Balance.ORE[int(k)]["value"]) * int(cargo[k])
+		v += Balance.ore_value(int(k)) * int(cargo[k])
 	return v
+
+
+## Cheapest key in the rack, or -1 when empty.
+func cheapest_cargo() -> int:
+	var best := -1
+	var bv := 1 << 30
+	for k in run.get("cargo", {}).keys():
+		if int(run["cargo"][k]) <= 0:
+			continue
+		var v := Balance.ore_value(int(k))
+		if v < bv:
+			bv = v
+			best = int(k)
+	return best
+
+
+## Can this ore key go into a rack of `cap`? Yes if there is room, or if it is
+## worth more than the cheapest thing carried (it will be swapped in).
+func can_take(key: int, cap: int) -> bool:
+	if cargo_count() < cap:
+		return true
+	var c := cheapest_cargo()
+	return c >= 0 and Balance.ore_value(key) > Balance.ore_value(c)
 
 
 func finds_value(finds: Array) -> int:

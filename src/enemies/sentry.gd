@@ -207,8 +207,8 @@ func _disable(reason: String) -> void:
 	state = S.DEAD
 	Audio.play_at("sentry_die", global_position)
 	mine.fx.explosion(global_position + Vector2(0, -10), 30.0, Color(0.6, 0.4, 1.0))
-	mine.spawn_pickup(global_position + Vector2(0, -12), 5)
-	mine.spawn_pickup(global_position + Vector2(4, -12), 5)
+	mine.spawn_ore(global_position + Vector2(0, -12), 5)
+	mine.spawn_ore(global_position + Vector2(4, -12), 5)
 	mine.on_enemy_killed(self)
 	if reason == "power cut":
 		mine.toast("Sentry offline: power module destroyed")

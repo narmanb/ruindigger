@@ -18,7 +18,7 @@ class Pickup extends Node2D:
 		spr = Sprite2D.new()
 		spr.texture = load("res://assets/gen/pickups.png")
 		spr.hframes = 5
-		spr.frame = clampi(ore - 1, 0, 4)
+		spr.frame = clampi(Balance.ore_base(ore) - 1, 0, 4)
 		add_child(spr)
 		glow = Sprite2D.new()
 		glow.texture = load("res://assets/gen/glow.png")
@@ -43,7 +43,7 @@ class Pickup extends Node2D:
 		age += delta
 		var pl: Player = mine.player
 		var to := pl.global_position - global_position if pl else Vector2.INF
-		var room: bool = Game.cargo_count() < mine.cargo_cap() or ore == 0
+		var room: bool = Game.can_take(ore, mine.cargo_cap())
 		if pl and not pl.dead and age > 0.35 and room and to.length() < Balance.PICKUP_MAGNET_RADIUS:
 			vel = vel.lerp(to.normalized() * 260.0, 10.0 * delta)
 			global_position += vel * delta
