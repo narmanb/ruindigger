@@ -125,9 +125,15 @@ Deep generation takes about 520–630 ms on desktop.
   `LAVA_BURN_DAMAGE` every `LAVA_BURN_INTERVAL` (never instant), slows
   wading (`LAVA_SLOW`), hurts enemies, and a "HEAT WARNING" toast appears
   within `LAVA_WARN_CELLS`. New rock throws dust, sparks and a hiss.
-* **Rendering.** `src/fx/lava_renderer.gd`: visible cells only; a churning body
-  with a bright, crusted surface; additive heat glow; steam puffs drawn in
-  front of the player. The minimap shows lava.
+* **Rendering.** `src/fx/lava_renderer.gd` uses the same metaball technique as
+  water: visible lava cells are drawn as soft shapes into an off-screen density
+  buffer, and `src/fx/lava_composite.gdshader` thresholds it into one smooth
+  molten body (no cell edges) with a bright skin, deeper red below and
+  drifting crust plates with glowing seams. Lava's soft ramps are wider than
+  water's (rounder edges), resting surfaces bulge slowly, pours are thick
+  rounded streams, and display levels are eased because lava moves in steps.
+  The body sits behind the rock tiles. Additive heat glow; steam puffs in front
+  of the player. The minimap shows lava.
 * **Generation.** Shallow lava pits in lower-vault floors, sealed lava pockets,
   and 2–3 **quench pairs** (a sealed water cistern over a lava pocket with a
   cracked divider: drill it to build a crust). Generated lava never touches
