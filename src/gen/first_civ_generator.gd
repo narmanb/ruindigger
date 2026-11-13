@@ -19,6 +19,9 @@ extends RefCounted
 ## 11 basalt stabilisation            12 guardians, lamps, records
 ## 13 hit points                      14 validation: seal every cell that
 ##    cannot reach the gate, then prove arrival -> gate within the dig budget
+## 15 furnishing: background structures for each named vault, the wrecked
+##    lift, rails in the transit tunnels, gate pylons. Entities only, placed
+##    on the final terrain; never edits a cell (own RNG stream, deco_rng)
 ##
 ## There is no lift and no way back up: fairness here means "from anywhere you
 ## can get into, you can still reach the Transit Gate" (DigCheck, starting gear).
@@ -38,6 +41,7 @@ var topo := RandomNumberGenerator.new()
 var ore_rng := RandomNumberGenerator.new()
 var water_rng := RandomNumberGenerator.new()
 var enc_rng := RandomNumberGenerator.new()
+var deco_rng := RandomNumberGenerator.new()
 var vaults: Array = []             # [{rect, band}]
 var _z := Balance.Z_FIRST
 
@@ -56,6 +60,7 @@ func generate(seed_value: int, _contract: Dictionary = {}) -> Dictionary:
 	ore_rng.seed = seed_value ^ 0x3265726f
 	water_rng.seed = seed_value ^ 0x33727477
 	enc_rng.seed = seed_value ^ 0x34636e65
+	deco_rng.seed = seed_value ^ 0x35636564
 	space = GenSpace.new(W, H)
 	data = {"seed": seed_value, "stage": "deep", "entities": [], "grid": g, "route": [], "version": VERSION,
 		"landmarks": [], "water_features": [], "lava_features": [], "water_props": [], "finds": []}
@@ -82,6 +87,7 @@ func generate(seed_value: int, _contract: Dictionary = {}) -> Dictionary:
 	for i in g.mat.size():
 		g.hp[i] = Cell.max_hp(g.mat[i])
 	_validate()
+	_furnish()
 	data["repairs"] = repairs
 	data["plan"] = {"vaults": vaults.size(), "monoliths": int(data.get("monoliths", 0)), "plugs": int(data.get("plugs", 0)),
 		"overlaps": space.overlaps()}
@@ -527,13 +533,21 @@ func _link_tunnels() -> void:
 ## Dead-straight transport tunnels in the lower level, floored with composite.
 func _transit_tunnels() -> void:
 	var made := 0
+	var runs: Array = []
 	for k in 2:
 		var y := topo.randi_range(Balance.DEEP_BAND_TRANSIT + 3, H - 22)
 		var x0 := topo.randi_range(6, W / 2 - 20)
 		var x1 := topo.randi_range(W / 2 + 20, W - 7)
-		for x in range(x0, x1):
-			if space.kind_at(Vector2i(x, y)) != "" or space.kind_at(Vector2i(x, y - 2)) != "" or space.kind_at(Vector2i(x, y + 1)) != "":
+		var run_start := -1
+		for x in range(x0, x1 + 1):
+			var skip := x == x1 or space.kind_at(Vector2i(x, y)) != "" or space.kind_at(Vector2i(x, y - 2)) != "" or space.kind_at(Vector2i(x, y + 1)) != ""
+			if skip:
+				if run_start >= 0 and x - run_start >= 6:
+					runs.append({"y": y, "x0": run_start, "x1": x})
+				run_start = -1
 				continue
+			if run_start < 0:
+				run_start = x
 			for dy in range(-2, 1):
 				_air(x, y + dy)
 				no_feature[Vector2i(x, y + dy)] = true
@@ -541,6 +555,7 @@ func _transit_tunnels() -> void:
 				g.put(x, y + 1, Cell.ALLOY if x % 6 < 4 else Cell.HARD)
 		made += 1
 	data["transit_tunnels"] = made
+	data["transit_runs"] = runs
 
 
 # --- 9 ore ---------------------------------------------------------------------
@@ -835,7 +850,7 @@ func _guardians_and_records() -> void:
 			crawlers += 1
 	# a ceiling sentry watches some of the great vaults
 	var sentries := 0
-	var names := ["FIRST HALL", "HEAT WORKS", "CONDUIT", "STILL HALL", "DEEP ROAD", "ARCHIVE"]
+	_assign_themes()
 	for i in vaults.size():
 		var r: Rect2i = vaults[i]["rect"]
 		var fy := r.end.y - 1
@@ -843,7 +858,7 @@ func _guardians_and_records() -> void:
 		data["entities"].append({"type": "lamp", "cell": Vector2i(r.end.x - 3, r.position.y), "color": "6ff3d0"})
 		var sign_x := r.position.x + 3
 		if not g.is_solid(sign_x, fy) and g.is_solid(sign_x, fy + 1):
-			data["entities"].append({"type": "sign", "cell": Vector2i(sign_x, fy), "text": names[i % names.size()]})
+			data["entities"].append({"type": "sign", "cell": Vector2i(sign_x, fy), "text": vaults[i]["name"]})
 		var sx := r.position.x + r.size.x / 2
 		if sentries < Balance.DEEP_SENTRIES and i > 0 and enc_rng.randf() < 0.6 \
 				and g.get_mat(sx, r.position.y - 1) == Cell.ALLOY and not g.is_solid(sx, r.position.y) \
@@ -959,3 +974,183 @@ func _validate() -> void:
 		for i in g.mat.size():
 			g.hp[i] = Cell.max_hp(g.mat[i])
 	data["valid"] = _audit()
+
+
+# --- 15 furnishing -------------------------------------------------------------
+const THEME_PREF := [
+	["FIRST HALL", "STILL HALL", "ARCHIVE", "CONDUIT", "HEAT WORKS", "DEEP ROAD"],
+	["HEAT WORKS", "CONDUIT", "STILL HALL", "ARCHIVE", "FIRST HALL", "DEEP ROAD"],
+	["DEEP ROAD", "ARCHIVE", "CONDUIT", "STILL HALL", "HEAT WORKS", "FIRST HALL"],
+]
+
+
+## Each vault gets a theme that decides its name and what stands in it. The
+## shallowest vault, nearest the arrival, is always the FIRST HALL; the rest
+## prefer themes that suit their depth. Repeats get a numeral.
+func _assign_themes() -> void:
+	var used: Dictionary = {}
+	for i in vaults.size():
+		var theme := "FIRST HALL"
+		if i > 0:
+			var pref: Array = THEME_PREF[int(vaults[i]["band"])]
+			var free: Array = []
+			for n in pref:
+				if not used.has(n):
+					free.append(n)
+			if free.is_empty():
+				free = pref.duplicate()
+			theme = free[deco_rng.randi_range(0, mini(1, free.size() - 1))]
+		used[theme] = int(used.get(theme, 0)) + 1
+		vaults[i]["theme"] = theme
+		vaults[i]["name"] = theme if used[theme] == 1 else "%s %s" % [theme, ["", "I", "II", "III", "IV"][mini(used[theme], 4)]]
+		for lm in data["landmarks"]:
+			if lm["kind"] == "great_vault" and lm["rect"] == vaults[i]["rect"]:
+				lm["name"] = vaults[i]["name"]
+
+
+func _decor(kind: String, cell: Vector2i, ww: int, hh: int, flip: bool = false, variant: int = 0) -> void:
+	data["entities"].append({"type": "decor", "kind": kind, "cell": cell, "w": ww, "h": hh, "flip": flip, "variant": variant})
+
+
+## Floor columns of a vault where a piece may stand: open and dry at floor
+## level with headroom, on solid ground, not already used.
+func _floor_ok(x: int, fy: int, taken: Dictionary) -> bool:
+	if taken.has(x) or g.is_solid(x, fy) or g.is_solid(x, fy - 1) or not g.is_solid(x, fy + 1):
+		return false
+	var i := fy * W + x
+	return g.water[i] < 8 and g.lava[i] == 0 and g.lava[i + W] == 0 and g.water[i - W] < 8
+
+
+func _place_ground(r: Rect2i, taken: Dictionary, kind: String, ww: int, hh: int, count: int, gap: int, variant_fn: Callable = Callable()) -> Array:
+	var fy := r.end.y - 1
+	var xs: Array = []
+	for x in range(r.position.x + 1, r.end.x - ww):
+		xs.append(x)
+	# deterministic shuffle on this system's own stream
+	for k in range(xs.size() - 1, 0, -1):
+		var j := deco_rng.randi_range(0, k)
+		var tmp: int = xs[k]
+		xs[k] = xs[j]
+		xs[j] = tmp
+	var placed: Array = []
+	for x: int in xs:
+		if placed.size() >= count:
+			break
+		# the floor is not flat everywhere (tunnels and pits cut it): try the
+		# vault floor first, then a few rows lower or higher
+		var base := -1
+		for y in [fy, fy + 1, fy + 2, fy + 3, fy - 1, fy + 4, fy - 2]:
+			var ok := true
+			for xx in range(x, x + ww):
+				if not _floor_ok(xx, y, taken):
+					ok = false
+					break
+			if ok:
+				base = y
+				break
+		if base < 0:
+			continue
+		for xx in range(x - gap, x + ww + gap):
+			taken[xx] = true
+		var variant := 0 if not variant_fn.is_valid() else int(variant_fn.call(placed.size()))
+		_decor(kind, Vector2i(x, base), ww, hh + (base - fy if kind == "furnace" else 0), deco_rng.randf() < 0.5, variant)
+		placed.append(Vector2i(x, base))
+	return placed
+
+
+func _furnish() -> void:
+	var furnished := 0
+	var per_vault: Array = []
+	for v in vaults:
+		var before := furnished
+		var r: Rect2i = v["rect"]
+		var fy := r.end.y - 1
+		var taken: Dictionary = {}
+		# keep entities' footing clear (signs, crates, guardians, the cache spot)
+		for e in data["entities"]:
+			var c: Vector2i = e["cell"]
+			if c.y >= r.position.y and c.y <= fy + 1 and c.x >= r.position.x - 1 and c.x <= r.end.x:
+				for dx in range(-1, 2):
+					taken[c.x + dx] = true
+		var head := r.size.y          # rows from the floor up to the ceiling band
+		match String(v["theme"]):
+			"FIRST HALL":
+				var hh := clampi(head - 2, 6, 10)
+				var n := _place_ground(r, taken, "colossus", 5, hh, 3, 2, func(k: int) -> int: return 1 if k == 1 else 0).size()
+				if n >= 2:
+					_place_ground(r, taken, "fallen_head", 3, 2, 1, 1)
+				furnished += n
+			"HEAT WORKS":
+				furnished += _place_ground(r, taken, "furnace", 4, head, 3, 2).size()
+				_decor("pipes", Vector2i(r.position.x, r.position.y + 1), r.size.x, 1, false, 1)
+			"CONDUIT":
+				for frac in [0.38, 0.66]:
+					var row := fy - int(head * frac)
+					if row > r.position.y:
+						_decor("conduit", Vector2i(r.position.x, row), r.size.x, 1)
+				furnished += 2 + _place_ground(r, taken, "junction", 2, 3, 3, 3).size()
+			"STILL HALL":
+				furnished += _place_ground(r, taken, "husk", 4, 5, 4, 2).size()
+			"DEEP ROAD":
+				furnished += _rails(r.position.x, r.end.x, fy)
+				furnished += _place_ground(r, taken, "railcar", 5, 3, 2, 3, func(k: int) -> int: return k % 2).size()
+				for sx in [r.position.x + 1, r.end.x - 2]:
+					if _floor_ok(sx, fy, {}):
+						_decor("signal", Vector2i(sx, fy), 1, 4, false, 0)
+			"ARCHIVE":
+				var hh2 := clampi(head - 3, 5, 8)
+				furnished += _place_ground(r, taken, "shelves", 3, hh2, 5, 1).size()
+				var cache_done := false
+				for x in range(r.position.x + 2, r.end.x - 2):
+					for y in [fy, fy + 1, fy + 2, fy - 1]:
+						if not cache_done and _floor_ok(x, y, taken):
+							data["entities"].append({"type": "cache", "cell": Vector2i(x, y), "charges": 1, "repair": 30})
+							taken[x] = true
+							cache_done = true
+					if cache_done:
+						break
+		per_vault.append(furnished - before)
+	# the arrival hall: the cage that brought you down, and its snapped cables
+	var hall: Rect2i = data["arrival"]
+	var sp: Vector2i = data["spawn"]
+	_decor("lift_wreck", Vector2i(sp.x + 6, hall.end.y - 1), 6, 4, false)
+	_decor("cables", Vector2i(sp.x - 1, hall.position.y + 2), 3, hall.position.y)
+	# the transit tunnels: rails, abandoned cars and signals
+	for run in data.get("transit_runs", []):
+		var y: int = run["y"]
+		furnished += _rails(int(run["x0"]), int(run["x1"]), y)
+		var x := int(run["x0"]) + deco_rng.randi_range(4, 14)
+		while x < int(run["x1"]) - 6:
+			if deco_rng.randf() < 0.5:
+				var ok := true
+				for xx in range(x, x + 5):
+					if not _floor_ok(xx, y, {}):
+						ok = false
+				if ok:
+					_decor("railcar", Vector2i(x, y), 5, 3, deco_rng.randf() < 0.5, 1 if deco_rng.randf() < 0.3 else 0)
+					furnished += 1
+			elif _floor_ok(x, y, {}):
+				_decor("signal", Vector2i(x, y), 1, 3, false, 1 if deco_rng.randf() < 0.5 else 0)
+			x += deco_rng.randi_range(16, 28)
+	# the gate hall: two pylons flank the gate and light up with power
+	var gate: Vector2i = data["gate"]
+	for dx in [-7, 6]:
+		_decor("pylon", Vector2i(gate.x + dx, gate.y), 2, 6, false)
+	data["furnished"] = furnished
+	data["vault_decor"] = per_vault
+
+
+## Lay rail along every stretch of open, dry floor on this row.
+func _rails(x0: int, x1: int, fy: int) -> int:
+	var made := 0
+	var start := -1
+	for x in range(x0, x1 + 1):
+		var ok := x < x1 and _floor_ok(x, fy, {})
+		if ok and start < 0:
+			start = x
+		elif not ok and start >= 0:
+			if x - start >= 4:
+				_decor("rail", Vector2i(start, fy), x - start, 1)
+				made += 1
+			start = -1
+	return made

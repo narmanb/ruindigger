@@ -245,8 +245,9 @@ the plant cold and powered were checked.
    one per deep map, on a dry standing cell in the lower transit level that is
    reachable and leads on to the gate (`FirstCivGenerator._place_first_light`).
    The main mine still places exactly one keepsake per zone (`ZONE_COUNT`).
-2. D4: more archaeological signs or short records in vaults; a guardian that
-   patrols powered corridors and stalls when the engine is offline.
+2. ~~D4: furnish the vaults~~ done in 0.6.3 (see below). Still open: short
+   records or lore in vaults; a guardian that patrols powered corridors and
+   stalls when the engine is offline.
 3. D4: review reward balance (`DEEP_EXIT_BONUS`, premium ore density).
 4. D5: the optional third fluid (Aetheric Slurry / Thermal Gel). Write the
    interaction table first.
@@ -325,3 +326,35 @@ middle and used up most of the water.
   (0 repairs), game 111/111; then rerun after the last lava edits: lava 44/44,
   deep 1958/1958, game 111/111, physics 49/49, `water_live` 4/4,
   `structures` 13/13, `cargo` 19/19. Version 0.6.2 (code 17).
+
+## 0.6.3: furnished vaults
+
+Reported on device: the vault labels and region banners pointed at empty
+rooms.
+
+* `FirstCivGenerator._assign_themes()` (own stream `deco_rng`) gives each vault
+  a theme and a name. The shallowest vault is always FIRST HALL; the others
+  prefer themes by band (`THEME_PREF`), and repeats get a numeral. Names are
+  stored on the vault landmark (`lm["name"]`) and used for the sign.
+* New pass 15, `_furnish()`, runs after validation and only appends
+  `{"type": "decor", ...}` entities. It never edits a cell, so fairness and
+  repairs are unaffected. Pieces stand where every column is open and dry,
+  with ground beneath, trying the vault floor and then a few rows up or down,
+  because tunnels and pits cut many floors. ARCHIVE also places a supply cache.
+* Also furnished: the arrival hall (`lift_wreck` plus `cables` down the
+  shaft); the transit tunnels (`_transit_tunnels` records `transit_runs`;
+  rails, carts and signals); and the gate hall (two `pylon`s that read
+  `gate.powered`).
+* `DeepDecor` (`src/world/deep_decor.gd`) draws every piece in code at z -8:
+  behind rock tiles, water and lava, and in front of the parallax background.
+  Glows are sprites on the additive glow layer, and animation runs only while
+  the piece is on screen. There is no new asset file.
+* Deep suite checks (60 seeds): every vault is named and at most one per map
+  is bare; there is exactly one lift wreck and there are two pylons; every
+  standing piece rests on open floor. 2078/2078.
+* `tests/shot.gd`: `decor=<kind> [nth=N]` jumps to a piece; `at=lm:<NAME>`
+  jumps to a named vault (underscores for spaces). Every kind was rendered
+  and checked on desktop (xvfb, software GL), not on a phone.
+* Results: `TEST_TIMEOUT=1500 ./tools/run_tests.sh`: terrain 32/32, physics
+  49/49, save 15/15, ui 71/71, gen 4344/4344 (0 repairs), game 111/111,
+  lava 44/44, deep 2078/2078. Version 0.6.3 (code 18).

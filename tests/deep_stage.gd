@@ -77,6 +77,34 @@ static func generation(t: Node, n: int) -> void:
 		t.check(pockets.is_empty(), tag + ": no sealed pockets outside the plant tanks (%d)" % pockets.size())
 		t.check((d["plan"]["overlaps"] as Array).is_empty(), tag + ": no reserved footprints overlap %s" % str(d["plan"]["overlaps"]))
 		t.check(int(d["plan"]["vaults"]) >= 4, tag + ": at least 4 great vaults (%d)" % d["plan"]["vaults"])
+		# furnishing: every vault is named and themed, most have structures in
+		# them, and nothing decorative is buried in rock or hangs in the air
+		var vd: Array = d.get("vault_decor", [])
+		var bare := 0
+		for vn in vd:
+			if int(vn) == 0:
+				bare += 1
+		var named := 0
+		for lm in d["landmarks"]:
+			if lm["kind"] == "great_vault" and String(lm.get("name", "")) != "":
+				named += 1
+		t.check(named == int(d["plan"]["vaults"]) and vd.size() == named and bare <= 1, tag + ": every vault is named and furnished (%d named, %d bare)" % [named, bare])
+		var wreck := 0
+		var pylons := 0
+		var bad_decor := 0
+		for e in d["entities"]:
+			if e["type"] != "decor":
+				continue
+			var dc: Vector2i = e["cell"]
+			if e["kind"] == "lift_wreck":
+				wreck += 1
+			if e["kind"] == "pylon":
+				pylons += 1
+			if e["kind"] in ["colossus", "furnace", "junction", "husk", "railcar", "shelves", "signal", "fallen_head", "rail", "lift_wreck", "pylon"]:
+				for x in range(dc.x, dc.x + mini(int(e["w"]), 6)):
+					if g.is_solid(x, dc.y) or not g.is_solid(x, dc.y + 1):
+						bad_decor += 1
+		t.check(wreck == 1 and pylons == 2 and bad_decor == 0, tag + ": the lift wreck, gate pylons and every standing piece rest on open floor (%d wreck, %d pylons, %d bad)" % [wreck, pylons, bad_decor])
 		# content sanity
 		var in_rock := 0
 		var near_spawn := 0

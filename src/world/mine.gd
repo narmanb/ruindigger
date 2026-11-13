@@ -264,6 +264,16 @@ func _spawn_entities() -> void:
 				c.position = pos + Vector2(0, -7)
 				entity_root.add_child(c)
 				caches.append(c)
+			"decor":
+				var dd := DeepDecor.new()
+				dd.mine = self
+				dd.kind = e["kind"]
+				dd.w = int(e.get("w", 4))
+				dd.h = int(e.get("h", 4))
+				dd.flip = bool(e.get("flip", false))
+				dd.variant = int(e.get("variant", 0))
+				dd.position = Vector2(cell.x * C, (cell.y + 1) * C)
+				entity_root.add_child(dd)
 			"crate", "beam", "sign", "skull":
 				var pr := Entities.Prop.new()
 				pr.prop = e["type"] if e["type"] != "skull" else "skull"

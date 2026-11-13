@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.3 (feature/first-civilization)
+- **The First Civilization's halls are no longer empty.** Each great vault now has a theme that sets its name and what stands in it:
+  - **FIRST HALL**: seated stone colossi on plinths with faintly glowing cores; one has lost its head, which lies in the hall.
+  - **HEAT WORKS**: old furnaces with glowing, flickering mouths and gauges, chimneys up to the ceiling, hot pipes along the roof.
+  - **CONDUIT**: two power lines across the hall with pulses of light running along them, and blinking junction boxes.
+  - **STILL HALL**: machine husks kneeling where they shut down, heads bowed; their eyes still flicker now and then.
+  - **DEEP ROAD**: rails along the floor, abandoned crystal carts (some tipped over) and signal lamps.
+  - **ARCHIVE**: tall racks of record slates, some still lit, some fallen, plus a supply cache.
+- **Arrival hall:** the wrecked lift cage lies where it crashed, sparking, with its snapped cables hanging down the shaft.
+- **Lower transit:** the long transit tunnels have rails, abandoned carts and signal lamps.
+- **Transit Gate:** two pylons flank the gate. They glow dimly while the gate has no power and pulse brightly once the Thermal Plant is running.
+- Vaults are themed by depth: the vault nearest the arrival is always the First Hall, the plant level leans toward Heat Works and Conduit, and the transit level toward Deep Road and Archive. Repeated themes get a numeral (for example "DEEP ROAD II").
+- All of it is background scenery: it never blocks you, sits behind rock, water and lava, and only animates while on screen.
+
 ## 0.6.2 (feature/first-civilization)
 - **Lava pouring into water spreads instead of stacking into a pillar.** A heavy stream of lava now sinks through the water, or spreads sideways under it along the floor, before it crusts. Thin dribbles harden into slag that builds up and only becomes a block once a full cell's worth has gathered, instead of every drop turning into its own block. New rock that lands on a pile slides off its sides into the water, so it builds a low mound.
 - **Less water lost per reaction.** How much cooling a lava cell needs now depends on how much lava is in it: a thin film crusts quickly and uses little water, and a full cell still takes a full cell of water. A cell touching water on several sides no longer boils more than it needs.

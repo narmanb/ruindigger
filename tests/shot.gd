@@ -54,6 +54,25 @@ func _process(_d: float) -> void:
 		var p: PackedStringArray = args["teleport"].split(",")
 		mine.player.global_position = Vector2(float(p[0]) * 16 + 8, float(p[1]) * 16)
 		mine.camera.reset_smoothing()
+	if frame == 20 and mine and args.has("deep") and mine.get("data") != null:
+		var names: Array = []
+		for lm in mine.data.get("landmarks", []):
+			if lm.has("name"):
+				names.append(lm["name"])
+		print("VAULTS ", names, " furnished ", mine.data.get("furnished", 0))
+	if frame == 20 and mine and args.has("decor") and mine.get("data") != null:
+		var nth := int(args.get("nth", "0"))
+		for e in mine.data["entities"]:
+			if e["type"] == "decor" and e["kind"] == args["decor"]:
+				if nth > 0:
+					nth -= 1
+					continue
+				var dc: Vector2i = e["cell"]
+				print("DECOR at ", dc, " w ", e["w"], " h ", e["h"])
+				mine.player.global_position = Vector2((dc.x + int(e["w"]) / 2) * 16 + 8, (dc.y + 1) * 16 - Player.HALF.y - 0.5)
+				mine.player.invuln = 1e9
+				mine.camera.reset_smoothing()
+				break
 	if frame == 20 and mine and args.has("at") and mine.get("data") != null:
 		var key: String = args["at"]
 		var c: Vector2i = mine.data[key] if mine.data.has(key) else Vector2i(10, 10)
@@ -61,7 +80,7 @@ func _process(_d: float) -> void:
 			var want := key.substr(3)
 			var pool: Array = mine.data.get("landmarks", []) if key.begins_with("lm:") else mine.data.get("plan", {}).get("chambers", [])
 			for item in pool:
-				if item.get("kind", item.get("arch", "")) == want:
+				if item.get("kind", item.get("arch", "")) == want or item.get("name", "") == want.replace("_", " "):
 					var rr: Rect2i = item["rect"]
 					c = Vector2i(rr.position.x + rr.size.x / 2, rr.end.y - 1)
 					# stand on the first open cell above solid ground near the centre
