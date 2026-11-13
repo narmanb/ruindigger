@@ -464,7 +464,7 @@ static func live(t: Node) -> void:
 	var r: Dictionary = Game.last_result
 	t.check(Game.current_name == "results" and r.get("extracted", false), "leaving through the gate is a successful extraction")
 	t.check(r.get("deep", false) and r.get("deep_exit", false) and int(r.get("deep_bonus", 0)) == Balance.DEEP_EXIT_BONUS, "the result records the deep exit and its bonus")
-	var expect: int = Game.cargo_value({1: 3, 3: 2}) + 260 + Game.finds_value([2]) + Balance.DEEP_EXIT_BONUS
+	var expect: int = Game.cargo_value({1: 3, 3: 2}) + 260 + Game.finds_value([2]) + Balance.DEEP_EXIT_BONUS + int(r.get("orders_bonus", 0))
 	t.check(Progress.credits - credits_before == expect, "everything is banked exactly once (%d, expected %d)" % [Progress.credits - credits_before, expect])
 	t.check(int(r.get("depth", 0)) >= int(Balance.MAP_H * Balance.METERS_PER_CELL), "the recorded depth spans both stages (%d m)" % r.get("depth", 0))
 	await t._frames(5)
