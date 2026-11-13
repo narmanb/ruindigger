@@ -574,6 +574,19 @@ func stop_sounds() -> void:
 
 
 # ---------------------------------------------------------------------------
+func throw_lure() -> void:
+	if not mine or dead:
+		return
+	if int(Game.run.get("lures", 0)) <= 0:
+		mine.toast("No lures left")
+		Audio.play("ui_deny")
+		return
+	Game.run["lures"] = int(Game.run["lures"]) - 1
+	var v := Vector2(Balance.LURE_THROW.x * facing, Balance.LURE_THROW.y) + velocity * 0.4
+	mine.spawn_lure(global_position + Vector2(facing * 6, -6), v)
+	Audio.play("throw")
+
+
 func _throw_charge(ay: float) -> void:
 	if not mine or Game.run.get("charges", 0) <= 0:
 		if mine:

@@ -103,6 +103,7 @@ func _physics_process(delta: float) -> void:
 	attack_cd = maxf(0.0, attack_cd - delta)
 	hitstun = maxf(0.0, hitstun - delta)
 	if grid.get_water(cell.x, cell.y) >= Balance.WATER_MAX / 2:
+		last_hit = "water"
 		hit(Balance.WATER_CRAWLER_DPS * delta, global_position, false)
 		if state == S.DEAD:
 			return
@@ -223,6 +224,16 @@ func hear(pos: Vector2, radius_cells: float) -> void:
 		forget_t = Balance.CRAWLER_FORGET + 2.0
 		target_cell = grid.world_to_cell(pos)
 		_plan(target_cell)
+
+
+## A lure pinged nearby: drop everything (even a chase) and go to it.
+func lure(pos: Vector2) -> void:
+	if state in [S.DEAD, S.STUNNED]:
+		return
+	state = S.INVESTIGATE
+	forget_t = Balance.CRAWLER_FORGET + 2.0
+	target_cell = grid.world_to_cell(pos)
+	_plan(target_cell)
 
 
 func _wander() -> void:

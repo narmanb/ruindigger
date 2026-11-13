@@ -23,6 +23,10 @@ func _ready() -> void:
 	event_t = Balance.PRESSURE_FIRST_EVENT
 
 
+func _mult() -> float:
+	return float(Game.run.get("contract", {}).get("pressure", 1.0))
+
+
 func _tier_of(v: float) -> int:
 	var t := 0
 	for k in Balance.PRESSURE_TIERS.size():
@@ -41,7 +45,7 @@ func zone() -> int:
 
 ## Drilling and blasts make the mine restless.
 func on_noise(radius_cells: float) -> void:
-	var k: float = Balance.PRESSURE_NOISE_MULT[zone()]
+	var k: float = Balance.PRESSURE_NOISE_MULT[zone()] * _mult()
 	value += (Balance.PRESSURE_BLAST if radius_cells >= 14.0 else Balance.PRESSURE_DRILL) * k
 
 
@@ -55,7 +59,7 @@ func _physics_process(delta: float) -> void:
 	if rank < _deepest_rank:
 		value -= Balance.PRESSURE_RETREAT * delta
 	else:
-		value += Balance.PRESSURE_RATE[z] * delta
+		value += Balance.PRESSURE_RATE[z] * _mult() * delta
 	value = clampf(value, 0.0, 100.0)
 	Game.run["pressure"] = value
 	var t := _tier_of(value)

@@ -14,6 +14,7 @@ var current: Node = null
 var current_name := ""
 var contract: Dictionary = {}
 var contract_offers: Array = []
+var modifiers: Array = []          # ids chosen on the contract board for the next dive
 var run: Dictionary = {}
 var last_result: Dictionary = {}
 var _fade: ColorRect
@@ -48,6 +49,41 @@ func roll_contracts() -> void:
 		d["reward"] = int(Balance.RELIC_BONUS * float(d["bonus"]))
 		contract_offers.append(d)
 	contract = contract_offers[0]
+
+
+func toggle_modifier(id: String) -> bool:
+	if modifiers.has(id):
+		modifiers.erase(id)
+		run_changed.emit()
+		return true
+	if modifiers.size() >= Balance.MODIFIER_MAX or Balance.modifier(id).is_empty():
+		return false
+	modifiers.append(id)
+	run_changed.emit()
+	return true
+
+
+## The contract with the chosen modifiers folded in, and their total bonus.
+func modded_contract(base: Dictionary, mods: Array) -> Dictionary:
+	var c := base.duplicate()
+	var bonus := 0.0
+	var dark := 1.0
+	for id in mods:
+		var m := Balance.modifier(String(id))
+		for k in Balance.MODIFIER_KEYS:
+			if m.has(k):
+				c[k] = float(c.get(k, 1.0)) * float(m[k])
+		dark = minf(dark, float(m.get("dark", 1.0)))
+		bonus += float(m.get("bonus", 0.0))
+	c["dark"] = dark
+	c["mod_bonus"] = bonus
+	return c
+
+
+## Extra pay on ore credits from this run's modifiers.
+func modifier_pay(cargo: Dictionary) -> int:
+	var b := float(run.get("contract", {}).get("mod_bonus", 0.0))
+	return int(round(cargo_value(cargo) * b))
 
 
 func choose_contract(i: int) -> void:
@@ -85,8 +121,10 @@ func start_run() -> void:
 	Progress.save_progress()
 	run = {
 		"seed": int(contract.get("seed", 1234)),
-		"contract": contract,
+		"contract": modded_contract(contract, modifiers),
+		"modifiers": modifiers.duplicate(),
 		"charges": charges,
+		"lures": Balance.LURES_PER_RUN,
 		"cargo": {},
 		"finds": [],
 		"banked": {},
@@ -181,9 +219,11 @@ func end_run(extracted: bool, cause: String = "") -> void:
 	for o: Dictionary in run.get("orders", []):
 		var met := Orders.satisfied(o, run)
 		orders.append({"text": o.get("text", ""), "met": met, "reward": int(o.get("reward", 0))})
+	var mod_pay := 0
 	if extracted:
 		orders_bonus = Orders.payout(run)
 		credits = cargo_value(cargo)
+		mod_pay = modifier_pay(cargo)
 		if run.get("relic", false):
 			relic_bonus = int(contract.get("reward", Balance.RELIC_BONUS))
 		Progress.stats["extractions"] = int(Progress.stats.get("extractions", 0)) + 1
@@ -193,13 +233,14 @@ func end_run(extracted: bool, cause: String = "") -> void:
 		Progress.stats["deaths"] = int(Progress.stats.get("deaths", 0)) + 1
 	var depth_m := int(run.get("max_depth", 0) * Balance.METERS_PER_CELL)
 	Progress.stats["best_depth"] = maxi(int(Progress.stats.get("best_depth", 0)), depth_m)
-	Progress.add_credits(credits + relic_bonus + finds_bonus + deep_bonus + orders_bonus)
+	Progress.add_credits(credits + relic_bonus + finds_bonus + deep_bonus + orders_bonus + mod_pay)
 	Progress.tutorial_done = true
 	Progress.save_progress()
 	last_result = {
 		"extracted": extracted, "cause": cause, "cargo": cargo, "credits": credits,
 		"relic": run.get("relic", false), "relic_bonus": relic_bonus, "depth": depth_m,
 		"finds": finds, "finds_bonus": finds_bonus, "orders": orders, "orders_bonus": orders_bonus,
+		"modifiers": run.get("modifiers", []).duplicate(), "mod_pay": mod_pay,
 		"deep": deep, "deep_exit": extracted and deep and run.get("deep_exit", false), "deep_bonus": deep_bonus,
 		"kills": run.get("kills", 0), "time": run.get("time", 0.0), "seed": run.get("seed", 0),
 		"contract": contract.get("name", ""),

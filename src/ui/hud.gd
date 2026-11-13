@@ -260,6 +260,7 @@ class Diag extends Control:
 				draw_rect(Rect2(r.position, Vector2(7, 2)), Color("ff8a8a"))
 			else:
 				draw_rect(r, Color(0.3, 0.25, 0.35), false, 1.0)
+		draw_string(f, Vector2(84, 55), "LURE %d" % int(Game.run.get("lures", 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UIKit.TEAL if int(Game.run.get("lures", 0)) > 0 else UIKit.MUTED)
 		var scap: int = hud.mine.scaffold_cap()
 		var sn: int = Game.run.get("scaffold", 0)
 		var scol := Color("f2cc59").lerp(Color("ff5a4a"), hud._scaf_pulse)

@@ -54,6 +54,12 @@ func _ready() -> void:
 		var description := UIKit.label(find["desc"], 10, UIKit.MUTED)
 		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		list.add_child(description)
+	var mods: Array = r.get("modifiers", [])
+	if not mods.is_empty():
+		var names: Array = []
+		for id in mods:
+			names.append(String(Balance.modifier(String(id)).get("name", id)))
+		list.add_child(UIKit.label("Modifiers (%s): %s" % [", ".join(names), ("+%d CR" % int(r.get("mod_pay", 0))) if ok else "no pay"], 11, UIKit.TEAL if ok else UIKit.MUTED))
 	for o: Dictionary in r.get("orders", []):
 		var met: bool = o.get("met", false)
 		var txt := "ORDER %s: %s" % ["MET" if met else "MISSED", o.get("text", "")]
@@ -67,7 +73,7 @@ func _ready() -> void:
 			list.add_child(UIKit.label("Lost in The First Civilization", 11, UIKit.MUTED))
 	list.add_child(UIKit.label("Depth %dm   Time %s   Kills %d" % [r.get("depth", 0), _time(r.get("time", 0.0)), r.get("kills", 0)], 10, UIKit.MUTED))
 	list.add_child(UIKit.label("Seed %d" % r.get("seed", 0), 9, UIKit.MUTED))
-	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0)) + int(r.get("finds_bonus", 0)) + int(r.get("deep_bonus", 0)) + int(r.get("orders_bonus", 0))
+	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0)) + int(r.get("finds_bonus", 0)) + int(r.get("deep_bonus", 0)) + int(r.get("orders_bonus", 0)) + int(r.get("mod_pay", 0))
 	v.add_child(UIKit.label("EARNED: %d CR    BALANCE: %d CR" % [total, Progress.credits], 12, UIKit.TEAL, true))
 	var b := UIKit.button("RETURN TO OUTPOST", func() -> void: Game.goto("outpost"), 200)
 	v.add_child(b)

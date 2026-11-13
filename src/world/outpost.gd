@@ -432,6 +432,31 @@ func _contract_panel() -> Control:
 			_open_panel(_contract_panel()), 360)
 		v.add_child(b)
 		v.add_child(UIKit.label("   " + c["desc"] + "   (seed %d)" % c["seed"], 9, UIKit.MUTED))
+	v.add_child(UIKit.label("DIVE MODIFIERS - up to %d. Harder dives pay more for ore." % Balance.MODIFIER_MAX, 9, UIKit.TEAL, true))
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	v.add_child(grid)
+	var picked: Array = []
+	for m: Dictionary in Balance.MODIFIERS:
+		var id: String = m["id"]
+		var on: bool = Game.modifiers.has(id)
+		var pay := ("+%d%%" % int(round(float(m.get("bonus", 0.0)) * 100.0))) if float(m.get("bonus", 0.0)) > 0.0 else "+ORE"
+		var mb := UIKit.button("%s%s %s" % ["> " if on else "", m["name"], pay], func() -> void:
+			if Game.toggle_modifier(id):
+				Audio.play("ui_confirm")
+			else:
+				Audio.play("ui_deny")
+			_open_panel(_contract_panel()), 116)
+		mb.tooltip_text = String(m["desc"])
+		grid.add_child(mb)
+		if on:
+			picked.append("%s: %s" % [m["name"], m["desc"]])
+	var info := UIKit.label("   " + ("  ".join(picked) if not picked.is_empty() else "None chosen: a standard dive."), 9, UIKit.MUTED)
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size.x = 360
+	v.add_child(info)
 	v.add_child(UIKit.button("CLOSE", _close_panel))
 	return fr[0]
 
@@ -459,6 +484,12 @@ func _launch_panel() -> Control:
 	var c: Dictionary = Game.contract
 	v.add_child(UIKit.label("CONTRACT: " + str(c.get("name", "")), 11, UIKit.AMBER, true))
 	v.add_child(UIKit.label(str(c.get("desc", "")), 10))
+	if not Game.modifiers.is_empty():
+		var mc := Game.modded_contract(c, Game.modifiers)
+		var names: Array = []
+		for id in Game.modifiers:
+			names.append(String(Balance.modifier(String(id))["name"]))
+		v.add_child(UIKit.label("MODIFIERS: %s  (+%d%% ore pay)" % [", ".join(names), int(round(float(mc["mod_bonus"]) * 100.0))], 10, UIKit.TEAL))
 	v.add_child(UIKit.label("Relic bonus: %d CR    Charges: %d    Cargo: %d" % [c.get("reward", 0), Balance.CHARGES_FREE + Progress.charges, cargo_cap()], 10, UIKit.TEAL))
 	v.add_child(UIKit.label("Death loses unbanked cargo. Upgrades are permanent.", 9, UIKit.MUTED))
 	var row := HBoxContainer.new()

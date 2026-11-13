@@ -63,6 +63,73 @@ class Charge extends Node2D:
 			queue_free()
 
 
+## Lure: a thrown beacon that pings for a while. Crawlers in range drop what
+## they are doing, even a chase, and go to it. Pings are not drill noise, so a
+## lure does not wake the mine (no pressure).
+class Lure extends Node2D:
+	var mine: Node
+	var vel := Vector2.ZERO
+	var stuck := false
+	var life := Balance.LURE_TIME
+	var ping_t := 0.2
+	var pulse := 0.0
+	var glow: Sprite2D
+
+	func _ready() -> void:
+		glow = Sprite2D.new()
+		glow.texture = load("res://assets/gen/glow.png")
+		glow.scale = Vector2(0.3, 0.3)
+		glow.modulate = Color(0.4, 1.0, 0.9, 0.0)
+		mine.glow_root.add_child(glow)
+
+	func _exit_tree() -> void:
+		if is_instance_valid(glow):
+			glow.queue_free()
+
+	func _physics_process(delta: float) -> void:
+		var g: TerrainGrid = mine.grid
+		if not stuck:
+			vel.y = minf(vel.y + 700.0 * delta, 380.0)
+			var np := global_position + vel * delta
+			if g.solid_at(np + Vector2(0, 3 * signf(vel.y))):
+				vel.y = -vel.y * 0.25
+				vel.x *= 0.5
+				if absf(vel.y) < 40.0:
+					vel = Vector2.ZERO
+					stuck = true
+			elif g.solid_at(np + Vector2(3 * signf(vel.x), 0)):
+				vel.x = -vel.x * 0.3
+			else:
+				global_position = np
+		else:
+			if not g.solid_at(global_position + Vector2(0, 5)):
+				stuck = false
+			life -= delta
+			ping_t -= delta
+			if ping_t <= 0.0:
+				ping_t = Balance.LURE_PING
+				pulse = 1.0
+				Audio.play_at("fuse", global_position, -2.0, 0.3, 0.0)
+				for e in mine.enemies:
+					if is_instance_valid(e) and e.has_method("lure") and e.global_position.distance_to(global_position) <= Balance.LURE_RADIUS * Balance.CELL:
+						e.lure(global_position)
+			if life <= 0.0:
+				queue_free()
+				return
+		pulse = maxf(0.0, pulse - delta * 2.5)
+		glow.global_position = global_position
+		glow.modulate.a = 0.25 + 0.6 * pulse
+		glow.scale = Vector2.ONE * (0.3 + 0.5 * (1.0 - pulse) * pulse)
+		queue_redraw()
+
+	func _draw() -> void:
+		draw_rect(Rect2(-3, -2, 6, 5), Color("3d4652"))
+		draw_rect(Rect2(-3, -2, 6, 1), Color("8a9aa8"))
+		draw_circle(Vector2(0, -3), 1.6, Color(0.4, 1.0, 0.9, 0.4 + 0.6 * pulse))
+		if pulse > 0.0:
+			draw_arc(Vector2.ZERO, 6.0 + (1.0 - pulse) * 26.0, 0, TAU, 24, Color(0.4, 1.0, 0.9, pulse * 0.6), 1.0)
+
+
 ## Gas: breaking a gas sac starts a telegraphed vent, then a lingering cloud.
 ## Any explosion touching a vent or cloud ignites it (big, readable fireball).
 class GasSystem extends Node2D:

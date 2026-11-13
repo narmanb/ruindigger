@@ -77,7 +77,7 @@ func refresh() -> void:
 	var relic_value := int(Game.contract.get("reward", Balance.RELIC_BONUS)) if Game.run.get("relic", false) else 0
 	var finds: Array = Game.run.get("finds", [])
 	capacity_label.text = "ORE RACK: %d / %d    KEEPSAKES: %d / %d" % [Game.cargo_count(), mine.cargo_cap(), finds.size(), Balance.KEEPSAKES.size()]
-	total_label.text = "EXTRACT NOW: %d CR" % (ore_value + relic_value + Game.finds_value(finds) + Orders.payout(Game.run))
+	total_label.text = "EXTRACT NOW: %d CR" % (ore_value + relic_value + Game.finds_value(finds) + Orders.payout(Game.run) + Game.modifier_pay(cargo))
 	relic_label.text = "Relic secured: +%d CR" % relic_value if Game.run.get("relic", false) else "Relic not recovered - bonus not included"
 	var keys: Array = []
 	for k in cargo.keys():

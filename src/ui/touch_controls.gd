@@ -243,7 +243,8 @@ func _notification(what: int) -> void:
 func _process(_d: float) -> void:
 	if mine and mine.player:
 		var it: Dictionary = mine.nearest_interactable(mine.player)
-		var lbl: String = it.get("label", "")
+		# with nothing to use nearby, the USE button throws a lure
+		var lbl: String = it.get("label", "LURE" if int(Game.run.get("lures", 0)) > 0 else "")
 		if lbl != interact_label:
 			interact_label = lbl
 			queue_redraw()

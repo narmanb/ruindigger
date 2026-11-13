@@ -423,6 +423,11 @@ func _heat_feedback(delta: float) -> void:
 		if not is_instance_valid(e) or not e.has_method("hit"):
 			continue
 		var ec := grid.world_to_cell(e.global_position)
+		if steam and steam.density(ec) >= Balance.STEAM_SCALD and randf() < delta / Balance.STEAM_INTERVAL:
+			e.set("last_hit", "steam")
+			e.hit(Balance.STEAM_ENEMY_DAMAGE, e.global_position, false)
+			if not is_instance_valid(e):
+				continue
 		if grid.get_lava(ec.x, ec.y) >= Balance.LAVA_BURN_MIN and randf() < delta / Balance.LAVA_BURN_INTERVAL:
 			e.set("last_hit", "lava")
 			e.hit(Balance.LAVA_ENEMY_DAMAGE, e.global_position + Vector2(0, 8), false)
@@ -515,6 +520,9 @@ func _atmosphere(delta: float) -> void:
 	var y := mid.y
 	var s := grid.get_stratum(clampi(int(mid.x), 0, grid.w - 1), clampi(int(y), 0, grid.h - 1))
 	var target: Color = AMBIENT[s]
+	var dark := float(Game.run.get("contract", {}).get("dark", 1.0))
+	if dark < 1.0:
+		target = Color(target.r * dark, target.g * dark, target.b * dark)
 	if y < 12.0 and stage == "mine":
 		target = target.lerp(Color(0.55, 0.48, 0.44), clampf((12.0 - y) / 8.0, 0.0, 1.0))
 	modulate_node.color = modulate_node.color.lerp(target, clampf(delta * 3.0, 0.0, 1.0))
@@ -561,6 +569,7 @@ func _tutorial(delta: float) -> void:
 		["CHARGE throws a demolition charge. Mind the red ring!", 26.0],
 		["Breaking rock fills SCAF. LADDER raises a ladder from your feet to the ceiling.", 36.0],
 		["Deeper down the ladders run out: drill your own way, cracked rock marks the route.", 48.0],
+		["USE with nothing nearby throws a LURE. Crawlers go to the noise: lead them under loose rock or into water.", 62.0],
 	]
 	if tutorial_step < tips.size() and _tut_t > tips[tutorial_step][1]:
 		hud.hint(tips[tutorial_step][0])
@@ -747,6 +756,15 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 		gas.ignite_near(pos, r)
 
 
+func spawn_lure(pos: Vector2, v: Vector2) -> Node2D:
+	var lu := Hazards.Lure.new()
+	lu.mine = self
+	lu.vel = v
+	lu.position = pos
+	entity_root.add_child(lu)
+	return lu
+
+
 func spawn_charge(pos: Vector2, v: Vector2) -> void:
 	var ch := Hazards.Charge.new()
 	ch.mine = self
@@ -870,7 +888,11 @@ func nearest_interactable(pl: Player) -> Dictionary:
 
 func player_interact(pl: Player) -> void:
 	var it := nearest_interactable(pl)
-	if it.is_empty() or ending:
+	if ending:
+		return
+	if it.is_empty():
+		# nothing to use here: throw a lure instead
+		pl.throw_lure()
 		return
 	match it["kind"]:
 		"find":

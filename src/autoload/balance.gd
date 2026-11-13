@@ -94,6 +94,25 @@ const PRESSURE_TREMOR_WARN := 1.4    # s of dust before a tremor ceiling falls
 const PRESSURE_SWARM_SIZE := [1, 2, 3]
 const PRESSURE_SWARM_MAX := 5        # crawlers alive from pressure at once
 const PRESSURE_DESCENT_KEEP := 0.5   # share of pressure carried into the deep stage
+# --- Dive modifiers: chosen on the contract board, up to MODIFIER_MAX ---
+# Multipliers stack onto the contract; "bonus" is extra pay on ore credits.
+const MODIFIER_MAX := 2
+const MODIFIERS := [
+	{"id": "flooded", "name": "FLOODED", "desc": "Twice the groundwater.", "water": 2.0, "bonus": 0.2},
+	{"id": "brittle", "name": "BRITTLE", "desc": "The mine wakes 60% faster.", "pressure": 1.6, "bonus": 0.25},
+	{"id": "swarm", "name": "SWARM", "desc": "80% more crawlers.", "crawlers": 1.8, "bonus": 0.3},
+	{"id": "gassy", "name": "GASSY", "desc": "Twice the gas pockets.", "gas": 2.0, "bonus": 0.2},
+	{"id": "blackout", "name": "BLACKOUT", "desc": "Darker caves; lamps matter.", "dark": 0.55, "bonus": 0.3},
+	{"id": "deep_veins", "name": "DEEP VEINS", "desc": "+40% ore, but the mine wakes 30% faster.", "ore": 1.4, "pressure": 1.3, "bonus": 0.0},
+]
+const MODIFIER_KEYS := ["ore", "crawlers", "gas", "water", "pressure"]
+# --- Lure (throwable noise maker; USE with nothing nearby) ---
+const LURES_PER_RUN := 3
+const LURE_TIME := 9.0               # seconds it keeps pinging once it lands
+const LURE_PING := 0.7               # seconds between pings
+const LURE_RADIUS := 18.0            # cells: crawlers this close go to it, even mid-chase
+const LURE_THROW := Vector2(170, -150)
+const STEAM_ENEMY_DAMAGE := 8.0      # per scald tick to an enemy in dense steam
 const ORDER_REWARD := {"ore": 60, "value": 120, "depth": 90, "keepsake": 80, "terrain": 110}
 const PICKUP_MAGNET_RADIUS := 34.0
 const RELIC_BONUS := 260
@@ -491,6 +510,13 @@ func cargo_capacity(level: int) -> int:
 
 func hull(level: int) -> float:
 	return HULL[clampi(level, 0, HULL.size() - 1)]
+
+
+func modifier(id: String) -> Dictionary:
+	for m: Dictionary in MODIFIERS:
+		if m["id"] == id:
+			return m
+	return {}
 
 
 func ore_color(id: int) -> Color:

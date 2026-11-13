@@ -1585,12 +1585,13 @@ func _water_pockets() -> void:
 	# small groundwater pockets: common but modest, irregular blobs
 	var counts: Array = []
 	for z in Balance.ZONE_COUNT:
-		counts.append(water_rng.randi_range(int(Balance.GEN_POCKETS[z][0]), int(Balance.GEN_POCKETS[z][1])))
+		var wm: float = float(contract.get("water", 1.0))
+		counts.append(int(round(water_rng.randi_range(int(Balance.GEN_POCKETS[z][0]), int(Balance.GEN_POCKETS[z][1])) * wm)))
 	var pockets: Array = []
 	for st in Balance.ZONE_COUNT:
 		var placed := 0
 		var tries := 0
-		while placed < counts[st] and tries < 400:
+		while placed < counts[st] and tries < int(400 * maxf(1.0, float(contract.get("water", 1.0)))):
 			tries += 1
 			var rx := water_rng.randi_range(2, 5)
 			var ry := water_rng.randi_range(2, 3)
@@ -1612,6 +1613,8 @@ func _water_pockets() -> void:
 					if dx * dx + dy * dy <= 0.8 or dx2 * dx2 + dy2 * dy2 <= 1.0:
 						cells.append(Vector2i(x, y))
 			var fill_from := cy - ry + water_rng.randi_range(0, 2)
+			if float(contract.get("water", 1.0)) > 1.0:
+				fill_from = cy - ry          # flooded: every pocket brims
 			for c in cells:
 				g.put(c.x, c.y, Cell.AIR)
 				if c.y >= fill_from:
@@ -1642,7 +1645,7 @@ func _fill_basins() -> void:
 		if basin.is_empty():
 			continue
 		var is_lake: bool = c["arch"] == "cathedral"
-		if not is_lake and water_rng.randf() > 0.7:
+		if not is_lake and water_rng.randf() > 0.7 and float(contract.get("water", 1.0)) <= 1.0:
 			continue
 		# later passes may have opened the basin's rim: lower the waterline until
 		# the body is contained, rather than letting it drain while settling

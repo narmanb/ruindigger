@@ -1,6 +1,8 @@
 # Fun pass: from digging simulator to game
 
-Status: **proposal, nothing built yet.** Written after playing 0.6.3 and the
+Status: **S1, S2, S3, S5 built; S4 partly built** (lures, drowning, steam,
+terrain kills) on branch `feature/fun-pass`, version 0.7.0. See "Build log"
+at the end. S6 to S8 not started. Written after playing 0.6.3 and the
 owner's notes. Every segment below is independent enough to ship on its own;
 we do not have to do it all, or in one go.
 
@@ -184,3 +186,45 @@ already works this way: its test solves the puzzle in the real sim.
 * Art and audio only via `tools/assetgen`.
 * Every segment lands with tests, and nothing is claimed about phone
   performance until it has been measured on a phone.
+
+
+## Build log (0.7.0, feature/fun-pass)
+
+Built without the owner's answers to the open questions; these defaults were
+chosen and are easy to change in `Balance`:
+
+1. Rack 60 / 90 / 130 / 180. Swapped-out ore drops as a pickup (it does not
+   vanish).
+2. Extraction ends the run in this game, so pressure has no "bank at a lift"
+   reset. It eases while you are above your deepest zone, and half of it
+   carries into The First Civilization. It does not carry between dives.
+3. No gadget slots yet (S6). The lure is a free consumable instead, thrown
+   with USE when nothing is nearby.
+4. Everything applies to both the main mine and The First Civilization.
+   Modifiers change generation only in the main mine; BRITTLE and BLACKOUT
+   also apply in the deep stage.
+5. Existing saves keep working. Rack size comes from the cargo upgrade
+   level, so current upgrades buy the bigger rack.
+
+What is in each segment:
+
+* **S1:** `Balance.ore_key/ore_value/ore_label` pack ore + grade into a cargo
+  key (grade-0 keys equal the old ids). `Mine.spawn_ore` grades new drops by
+  zone. `Mine.collect` swaps; `Game.can_take` gates the magnet.
+* **S2:** `src/world/orders.gd`. HUD `OrdersPanel`, manifest section and
+  results lines. Enemies record `last_hit`, and `Orders.TERRAIN_SOURCES`
+  decides what counts as a terrain kill.
+* **S3:** `src/world/pressure.gd` (own RNG stream). Mine noise feeds it.
+  Tremors go through the existing collapse telegraph, gas through
+  `GasSystem.vent_at`, swarms through `Mine.spawn_crawler`.
+* **S4 (part):** `Hazards.Lure`, `Crawler.lure()`, `Player.throw_lure()`,
+  enemy steam scald, drowning attributed to water. Not built: shear charge,
+  anchor bolts, the breaker enemy, enemy-triggered hazards.
+* **S5:** `Balance.MODIFIERS`, `Game.modded_contract/modifier_pay`, contract
+  board grid, results line. FLOODED scales pocket counts, fills every pocket
+  and basin, and tries placement harder (pocket count alone was capped by
+  space).
+
+Tests: suite `fun` (in `run_tests.sh`) covers all of the above. A one-off
+sweep of 90 maps (each modifier x 15 seeds) gave 0 invalid or repaired.
+Not measured on a phone.

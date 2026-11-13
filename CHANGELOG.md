@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.0 (feature/fun-pass; see docs/plans/fun-pass-plan.md)
+**Loot economy**
+- The ore rack holds **60** units to start (upgrades 90 / 130 / 180).
+- **Deeper ore is worth more.** Ore is graded by the zone it was mined in: Spore Veins x1.3, Aqueducts and Hollows x1.7, Forgotten Engine x2.3, The First Civilization x3.5. The manifest and results show the grade (e.g. "Cobalt x1.7").
+- **Swap up when full.** With a full rack, touching better ore drops one unit of your cheapest ore (it stays on the ground as a pickup) and takes the better one. Cheaper ore is left alone.
+
+**Orders**
+- Every dive comes with **3 orders**, picked from what that map really holds: bring back some cobalt, aetherite or fossils; extract a set value of ore; reach a deeper zone; recover a keepsake; kill foes with the terrain.
+- Progress shows top right. Finished orders pay on extraction and are lost if you die.
+
+**Pressure: the mine wakes up**
+- A new **PRES** meter rises the longer you stay, faster in deeper zones, and with drilling and blasts. It eases off while you are above the deepest zone you reached.
+- At 30 / 60 / 85 the mine goes **RUMBLING / UNSTABLE / COLLAPSING**, and events come every 42 / 26 / 15 seconds. Every event warns you first:
+  - **Tremor:** a nearby ceiling dribbles dust, then comes down. Below the top tier, never directly over you.
+  - **Gas:** gas seeps from the rock nearby.
+  - **Swarm:** crawlers come for the noise from off screen (at most 5 alive at once).
+- Half of the pressure carries into The First Civilization.
+
+**The terrain is a weapon**
+- **Lures:** 3 per dive. Press USE with nothing nearby (on touch, the USE button reads LURE) to throw a pinging beacon. Crawlers within 18 cells drop what they are doing, even a chase, and go to it. Lead them under loose rock, into deep water or into steam. Lures do not raise pressure.
+- Crawlers drown in deep water and are scalded by dense steam.
+- Kills by rubble, boulders, gas, lava, water, steam or floating props are **terrain kills** ("TERRAIN KILL - crushed").
+
+**Dive modifiers**
+- On the contract board you can pick up to **2 modifiers** for the next dive. Each makes the dive harder and pays a bonus on ore credits:
+  - FLOODED: brimming water pockets and basins, +20%
+  - BRITTLE: the mine wakes 60% faster, +25%
+  - SWARM: 80% more crawlers, +30%
+  - GASSY: twice the gas pockets, +20%
+  - BLACKOUT: darker caves, +30%
+  - DEEP VEINS: +40% ore, but the mine wakes 30% faster
+- The results screen shows the modifiers and what they paid.
+
 ## 0.6.3 (feature/first-civilization)
 - **The First Civilization's halls are no longer empty.** Each great vault now has a theme that sets its name and what stands in it:
   - **FIRST HALL**: seated stone colossi on plinths with faintly glowing cores; one has lost its head, which lies in the hall.

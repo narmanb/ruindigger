@@ -13,6 +13,8 @@ static func run(t: Node) -> void:
 	await economy(t)
 	await orders(t)
 	await pressure(t)
+	await terrain_weapons(t)
+	await modifiers(t)
 
 
 static func economy(t: Node) -> void:
@@ -216,3 +218,102 @@ static func pressure(t: Node) -> void:
 	t.check(is_equal_approx(float(Game.run["pressure"]), pr.value), "the run remembers the pressure")
 	Game.goto("title", true)
 	await t._frames(5)
+
+
+static func terrain_weapons(t: Node) -> void:
+	t.section("terrain weapons")
+	await _settle(t)
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	Game.start_run()
+	await _settle(t)
+	await t._frames(20)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	t.check(int(Game.run.get("lures", 0)) == Balance.LURES_PER_RUN, "a dive starts with %d lures" % Balance.LURES_PER_RUN)
+	# a lure pulls a crawler away, even from a chase
+	var cr: Crawler = null
+	for e in mine.enemies:
+		if e is Crawler:
+			cr = e
+			break
+	t.check(cr != null, "the test map has a crawler")
+	if cr == null:
+		return
+	var lu: Node2D = mine.spawn_lure(cr.global_position + Vector2(48, -20), Vector2.ZERO)
+	cr.state = Crawler.S.CHASE
+	await t._frames(80)
+	t.check(cr.state == Crawler.S.INVESTIGATE or cr.target_cell == mine.grid.world_to_cell(lu.global_position) or cr.global_position.distance_to(lu.global_position) < 40.0, "a lure distracts a crawler mid-chase")
+	var p_before := float(Game.run.get("pressure", 0.0))
+	await t._frames(60)
+	t.check(float(Game.run.get("pressure", 0.0)) - p_before < 1.0, "lure pings do not wake the mine")
+	# USE with nothing nearby throws a lure
+	var n0 := int(Game.run["lures"])
+	pl.global_position = cr.global_position + Vector2(0, -2)
+	if mine.nearest_interactable(pl).is_empty():
+		mine.player_interact(pl)
+		t.check(int(Game.run["lures"]) == n0 - 1, "USE with nothing nearby throws a lure")
+	Game.run["lures"] = 0
+	mine.player_interact(pl)
+	t.check(int(Game.run["lures"]) == 0, "no lures, no throw")
+	# drowning counts as a terrain kill
+	var kills0 := int(Game.run.get("terrain_kills", 0))
+	var cc: Vector2i = cr.cell
+	mine.grid.set_water(cc.x, cc.y, Balance.WATER_MAX)
+	cr.hp = 1.0
+	await t._frames(30)
+	t.check(int(Game.run.get("terrain_kills", 0)) == kills0 + 1, "a crawler that drowns is a terrain kill")
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+static func modifiers(t: Node) -> void:
+	t.section("dive modifiers")
+	Game.modifiers = []
+	t.check(Game.toggle_modifier("flooded") and Game.toggle_modifier("swarm") and not Game.toggle_modifier("gassy") and Game.modifiers.size() == 2, "up to two modifiers can be chosen")
+	t.check(Game.toggle_modifier("swarm") and Game.modifiers == ["flooded"], "a modifier can be switched off again")
+	var mc := Game.modded_contract(Balance.CONTRACTS[1], ["swarm", "deep_veins"])
+	t.check(is_equal_approx(float(mc["crawlers"]), 1.5 * 1.8) and is_equal_approx(float(mc["ore"]), 1.4 * 1.4) and is_equal_approx(float(mc["mod_bonus"]), 0.3), "modifiers stack onto the contract")
+	# every modifier still makes fair maps, and FLOODED really floods
+	var bad := 0
+	var wet_more := 0
+	for m: Dictionary in Balance.MODIFIERS:
+		for i in 3:
+			var sd := 2000 + i * 7919
+			var base: Dictionary = Balance.CONTRACTS[i % 4]
+			var d: Dictionary = MineGenerator.new().generate(sd, Game.modded_contract(base, [m["id"]]))
+			if not bool(d.get("valid", false)) or int(d.get("repairs", 0)) != 0:
+				bad += 1
+			if m["id"] == "flooded":
+				var plain: Dictionary = MineGenerator.new().generate(sd, base)
+				var w0 := 0
+				var w1 := 0
+				for f: Dictionary in plain.get("water_features", []):
+					w0 += int(f.get("volume", 0))
+				for f: Dictionary in d.get("water_features", []):
+					w1 += int(f.get("volume", 0))
+				if w1 > w0:
+					wet_more += 1
+	t.check(bad == 0, "every modifier generates valid maps with no repairs (%d bad of %d)" % [bad, Balance.MODIFIERS.size() * 3])
+	t.check(wet_more == 3, "FLOODED maps hold more water (%d of 3)" % wet_more)
+	# live: modifiers ride along in the run and pay on ore
+	Game.modifiers = ["blackout", "brittle"]
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(20)
+	var rc: Dictionary = Game.run["contract"]
+	t.check(is_equal_approx(float(rc.get("pressure", 1.0)), 1.6) and float(rc.get("dark", 1.0)) < 1.0 and Game.run["modifiers"] == ["blackout", "brittle"], "the run carries its modifiers")
+	Game.run["cargo"] = {2: 10}
+	var before := Progress.credits
+	Game.end_run(true)
+	var pay := int(round(150 * 0.55))
+	t.check(int(Game.last_result.get("mod_pay", 0)) == pay and Progress.credits - before == 150 + pay + int(Game.last_result.get("orders_bonus", 0)), "modifiers raise ore pay (+%d CR)" % int(Game.last_result.get("mod_pay", 0)))
+	Game.modifiers = []
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
