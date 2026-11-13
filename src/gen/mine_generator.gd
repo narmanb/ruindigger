@@ -2311,6 +2311,10 @@ func _dig_valid() -> bool:
 	data["climb_relay_s"] = GenMetrics._near(dc, with_ladder, data["relay"])
 	data["dig_relic_s"] = GenMetrics._near(dc, with_ladder, data["relic"])
 	data["finds"] = ZoneFinds.place(self, from_spawn, escape)
+	var find_cells: Array = []
+	for f in data["finds"]:
+		find_cells.append(f["cell"])
+	data["run_relics"] = ZoneFinds.relics(g, from_spawn, escape, int(data["seed"]), Balance.RUN_RELICS_MAIN, data["entities"], find_cells)
 	return gates_ok and data["dig_down_s"] >= 0.0 and data["dig_down_s"] <= Balance.FAIR_DIG_BUDGET_DOWN \
 		and data["climb_up_s"] >= 0.0 and data["climb_up_s"] <= Balance.FAIR_DIG_BUDGET_UP \
 		and data["dig_relic_s"] >= 0.0 and data["climb_relay_s"] >= 0.0

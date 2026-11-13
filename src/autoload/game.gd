@@ -126,6 +126,7 @@ func start_run() -> void:
 		"modifiers": modifiers.duplicate(),
 		"charges": charges,
 		"lures": Balance.LURES_PER_RUN,
+		"relics": [],
 		"loadout": loadout.duplicate(),
 		"gadget_cd": 0.0,
 		"cargo": {},
@@ -156,6 +157,10 @@ func descend(hull_now: float, from_depth_cells: int) -> void:
 	run["depth_offset"] = from_depth_cells
 	run["max_depth"] = maxi(int(run.get("max_depth", 0)), from_depth_cells)
 	goto("mine")
+
+
+func has_relic(id: String) -> bool:
+	return (run.get("relics", []) as Array).has(id)
 
 
 func in_deep() -> bool:

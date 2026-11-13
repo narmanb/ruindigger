@@ -117,7 +117,7 @@ func _ready() -> void:
 func setup_stats() -> void:
 	drill_level = Progress.level("drill")
 	heat_cap = Balance.heat_capacity(Progress.level("heat"))
-	max_hp = Balance.hull(Progress.level("hull"))
+	max_hp = Balance.hull(Progress.level("hull")) + (Balance.SPINE_HULL if Game.has_relic("spine") else 0.0)
 	hp = max_hp
 	# a run that continues into another stage keeps the hull it arrived with
 	if Game.run.has("hp"):
@@ -479,7 +479,7 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 		if mine:
 			mine.drill_enemies(drill_hit_rect(), Balance.DRILL_ENEMY_DPS * Balance.DRILL_TICK, self)
 			if hit_any:
-				mine.noise(global_position, Balance.CRAWLER_HEARING)
+				mine.noise(global_position, Balance.CRAWLER_HEARING * (0.5 if Game.has_relic("muffled") else 1.0))
 		if drill_blocked and _blocked_msg_t <= 0.0 and mine:
 			_blocked_msg_t = 2.0
 			mine.toast("Too tough - needs DRILL Mk.IV or a charge" if grid.get_mat(targets[0].x, targets[0].y) == Cell.ALLOY else "Indestructible")

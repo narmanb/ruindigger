@@ -1,8 +1,9 @@
 # Fun pass: from digging simulator to game
 
-Status: **S1, S2, S3, S5, S6 built; S4 partly built** (lures, drowning,
-steam, terrain kills) on branch `feature/fun-pass`, version 0.7.0. See "Build
-log" at the end. S7 and S8 not started. Written after playing 0.6.3 and the
+Status: **S1, S2, S3, S5, S6 built.** Partly built: S4 (lures, drowning,
+steam, terrain kills) and S7 (run relics as rare loot; no puzzle vaults yet).
+All on branch `feature/fun-pass`, version 0.7.0. See "Build log" at the end.
+S8 not started. Written after playing 0.6.3 and the
 owner's notes. Every segment below is independent enough to ship on its own;
 we do not have to do it all, or in one go.
 
@@ -232,6 +233,12 @@ What is in each segment:
   `Hazards.SonarPing`. `LavaSim.quench` crusts lava with the normal
   accounting. Passives hook into the pickup magnet, rubble and boulder
   damage, and drill heat.
+
+* **S7 (part):** `Balance.RUN_RELICS`. `ZoneFinds.relics` places them for both
+  generators (entity data only, seeded, reachable with a way out, dry,
+  separated from keepsakes). `RunRelic` entity, `Game.has_relic`, and effect
+  hooks in drill noise, ore drops, lava and steam burns, pressure, gadget
+  cooldown and hull. Puzzle vaults (the template library) are not built.
 
 Tests: suite `fun` (in `run_tests.sh`) covers all of the above. A one-off
 sweep of 90 maps (each modifier x 15 seeds) gave 0 invalid or repaired.

@@ -106,6 +106,20 @@ const MODIFIERS := [
 	{"id": "deep_veins", "name": "DEEP VEINS", "desc": "+40% ore, but the mine wakes 30% faster.", "ore": 1.4, "pressure": 1.3, "bonus": 0.0},
 ]
 const MODIFIER_KEYS := ["ore", "crawlers", "gas", "water", "pressure"]
+# --- Run relics: rare finds that change the current run (lost when it ends) ---
+const RUN_RELICS := [
+	{"id": "muffled", "name": "Muffled Treads", "desc": "Crawlers hear your drilling at half range.", "color": "9ad0ff"},
+	{"id": "charm", "name": "Prospector's Charm", "desc": "Every ore seam drops one extra unit.", "color": "ffd36b"},
+	{"id": "ember", "name": "Ember Heart", "desc": "Lava and steam burn you at half strength.", "color": "ff7a3a"},
+	{"id": "calm", "name": "Calm Stone", "desc": "The mine wakes 35% slower.", "color": "8affc4"},
+	{"id": "spine", "name": "Iron Spine", "desc": "+40 hull for the rest of the run, repaired now.", "color": "c8c8d8"},
+	{"id": "coil", "name": "Quick Coil", "desc": "Gadgets recharge twice as fast.", "color": "7fe8ff"},
+]
+const RUN_RELICS_MAIN := 2            # per main-mine map
+const RUN_RELICS_DEEP := 1            # per First Civilization map
+const RUN_RELIC_SEP := 30             # cells between relics
+const SPINE_HULL := 40.0
+const CALM_MULT := 0.65
 # --- Gadgets: one active (GADGET button, on a cooldown) + one passive ---
 const GADGETS := {
 	"sonar": {"name": "SONAR", "kind": "active", "cooldown": 22.0, "desc": "Ping: reveals the map nearby and marks ore, gas and loose rock."},

@@ -23,6 +23,16 @@
 - Crawlers drown in deep water and are scalded by dense steam.
 - Kills by rubble, boulders, gas, lava, water, steam or floating props are **terrain kills** ("TERRAIN KILL - crushed").
 
+**Run relics (rare loot)**
+- Every map hides **2 run relics** (The First Civilization hides 1): glowing rune stones on small plinths, usually far from the spawn. Take one with USE and it changes the rest of the run:
+  - **Muffled Treads:** crawlers hear your drilling at half range.
+  - **Prospector's Charm:** every ore seam drops one extra unit.
+  - **Ember Heart:** lava and steam burn you at half strength.
+  - **Calm Stone:** the mine wakes 35% slower.
+  - **Iron Spine:** +40 hull, repaired now.
+  - **Quick Coil:** gadgets recharge twice as fast.
+- Relics carry into The First Civilization and are listed in the cargo manifest.
+
 **Gadgets**
 - Pack one **active** and one **passive** gadget at the Supply Locker.
 - Active gadgets use the new **GADGET** button (G / V on keyboard, left-stick click on a pad, and a touch button labelled with the gadget). They recharge after use.

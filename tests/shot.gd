@@ -60,6 +60,11 @@ func _process(_d: float) -> void:
 			if lm.has("name"):
 				names.append(lm["name"])
 		print("VAULTS ", names, " furnished ", mine.data.get("furnished", 0))
+	if frame == 20 and mine and args.has("runrelic") and mine.get("data") != null and not mine.data.get("run_relics", []).is_empty():
+		var rc: Vector2i = mine.data["run_relics"][int(args["runrelic"]) % mine.data["run_relics"].size()]["cell"]
+		mine.player.global_position = Vector2((rc.x - 2) * 16 + 8, (rc.y + 1) * 16 - Player.HALF.y - 0.5)
+		mine.player.invuln = 1e9
+		mine.camera.reset_smoothing()
 	if frame == 20 and mine and args.has("decor") and mine.get("data") != null:
 		var nth := int(args.get("nth", "0"))
 		for e in mine.data["entities"]:

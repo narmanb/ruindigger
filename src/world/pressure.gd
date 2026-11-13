@@ -24,7 +24,7 @@ func _ready() -> void:
 
 
 func _mult() -> float:
-	return float(Game.run.get("contract", {}).get("pressure", 1.0))
+	return float(Game.run.get("contract", {}).get("pressure", 1.0)) * (Balance.CALM_MULT if Game.has_relic("calm") else 1.0)
 
 
 func _tier_of(v: float) -> int:

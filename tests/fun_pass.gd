@@ -16,6 +16,7 @@ static func run(t: Node) -> void:
 	await terrain_weapons(t)
 	await modifiers(t)
 	await gadgets(t)
+	await relics(t)
 
 
 static func economy(t: Node) -> void:
@@ -387,6 +388,87 @@ static func gadgets(t: Node) -> void:
 	mine.cryo_burst(pl.global_position)
 	t.check(pl.heat == 0.0, "a cryo burst at your feet vents your heat")
 	Game.loadout = Balance.GADGET_DEFAULT.duplicate()
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+static func relics(t: Node) -> void:
+	t.section("run relics")
+	var bad := 0
+	for i in 8:
+		var sd := 3000 + i * 7919
+		var d: Dictionary = MineGenerator.new().generate(sd, Balance.CONTRACTS[i % 4])
+		var again: Dictionary = MineGenerator.new().generate(sd, Balance.CONTRACTS[i % 4])
+		var rs: Array = d.get("run_relics", [])
+		var g: TerrainGrid = d["grid"]
+		if rs.size() != Balance.RUN_RELICS_MAIN or str(rs) != str(again.get("run_relics", [])):
+			bad += 1
+		var ids: Dictionary = {}
+		for r: Dictionary in rs:
+			var c: Vector2i = r["cell"]
+			ids[r["id"]] = true
+			if g.is_solid(c.x, c.y) or not g.is_solid(c.x, c.y + 1) or g.get_water(c.x, c.y) > 0:
+				bad += 1
+			for f: Dictionary in d["finds"]:
+				if Vector2(c - (f["cell"] as Vector2i)).length() < Balance.RUN_RELIC_SEP:
+					bad += 1
+		if ids.size() != rs.size():
+			bad += 1
+	t.check(bad == 0, "every map hides %d distinct, reachable, dry run relics away from keepsakes (%d problems)" % [Balance.RUN_RELICS_MAIN, bad])
+	var deep_ok := 0
+	for i in 4:
+		var dd: Dictionary = FirstCivGenerator.new().generate(FirstCivGenerator.deep_seed(4000 + i * 7919))
+		if (dd.get("run_relics", []) as Array).size() == Balance.RUN_RELICS_DEEP:
+			deep_ok += 1
+	t.check(deep_ok == 4, "The First Civilization hides a run relic too (%d of 4)" % deep_ok)
+	# live effects
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(20)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	t.check(mine.run_relics.size() == Balance.RUN_RELICS_MAIN, "the relics are in the mine")
+	var hp0 := pl.max_hp
+	var spine := -1
+	for k in Balance.RUN_RELICS.size():
+		if Balance.RUN_RELICS[k]["id"] == "spine":
+			spine = k
+	var rr := RunRelic.new()
+	rr.mine = mine
+	rr.id = spine
+	rr.position = pl.global_position
+	mine.entity_root.add_child(rr)
+	mine.run_relics.append(rr)
+	pl.velocity = Vector2.ZERO
+	t.check(mine.nearest_interactable(pl).get("kind", "") == "run_relic", "a relic can be taken with USE")
+	mine.player_interact(pl)
+	t.check(Game.has_relic("spine") and is_equal_approx(pl.max_hp, hp0 + Balance.SPINE_HULL) and is_equal_approx(pl.hp, pl.max_hp), "Iron Spine adds hull and repairs")
+	# Prospector's Charm: one extra unit per seam
+	Game.run["relics"].append("charm")
+	var gc: Vector2i = mine.grid.world_to_cell(pl.global_position)
+	var oc := Vector2i(gc.x + 2, gc.y)
+	mine.grid.set_mat(oc.x, oc.y, Cell.SOFT)
+	mine.grid.ore[mine.grid.idx(oc.x, oc.y)] = Cell.ORE_COBALT
+	var before := 0
+	for e in mine.entity_root.get_children():
+		if e is Entities.Pickup:
+			before += 1
+	mine.damage_cell(oc, 999.0, 3, true, "test")
+	var after := 0
+	for e in mine.entity_root.get_children():
+		if e is Entities.Pickup:
+			after += 1
+	t.check(after - before == int(Balance.ORE[Cell.ORE_COBALT]["drops"]) + 1, "Prospector's Charm drops an extra unit (%d)" % (after - before))
+	Game.run["relics"].append("calm")
+	t.check(is_equal_approx(mine.pressure._mult(), Balance.CALM_MULT), "Calm Stone slows the pressure")
+	Game.run["relics"].append("coil")
+	Game.run["gadget_cd"] = 10.0
+	await t._frames(30)
+	t.check(float(Game.run["gadget_cd"]) < 10.0 - 0.8, "Quick Coil recharges gadgets twice as fast (%.2f left)" % float(Game.run["gadget_cd"]))
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

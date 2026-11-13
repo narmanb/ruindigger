@@ -120,6 +120,14 @@ func refresh() -> void:
 		for o: Dictionary in orders:
 			var met := Orders.satisfied(o, Game.run)
 			rows.add_child(UIKit.label("%s %s  %s  +%d CR" % ["[x]" if met else "[ ]", o["text"], Orders.progress_text(o, Game.run), int(o["reward"])], 11, UIKit.AMBER if met else UIKit.TEXT))
+	var rel: Array = Game.run.get("relics", [])
+	if not rel.is_empty():
+		rows.add_child(UIKit.Scanline.new())
+		rows.add_child(UIKit.label("RUN RELICS - last until the run ends", 12, UIKit.TEAL, true))
+		for rid in rel:
+			for info: Dictionary in Balance.RUN_RELICS:
+				if info["id"] == rid:
+					rows.add_child(UIKit.label("%s: %s" % [info["name"], info["desc"]], 11, Color(info["color"])))
 	rows.add_child(UIKit.Scanline.new())
 	rows.add_child(UIKit.label("ZONE KEEPSAKES - separate pouch", 12, UIKit.TEAL, true))
 	if finds.is_empty():

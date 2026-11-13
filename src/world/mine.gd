@@ -18,6 +18,7 @@ var glow_root: Node2D
 var entity_root: Node2D
 var gas: Hazards.GasSystem
 var keepsakes: Array[ZoneKeepsake] = []
+var run_relics: Array[RunRelic] = []
 var collapse: Hazards.Collapse
 var water: WaterSim
 var lava: LavaSim                 # deep stage only (null where there is no lava)
@@ -205,6 +206,13 @@ func _spawn_entities() -> void:
 		find.position = grid.cell_center(spec["cell"])
 		entity_root.add_child(find)
 		keepsakes.append(find)
+	for spec in data.get("run_relics", []):
+		var rr := RunRelic.new()
+		rr.mine = self
+		rr.id = int(spec["id"])
+		rr.position = grid.cell_center(spec["cell"])
+		entity_root.add_child(rr)
+		run_relics.append(rr)
 	for e in data["entities"]:
 		var cell: Vector2i = e["cell"]
 		var pos := Vector2(cell.x * C + 8, cell.y * C + 16)   # bottom-centre of the cell
@@ -401,7 +409,7 @@ func _heat_feedback(delta: float) -> void:
 		if _burn_t <= 0.0:
 			_burn_t = Balance.LAVA_BURN_INTERVAL
 			player.invuln = 0.0
-			player.take_damage(Balance.LAVA_BURN_DAMAGE, player.global_position + Vector2(0, 12), "molten rock")
+			player.take_damage(Balance.LAVA_BURN_DAMAGE * (0.5 if Game.has_relic("ember") else 1.0), player.global_position + Vector2(0, 12), "molten rock")
 			fx.sparks(player.global_position + Vector2(0, 10), Vector2.UP, Color(1.0, 0.55, 0.2))
 	elif _heat_warn_t <= 0.0:
 		var r := Balance.LAVA_WARN_CELLS
@@ -418,7 +426,7 @@ func _heat_feedback(delta: float) -> void:
 		player.velocity.y -= Balance.STEAM_LIFT * delta * 10.0 * minf(d, 2.0)
 		if _scald_t <= 0.0:
 			_scald_t = Balance.STEAM_INTERVAL
-			player.take_damage(Balance.STEAM_DAMAGE, Vector2.INF, "scalding steam")
+			player.take_damage(Balance.STEAM_DAMAGE * (0.5 if Game.has_relic("ember") else 1.0), Vector2.INF, "scalding steam")
 	for e in enemies:
 		if not is_instance_valid(e) or not e.has_method("hit"):
 			continue
@@ -479,7 +487,7 @@ func _process(delta: float) -> void:
 		_explore()
 	Game.run["time"] = float(Game.run.get("time", 0.0)) + delta
 	_update_orders(delta)
-	Game.run["gadget_cd"] = maxf(0.0, float(Game.run.get("gadget_cd", 0.0)) - delta)
+	Game.run["gadget_cd"] = maxf(0.0, float(Game.run.get("gadget_cd", 0.0)) - delta * (2.0 if Game.has_relic("coil") else 1.0))
 	var depth_cells := int(player.global_position.y / C) + depth_offset
 	Game.run["max_depth"] = maxi(int(Game.run.get("max_depth", 0)), depth_cells)
 	if Game.run.get("relic", false):
@@ -598,7 +606,7 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 			shake(0.07 if cls == "soft" else 0.12)
 		var o: int = res["ore"]
 		if o != 0:
-			var n: int = int(Balance.ORE[o]["drops"])
+			var n: int = int(Balance.ORE[o]["drops"]) + (1 if Game.has_relic("charm") else 0)
 			var key := Balance.ore_key(o, maxi(0, s))
 			for i in n:
 				spawn_pickup(pos + Vector2(randf_range(-3, 3), randf_range(-3, 3)), key)
@@ -971,6 +979,9 @@ func nearest_interactable(pl: Player) -> Dictionary:
 	for find in keepsakes:
 		if not find.used and find.global_position.distance_to(pc) < 22.0:
 			return {"kind": "find", "node": find, "label": "TAKE"}
+	for rr in run_relics:
+		if not rr.used and rr.global_position.distance_to(pc) < 22.0:
+			return {"kind": "run_relic", "node": rr, "label": "TAKE"}
 	if descent and descent.global_position.distance_to(pc + Vector2(0, 13)) < 26.0:
 		return {"kind": "descent", "node": descent, "label": "DESCEND"}
 	for v in valves:
@@ -991,6 +1002,8 @@ func player_interact(pl: Player) -> void:
 		return
 	match it["kind"]:
 		"find":
+			it["node"].take()
+		"run_relic":
 			it["node"].take()
 		"descent":
 			# never a one-press action: the warning must be confirmed

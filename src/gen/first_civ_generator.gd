@@ -891,7 +891,12 @@ func _audit() -> bool:
 	if not clean:
 		return false
 	data["dig_to_gate_s"] = GenMetrics._near(dc, from_spawn, data["gate"])
-	_place_first_light(from_spawn, dc.escape_set(data["gate"]))
+	var esc := dc.escape_set(data["gate"])
+	_place_first_light(from_spawn, esc)
+	var avoid: Array = []
+	for f in data["finds"]:
+		avoid.append(f["cell"])
+	data["run_relics"] = ZoneFinds.relics(g, from_spawn, esc, int(data["seed"]), Balance.RUN_RELICS_DEEP, data["entities"], avoid)
 	return data["dig_to_gate_s"] >= 0.0 and data["dig_to_gate_s"] <= Balance.DEEP_DIG_BUDGET
 
 
