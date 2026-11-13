@@ -187,6 +187,64 @@ func _process(_d: float) -> void:
 				for dy in [3, 4]:
 					mine.damage_cell(Vector2i(cx, sr.position.y + dy), 99.0, 0, false, "shot")
 				break
+	# pourtest=1: a lava reservoir over a water pool; pourtest=2: water over a
+	# wide lava pool. A purpose-built chamber in the deep stage, so the pour can
+	# be watched; a hole is drilled in the divider at frame 30.
+	if mine and args.has("pourtest") and frame == 20 and mine.get("lava") != null:
+		var g: TerrainGrid = mine.grid
+		var ox := 88
+		var oy := 58
+		var lava_top: bool = args["pourtest"] == "1"
+		for y in range(oy, oy + 21):
+			for x in range(ox, ox + 24):
+				g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE, false)
+				g.set_water(x, y, 0)
+				g.set_lava(x, y, 0)
+				var edge := x == ox or x == ox + 23 or y == oy or y == oy + 20
+				g.set_mat(x, y, Cell.BEDROCK if edge else Cell.AIR)
+		for x in range(ox + 1, ox + 23):
+			g.set_mat(x, oy + 5, Cell.HARD)          # divider under the top reservoir
+		for y in range(oy + 11, oy + 20):
+			g.set_mat(ox + 3, y, Cell.HARD)
+			g.set_mat(ox + 16, y, Cell.HARD)
+		for x in range(ox + 17, ox + 23):
+			g.set_mat(x, oy + 13, Cell.HARD)          # viewing ledge
+		for y in range(oy + 6, oy + 13):
+			g.set_mat(ox + 3, y, Cell.HARD)
+		for x in range(ox + 1, ox + 3):
+			for y in range(oy + 6, oy + 20):
+				g.set_mat(x, y, Cell.HARD)
+		for x in range(ox + 4, ox + 16):
+			for y in range(oy + 2, oy + 5):
+				if lava_top:
+					g.set_lava(x, y, Balance.LAVA_MAX)
+				else:
+					g.set_water(x, y, Balance.WATER_MAX)
+			for y in range(oy + 13, oy + 20):
+				if lava_top:
+					g.set_water(x, y, Balance.WATER_MAX)
+				elif y >= oy + 16:
+					g.set_lava(x, y, Balance.LAVA_MAX)
+		mine.lava.wake_all()
+		mine.water.wake_all()
+		mine.player.global_position = Vector2((ox + 19) * 16 + 8, (oy + 13) * 16 - Player.HALF.y - 0.5)
+		mine.player.invuln = 1e9
+		mine.player.input_override = {"x": 0.0}
+		for e in mine.enemies.duplicate():
+			if Rect2(Vector2(ox - 4, oy - 4) * 16, Vector2(32, 30) * 16).has_point(e.global_position):
+				mine.enemies.erase(e)
+				e.queue_free()
+	if mine and args.has("pourtest") and frame == 30:
+		mine.grid.set_mat(98, 63, Cell.AIR)
+		mine.grid.set_mat(99, 63, Cell.AIR)
+	if mine and args.has("pourtest") and frame == target - 1:
+		if args.has("hide"):
+			for ch in mine.get_children():
+				var nm: String = ch.get_script().get_global_name() if ch.get_script() != null else ch.get_class()
+				if nm in str(args["hide"]).split(","):
+					ch.visible = false
+					print("hid ", nm)
+		print("POUR formed=%d sunk=%d swapped=%d boiled=%d frozen=%d steam_peak=%d" % [mine.lava.rock_formed, mine.lava.sunk, mine.lava.swapped, mine.lava.water_boiled, mine.lava.lava_frozen, mine.steam.peak_cells])
 	if mine and args.has("ladder") and frame == target - 30:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:

@@ -214,7 +214,7 @@ class Collapse extends Node2D:
 			if _claimed.has(c):
 				continue
 			var mass := Boulders.unsupported_mass(g, c)
-			if mass.is_empty():
+			if mass.is_empty() or _lava_owned(mass):
 				continue
 			for m in mass:
 				_claimed[m] = true
@@ -222,6 +222,16 @@ class Collapse extends Node2D:
 			Audio.play_at("rumble", g.cell_center(mass[0]), 0.0, 0.1, 0.2)
 			mine.shake(0.15)
 		_boulder_checks.clear()
+
+	## Fresh crust on lava or water belongs to LavaSim, which sinks it itself.
+	func _lava_owned(mass: Array) -> bool:
+		var lv: LavaSim = mine.get("lava")
+		if lv == null:
+			return false
+		for m in mass:
+			if lv.crust.has(m):
+				return true
+		return false
 
 	func _drop_boulder(cells: Array) -> void:
 		var g: TerrainGrid = mine.grid

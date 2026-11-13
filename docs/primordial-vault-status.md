@@ -285,3 +285,43 @@ deep 1958/1958 (60 deep seeds, 0 repairs). Also `water_live` 4/4,
 * Results: `TEST_TIMEOUT=1200 ./tools/run_tests.sh`: terrain 32/32, physics
   49/49, save 15/15, ui 71/71, gen 4344/4344 (0 repairs), game 111/111,
   lava 41/41, deep 1958/1958 (0 repairs).
+
+## 0.6.2: lava into water spreads, slag, steam out of water
+
+Reported on device: lava falling into a pool stacked into a pillar in the
+middle and used up most of the water.
+
+* `LavaSim.flow_step`: a lava cell with at least `LAVA_SINK_MIN` units swaps
+  down with a water cell (`_swap_with_water`, carries its cooling with it), and
+  lava resting under lava spreads sideways under water onto a supported cell.
+  Counted in `swapped`.
+* Cooling need is proportional: `LAVA_SOLIDIFY_AT * clamp(lava / LAVA_MAX,
+  0.25, 1)`, so a thin film crusts with little water.
+* `_react` never boils more than the cell still needs (`need - cool`), however
+  many wet faces it has. In the `lava` pour test, water used per lava unit fell
+  from about 1.8 to 1.4.
+* `_founder`: unheld crust also drops through open air (the boulder system
+  now leaves crust to `LavaSim`); a thin lava film (< `LAVA_ROCK_MIN`) holds it.
+* `_crust`: lava under `LAVA_ROCK_MIN` (40) becomes **slag** (`slag[c]`); a
+  cell becomes rock only once a full cell's worth has gathered there. Formed
+  rock still goes through `_place_rock` and founders as before.
+* `_founder`: crust that lands on a pile slumps diagonally into liquid if the
+  side is open, so sunk rock builds a mound, not a column.
+* `SteamField`: steam made under water rises to the surface, and steam cells
+  that end up submerged keep rising; `_open` excludes water cells.
+* `Hazards.Collapse._lava_owned`: masses containing `LavaSim.crust` cells are
+  not telegraphed as boulders (they were shaking dust and the screen while
+  sinking). `Mine` emits no dust puff for rock formed under water.
+* `tests/shot.gd pourtest=1|2` builds a chamber in the deep stage (lava over a
+  pool / water over a lava pool), drills the divider and prints the stats.
+  Watched both in a desktop render (xvfb, software GL): the lava stream crusts
+  at the surface, the rock sinks and piles into a spread mound on the floor,
+  and most of the pool is left.
+* New `lava` checks: the pour test's rock covers at least 4 of 6 floor
+  columns and is at most 5 high; at least a fifth of the pool is left (34% in
+  practice); no unheld crust hangs over open space. 44/44, run three times.
+* Results on the final 0.6.2 code: `TEST_TIMEOUT=1500 ./tools/run_tests.sh`
+  terrain 32/32, physics 49/49, save 15/15, ui 71/71, gen 4344/4344
+  (0 repairs), game 111/111; then rerun after the last lava edits: lava 44/44,
+  deep 1958/1958, game 111/111, physics 49/49, `water_live` 4/4,
+  `structures` 13/13, `cargo` 19/19. Version 0.6.2 (code 17).

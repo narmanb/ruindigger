@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2 (feature/first-civilization)
+- **Lava pouring into water spreads instead of stacking into a pillar.** A heavy stream of lava now sinks through the water, or spreads sideways under it along the floor, before it crusts. Thin dribbles harden into slag that builds up and only becomes a block once a full cell's worth has gathered, instead of every drop turning into its own block. New rock that lands on a pile slides off its sides into the water, so it builds a low mound.
+- **Less water lost per reaction.** How much cooling a lava cell needs now depends on how much lava is in it: a thin film crusts quickly and uses little water, and a full cell still takes a full cell of water. A cell touching water on several sides no longer boils more than it needs.
+- Loose crust left over open space (the water under it boiled off or drained) now drops instead of hanging in mid-air.
+- **Steam no longer hangs inside water.** Steam made under water bubbles up and comes out at the surface.
+- Fixed brown "dust clouds" floating in pools: freshly formed crust was mistaken for a loose boulder and shook dust off itself (and rumbled the screen) while it sank. Rock formed under water no longer gives off a dust puff.
+
 ## 0.6.1 (feature/first-civilization)
 - **Crust founders.** New rock from a lava/water reaction is heavier than both liquids, so it sinks through them unless it is held at the shore (attached to rock on one side within 3 cells, or wedged across a gap of 7 or less). Fresh lava keeps meeting the water: wide pools boil for a long time, throw off big steam plumes and fill with rock from the bottom, while narrow channels still crust over into bridges.
 - **Water floats on lava.** Water used to sink through lava cells and react at the bottom of the pool; now it rests on the surface, where the reaction happens.

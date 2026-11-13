@@ -35,6 +35,8 @@ var lava_lost := 0                  # units squeezed out by terrain placed on to
 var water_boiled := 0
 var rock_formed := 0                # cells of new rock
 var crust: Dictionary = {}          # reaction-made rock that may still founder
+var slag: Dictionary = {}           # Vector2i -> lava units hardened as slag here (a full cell becomes rock)
+var swapped := 0                    # lava cells that sank or spread through water
 var sunk := 0                       # crust moves (one cell down each)
 var deferred := 0                   # crusts postponed because something was in the way
 var formed_cells: Array[Vector2i] = []   # rock cells made this step (FX / tests)
@@ -124,6 +126,34 @@ func settle(max_steps: int = 400) -> int:
 	return max_steps
 
 
+## A cell lava can push its way into by trading places: water, no lava, open.
+func _swappable(c: Vector2i) -> bool:
+	if not grid.in_bounds(c.x, c.y) or grid.is_solid(c.x, c.y) or keep_out.has(c):
+		return false
+	var j := c.y * grid.w + c.x
+	return grid.lava[j] == 0 and grid.water[j] >= Balance.LAVA_SWAP_WATER
+
+
+## Lava and water trade cells (both totals unchanged). Any cooling the lava
+## had absorbed goes with it.
+func _swap_with_water(from: Vector2i, to: Vector2i) -> void:
+	var fi := from.y * grid.w + from.x
+	var ti := to.y * grid.w + to.x
+	var lv: int = grid.lava[fi]
+	var wv: int = grid.water[ti]
+	var fw: int = grid.water[fi]
+	grid.lava[fi] = 0
+	grid.lava[ti] = lv
+	grid.set_water(to.x, to.y, fw)
+	grid.set_water(from.x, from.y, wv)
+	if cool.has(from):
+		cool[to] = cool[from]
+		cool.erase(from)
+	if water:
+		water.wake(from.x, from.y)
+		water.wake(to.x, to.y)
+
+
 func _wet_near(c: Vector2i) -> bool:
 	for d in [Vector2i(0, 0), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
 		if grid.get_water(c.x + d.x, c.y + d.y) > 0:
@@ -196,6 +226,14 @@ func flow_step() -> void:
 			active[c] = true
 			continue
 		var moved := false
+		# denser than water: a lava cell over water sinks through it (swap)
+		var bc := Vector2i(c.x, c.y + 1)
+		if v >= Balance.LAVA_SINK_MIN and _swappable(bc):
+			_swap_with_water(c, bc)
+			swapped += 1
+			last_moves += 1
+			active[bc] = true
+			continue
 		# fall
 		if _can_enter(c.x, c.y + 1):
 			var room: int = Balance.LAVA_MAX - grid.lava[i + grid.w]
@@ -208,6 +246,22 @@ func flow_step() -> void:
 				active[Vector2i(c.x, c.y + 1)] = true
 		# creep sideways only when it cannot simply fall, and only down a real slope
 		var resting: bool = not _can_enter(c.x, c.y + 1) or grid.lava[i + grid.w] >= Balance.LAVA_MAX
+		# a pile on the floor of a pool is pushed out sideways under the water
+		if v >= Balance.LAVA_SINK_MIN and resting and grid.lava[i - grid.w] > 0:
+			var sorder: Array = [-1, 1] if (steps + c.x) % 2 == 0 else [1, -1]
+			var spread := false
+			for dx: int in sorder:
+				var sc := Vector2i(c.x + dx, c.y)
+				if _swappable(sc) and (grid.is_solid(sc.x, sc.y + 1) or grid.get_lava(sc.x, sc.y + 1) > 0):
+					_swap_with_water(c, sc)
+					swapped += 1
+					spread = true
+					active[sc] = true
+					active[Vector2i(c.x, c.y - 1)] = true
+					break
+			if spread:
+				last_moves += 1
+				continue
 		if v > 0 and resting:
 			var order: Array = [-1, 1] if (steps + c.x) % 2 == 0 else [1, -1]
 			for dx: int in order:
@@ -241,6 +295,10 @@ func flow_step() -> void:
 func _react(c: Vector2i) -> bool:
 	var i := c.y * grid.w + c.x
 	var reacted := false
+	# water needed scales with how much lava is here: a thin packet hardens on
+	# a little water instead of boiling a whole cell's worth away. A cell never
+	# boils more than it still needs, however many wet faces it has.
+	var need: float = Balance.LAVA_SOLIDIFY_AT * clampf(float(grid.lava[i]) / Balance.LAVA_MAX, 0.25, 1.0)
 	for d in [Vector2i(0, 0), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
 		var n: Vector2i = c + d
 		if not grid.in_bounds(n.x, n.y):
@@ -248,7 +306,11 @@ func _react(c: Vector2i) -> bool:
 		var wv := grid.get_water(n.x, n.y)
 		if wv <= 0:
 			continue
-		var a := mini(Balance.LAVA_REACT_UNITS, wv)
+		var left := ceili(need) - int(cool.get(c, 0))
+		if left <= 0:
+			reacted = true      # wet and already cooled enough (e.g. it waited on an actor)
+			break
+		var a := mini(mini(Balance.LAVA_REACT_UNITS, wv), left)
 		grid.set_water(n.x, n.y, wv - a)
 		water_boiled += a
 		reacted = true
@@ -258,7 +320,7 @@ func _react(c: Vector2i) -> bool:
 			var vent: Vector2i = Vector2i(n.x, n.y - 1) if not grid.is_solid(n.x, n.y - 1) else n
 			steam.add(vent, a * Balance.STEAM_PER_UNIT)
 		cool[c] = int(cool.get(c, 0)) + a
-	if reacted and int(cool.get(c, 0)) >= Balance.LAVA_SOLIDIFY_AT:
+	if reacted and float(cool.get(c, 0)) >= need:
 		_crust(c, i)
 	return reacted
 
@@ -304,47 +366,75 @@ func _founder() -> void:
 			continue
 		var b := Vector2i(c.x, c.y + 1)
 		if not grid.in_bounds(b.x, b.y) or grid.is_solid(b.x, b.y) or keep_out.has(b):
-			crust.erase(c)          # landed: it is ordinary rock now
+			# landed on rock: it slumps off a pile like sand if liquid lies
+			# diagonally below, so a pour builds a mound instead of a pillar
+			var slid := false
+			for dx in ([-1, 1] if (c.x + c.y + sunk) % 2 == 0 else [1, -1]):
+				var sd := Vector2i(c.x + dx, c.y + 1)
+				var ss := Vector2i(c.x + dx, c.y)
+				if grid.in_bounds(sd.x, sd.y) and not grid.is_solid(ss.x, ss.y) and not grid.is_solid(sd.x, sd.y) and not keep_out.has(sd) \
+						and (grid.get_water(sd.x, sd.y) >= 8 or grid.get_lava(sd.x, sd.y) >= Balance.LAVA_ROCK_MIN) \
+						and not (occupied.is_valid() and (occupied.call(sd) or occupied.call(ss))):
+					_move_crust(c, sd)
+					moved += 1
+					slid = true
+					break
+			if not slid:
+				crust.erase(c)      # settled: it is ordinary rock now
 			continue
 		var bi := b.y * grid.w + b.x
 		var lv: int = grid.lava[bi]
-		var wv: int = grid.water[bi]
-		if lv < Balance.LAVA_ROCK_MIN and wv < 8:
-			continue                # nothing to sink through (rockfall handles open air)
+		if lv > 0 and lv < Balance.LAVA_ROCK_MIN:
+			continue                # a thin film of lava holds it up
+		# otherwise it sinks through water or deep lava, and drops through open
+		# air (the liquid under it drained away); boulder rockfall leaves crust alone
 		if _held(c):
 			continue
 		if occupied.is_valid() and (occupied.call(b) or occupied.call(Vector2i(c.x, c.y - 1))):
 			continue                # never drop out from under, or onto, an actor
-		# swap: the liquid rises into the crust's old cell, the crust drops
-		grid.lava[bi] = 0
-		grid.set_water(b.x, b.y, 0)
-		grid.set_mat(b.x, b.y, Cell.HARD)
-		grid.ore[bi] = 0
-		grid.flags[bi] &= ~Cell.F_DUG
-		grid.set_mat(c.x, c.y, Cell.AIR)
-		var ci := c.y * grid.w + c.x
-		grid.lava[ci] = lv
-		grid.set_water(c.x, c.y, wv)
-		cool.erase(c)
-		cool.erase(b)
-		crust.erase(c)
-		crust[b] = true
-		sunk += 1
+		_move_crust(c, b)
 		moved += 1
-		if lv > 0:
-			active[c] = true
-		if water:
-			water.wake(c.x, c.y)
-		wake(c.x, c.y)
+
+
+## Move a crust block into a liquid cell; the liquid takes its old place.
+func _move_crust(c: Vector2i, to: Vector2i) -> void:
+	var ti := to.y * grid.w + to.x
+	var lv: int = grid.lava[ti]
+	var wv: int = grid.water[ti]
+	grid.lava[ti] = 0
+	grid.set_water(to.x, to.y, 0)
+	grid.set_mat(to.x, to.y, Cell.HARD)
+	grid.ore[ti] = 0
+	grid.flags[ti] &= ~Cell.F_DUG
+	grid.set_mat(c.x, c.y, Cell.AIR)
+	var ci := c.y * grid.w + c.x
+	grid.lava[ci] = lv
+	grid.set_water(c.x, c.y, wv)
+	cool.erase(c)
+	cool.erase(to)
+	crust.erase(c)
+	crust[to] = true
+	sunk += 1
+	if lv > 0:
+		active[c] = true
+	if water:
+		water.wake(c.x, c.y)
+	wake(c.x, c.y)
 
 
 func _crust(c: Vector2i, i: int) -> void:
 	var v: int = grid.lava[i]
 	if v < Balance.LAVA_ROCK_MIN:
-		# a thin film: it hardens away as slag and steam, no new rock. The spot
-		# stays cold, so the next lava to arrive here crusts at once.
+		# a thin packet hardens as slag where it is; a full cell's worth of slag
+		# collected in one spot becomes a block of rock (that may then sink)
 		grid.lava[i] = 0
 		lava_frozen += v
+		cool.erase(c)
+		var sl: int = int(slag.get(c, 0)) + v
+		if sl >= Balance.LAVA_MAX and not keep_out.has(c) and not (occupied.is_valid() and occupied.call(c)) and not grid.is_solid(c.x, c.y):
+			sl -= Balance.LAVA_MAX
+			_place_rock(c, i)
+		slag[c] = sl
 		return
 	if keep_out.has(c) or (occupied.is_valid() and occupied.call(c)):
 		# never grow rock inside an actor or a protected passage: try again later
@@ -354,6 +444,10 @@ func _crust(c: Vector2i, i: int) -> void:
 	grid.lava[i] = 0
 	lava_frozen += v
 	cool.erase(c)
+	_place_rock(c, i)
+
+
+func _place_rock(c: Vector2i, i: int) -> void:
 	grid.ore[i] = 0
 	grid.set_mat(c.x, c.y, Cell.HARD)       # runtime API: collision, visuals, water displacement
 	grid.flags[i] &= ~Cell.F_DUG

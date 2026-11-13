@@ -310,12 +310,31 @@ static func run(t: Node) -> void:
 		for x in range(5, 11):
 			if gs.get_mat(x, y) == Cell.HARD:
 				pool_rock += 1
+	# the rock spreads over the pool floor instead of stacking in one column
+	var floor_cols := 0
+	var tallest := 0
+	for x in range(5, 11):
+		if gs.get_mat(x, 20) == Cell.HARD:
+			floor_cols += 1
+		var hgt := 0
+		for y in range(9, 21):
+			if gs.get_mat(x, y) == Cell.HARD:
+				hgt += 1
+		tallest = maxi(tallest, hgt)
 	var upper_lava := 0
 	for y in range(5, 8):
 		for x in range(5, 11):
 			upper_lava += gs.get_lava(x, y)
 	t.check(upper_lava < lava_start / 2, "lava above water pours down through the hole (upper reservoir %d of %d units left)" % [upper_lava, lava_start])
 	t.check(pool_rock >= 3 and lsl.sunk > 0, "the crust sinks through the water and piles up in the pool (%d rock cells in the pool)" % pool_rock)
+	t.check(floor_cols >= 4 and tallest <= 5, "the rock spreads over the pool floor instead of stacking into a pillar (%d of 6 floor columns, tallest %d)" % [floor_cols, tallest])
+	t.check(wsl.total() >= 36 * Balance.WATER_MAX / 5, "the pool is not boiled away (%d of %d water units left)" % [wsl.total(), 36 * Balance.WATER_MAX])
+	var hanging := 0
+	for y in range(9, 20):
+		for x in range(5, 11):
+			if gs.get_mat(x, y) == Cell.HARD and not gs.is_solid(x, y + 1) and lsl.crust.has(Vector2i(x, y)) and not lsl._held(Vector2i(x, y)):
+				hanging += 1
+	t.check(hanging == 0, "no loose crust is left hanging over open space (%d)" % hanging)
 	t.check(steam_peak > 15, "pouring lava into water raises a big plume (peak %d steam cells)" % steam_peak)
 	t.check(_lava_total(gs) + lsl.lava_frozen + lsl.lava_lost == lava_start and wsl.total() + lsl.water_boiled + wsl.lost == 36 * Balance.WATER_MAX, "lava and water accounting both balance")
 

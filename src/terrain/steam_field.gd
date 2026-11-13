@@ -18,6 +18,14 @@ func _init(g: TerrainGrid) -> void:
 func add(c: Vector2i, amount: float) -> void:
 	if amount <= 0.0 or not grid.in_bounds(c.x, c.y) or grid.is_solid(c.x, c.y):
 		return
+	# steam made under water bubbles straight up and comes out at the surface
+	var guard := 0
+	while _submerged(c) and guard < 40:
+		var up := Vector2i(c.x, c.y - 1)
+		if not grid.in_bounds(up.x, up.y) or grid.is_solid(up.x, up.y):
+			break
+		c = up
+		guard += 1
 	cells[c] = minf(Balance.STEAM_MAX_DENSITY, float(cells.get(c, 0.0)) + amount)
 	made += amount
 
@@ -42,8 +50,13 @@ func update(delta: float) -> void:
 		n += 1
 
 
+## Steam moves through air, not through standing water.
 func _open(c: Vector2i) -> bool:
-	return grid.in_bounds(c.x, c.y) and not grid.is_solid(c.x, c.y)
+	return grid.in_bounds(c.x, c.y) and not grid.is_solid(c.x, c.y) and grid.get_water(c.x, c.y) < Balance.WATER_MAX / 4
+
+
+func _submerged(c: Vector2i) -> bool:
+	return grid.in_bounds(c.x, c.y) and grid.get_water(c.x, c.y) >= Balance.WATER_MAX / 4
 
 
 ## Signed distance along this row to the nearest open cell with open air above
@@ -74,6 +87,11 @@ func step() -> void:
 		if d <= Balance.STEAM_MIN:
 			continue
 		var up := Vector2i(c.x, c.y - 1)
+		if _submerged(c):
+			# water flowed over it: the bubble keeps rising until it reaches air
+			if grid.in_bounds(up.x, up.y) and not grid.is_solid(up.x, up.y):
+				next[up] = float(next.get(up, 0.0)) + d
+			continue
 		if _open(up):
 			# most of it rises, a little lingers
 			next[up] = float(next.get(up, 0.0)) + d * 0.72

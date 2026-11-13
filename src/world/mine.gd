@@ -340,7 +340,9 @@ func _physics_process(delta: float) -> void:
 		steam.update(delta)
 		for c in lava.formed_cells:
 			var p := grid.cell_center(c)
-			fx.dust(p, Color(0.85, 0.85, 0.9), 6)
+			# under water the steam shows the reaction; a dust puff there reads as mud
+			if grid.get_water(c.x, c.y - 1) < Balance.WATER_MAX / 4:
+				fx.dust(p, Color(0.85, 0.85, 0.9), 6)
 			fx.sparks(p, Vector2.UP, Color(1.0, 0.55, 0.2))
 			Audio.play_at("gas_hiss", p, -8.0, 0.2, 0.15)
 		lava.formed_cells.clear()
