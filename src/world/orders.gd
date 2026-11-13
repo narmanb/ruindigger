@@ -54,6 +54,8 @@ static func generate(data: Dictionary, grid: TerrainGrid, seed_value: int) -> Ar
 	if not rows.is_empty():
 		var row: int = rows[rng.randi_range(0, rows.size() - 1)]
 		pool.append({"kind": "depth", "need": row, "reward": Balance.ORDER_REWARD["depth"]})
+	if not data.get("run_relics", []).is_empty():
+		pool.append({"kind": "relic", "need": 1, "reward": Balance.ORDER_REWARD["relic"]})
 	if not data.get("finds", []).is_empty():
 		pool.append({"kind": "keepsake", "need": 1, "reward": Balance.ORDER_REWARD["keepsake"]})
 	var crawlers := 0
@@ -89,6 +91,8 @@ static func describe(o: Dictionary) -> String:
 			return "Reach %d m" % int((int(o["need"]) - 9) * Balance.METERS_PER_CELL)
 		"keepsake":
 			return "Recover a keepsake"
+		"relic":
+			return "Take a run relic"
 		"terrain":
 			return "%d terrain kills" % int(o["need"])
 	return "?"
@@ -110,6 +114,8 @@ static func progress(o: Dictionary, run: Dictionary) -> int:
 			return int(run.get("max_depth", 0))
 		"keepsake":
 			return (run.get("finds", []) as Array).size()
+		"relic":
+			return (run.get("relics", []) as Array).size()
 		"terrain":
 			return int(run.get("terrain_kills", 0))
 	return 0
@@ -121,13 +127,13 @@ static func progress_text(o: Dictionary, run: Dictionary) -> String:
 	match String(o["kind"]):
 		"depth":
 			return "%d/%d m" % [maxi(0, int((progress(o, run) - 9) * Balance.METERS_PER_CELL)), int((int(o["need"]) - 9) * Balance.METERS_PER_CELL)]
-		"keepsake":
+		"keepsake", "relic":
 			return "0/1"
 	return "%d/%d" % [progress(o, run), int(o["need"])]
 
 
 static func latches(o: Dictionary) -> bool:
-	return String(o["kind"]) in ["depth", "keepsake", "terrain"]
+	return String(o["kind"]) in ["depth", "keepsake", "terrain", "relic"]
 
 
 ## Update progress; returns orders that were just completed (live kinds only).

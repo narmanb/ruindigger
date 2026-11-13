@@ -6,7 +6,7 @@ extends RefCounted
 ## Run relics: `count` spots you can reach and still get out from, dry, on a
 ## floor, away from every entity and each other. Picks which relics appear from
 ## the seed too. Never edits terrain. Works for any generator's grid.
-static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: PackedByteArray, seed_value: int, count: int, entities: Array, avoid: Array) -> Array:
+static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: PackedByteArray, seed_value: int, count: int, entities: Array, avoid: Array, pair_first: bool = false) -> Array:
 	var occupied: Dictionary = {}
 	for e in entities:
 		for dy in range(-3, 4):
@@ -52,8 +52,27 @@ static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: Packed
 		ids[k] = ids[j]
 		ids[j] = tmp
 	var out: Array = []
+	var next := 0
 	for k in picked.size():
-		out.append({"id": ids[k % ids.size()], "cell": picked[k]})
+		var c: Vector2i = picked[k]
+		var mate := Vector2i(-1, -1)
+		if pair_first and k == 0:
+			# a choice: a second, different relic three cells along the same
+			# floor. Taking one makes the other crumble.
+			for dx in [3, -3, 4, -4]:
+				var m := Vector2i(c.x + dx, c.y)
+				var i := g.idx(m.x, m.y)
+				if g.in_bounds(m.x, m.y) and reachable[i] < DigCheck.UNREACHED and escape[i] == 1 and g.get_mat(m.x, m.y) == Cell.AIR \
+						and g.get_mat(m.x, m.y - 1) == Cell.AIR and g.is_solid(m.x, m.y + 1) and g.water[i] == 0 and g.lava[i] == 0 and g.lava[i + g.w] == 0 \
+						and not occupied.has(m) and not (g.get_mat(m.x, m.y + 1) in [Cell.GAS, Cell.LOOSE]):
+					mate = m
+					break
+		var group := 1 if mate.x >= 0 else 0
+		out.append({"id": ids[next % ids.size()], "cell": c, "group": group})
+		next += 1
+		if mate.x >= 0:
+			out.append({"id": ids[next % ids.size()], "cell": mate, "group": group})
+			next += 1
 	return out
 
 

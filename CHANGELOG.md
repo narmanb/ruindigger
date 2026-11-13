@@ -31,7 +31,8 @@
   - **Calm Stone:** the mine wakes 35% slower.
   - **Iron Spine:** +40 hull, repaired now.
   - **Quick Coil:** gadgets recharge twice as fast.
-- Relics carry into The First Civilization and are listed in the cargo manifest.
+- **A choice:** on most maps one relic spot holds two different relics side by side. Take one and the other crumbles to dust.
+- Relics carry into The First Civilization and are listed in the cargo manifest. A new order kind asks you to take one.
 
 **Gadgets**
 - Pack one **active** and one **passive** gadget at the Supply Locker.

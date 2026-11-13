@@ -5,6 +5,7 @@ extends Node2D
 
 var mine: Node
 var id := 0
+var group := 0          # relics sharing a group > 0 are a choice: take one, the rest crumble
 var used := false
 var _t := 0.0
 var _glow: Sprite2D
@@ -62,5 +63,19 @@ func take() -> void:
 	mine.hud.banner(String(info["name"]).to_upper())
 	mine.toast("RUN RELIC: %s" % info["desc"])
 	mine.run_relics.erase(self)
+	if group > 0:
+		for other in mine.run_relics.duplicate():
+			if other.group == group and not other.used:
+				other.crumble()
 	hide()
+	queue_free()
+
+
+## The road not taken: it falls to dust.
+func crumble() -> void:
+	used = true
+	mine.fx.dust(global_position, Color(Balance.RUN_RELICS[id]["color"]), 8)
+	mine.fx.burst(global_position, Color(0.6, 0.55, 0.6), 8)
+	mine.toast("The other relic crumbles to dust - %s is gone" % Balance.RUN_RELICS[id]["name"])
+	mine.run_relics.erase(self)
 	queue_free()

@@ -3,7 +3,8 @@
 Status: **S1, S2, S3, S5, S6 built.** Partly built: S4 (lures, drowning,
 steam, terrain kills) and S7 (run relics as rare loot; no puzzle vaults yet).
 All on branch `feature/fun-pass`, version 0.7.0. See "Build log" at the end.
-S8 not started. Written after playing 0.6.3 and the
+S8: only a first choice mechanic (paired relics, take one and the other
+crumbles); no choice rooms, traders or guardians yet. Written after playing 0.6.3 and the
 owner's notes. Every segment below is independent enough to ship on its own;
 we do not have to do it all, or in one go.
 

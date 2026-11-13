@@ -396,13 +396,24 @@ static func gadgets(t: Node) -> void:
 static func relics(t: Node) -> void:
 	t.section("run relics")
 	var bad := 0
+	var pairs := 0
 	for i in 8:
 		var sd := 3000 + i * 7919
 		var d: Dictionary = MineGenerator.new().generate(sd, Balance.CONTRACTS[i % 4])
 		var again: Dictionary = MineGenerator.new().generate(sd, Balance.CONTRACTS[i % 4])
 		var rs: Array = d.get("run_relics", [])
 		var g: TerrainGrid = d["grid"]
-		if rs.size() != Balance.RUN_RELICS_MAIN or str(rs) != str(again.get("run_relics", [])):
+		if rs.size() < Balance.RUN_RELICS_MAIN or rs.size() > Balance.RUN_RELICS_MAIN + 1 or str(rs) != str(again.get("run_relics", [])):
+			bad += 1
+		var grouped: Array = []
+		for r: Dictionary in rs:
+			if int(r.get("group", 0)) > 0:
+				grouped.append(r["cell"])
+		if grouped.size() == 2:
+			pairs += 1
+			if absi((grouped[0] as Vector2i).x - (grouped[1] as Vector2i).x) > 4 or (grouped[0] as Vector2i).y != (grouped[1] as Vector2i).y:
+				bad += 1
+		elif grouped.size() != 0:
 			bad += 1
 		var ids: Dictionary = {}
 		for r: Dictionary in rs:
@@ -411,11 +422,12 @@ static func relics(t: Node) -> void:
 			if g.is_solid(c.x, c.y) or not g.is_solid(c.x, c.y + 1) or g.get_water(c.x, c.y) > 0:
 				bad += 1
 			for f: Dictionary in d["finds"]:
-				if Vector2(c - (f["cell"] as Vector2i)).length() < Balance.RUN_RELIC_SEP:
+				if Vector2(c - (f["cell"] as Vector2i)).length() < Balance.RUN_RELIC_SEP - 4:
 					bad += 1
 		if ids.size() != rs.size():
 			bad += 1
-	t.check(bad == 0, "every map hides %d distinct, reachable, dry run relics away from keepsakes (%d problems)" % [Balance.RUN_RELICS_MAIN, bad])
+	t.check(bad == 0, "every map hides %d+ distinct, reachable, dry run relics away from keepsakes (%d problems)" % [Balance.RUN_RELICS_MAIN, bad])
+	t.check(pairs >= 4, "most maps offer a choice pair of relics (%d of 8)" % pairs)
 	var deep_ok := 0
 	for i in 4:
 		var dd: Dictionary = FirstCivGenerator.new().generate(FirstCivGenerator.deep_seed(4000 + i * 7919))
@@ -431,7 +443,22 @@ static func relics(t: Node) -> void:
 	await t._frames(20)
 	var mine: Node = Game.current
 	var pl: Player = mine.player
-	t.check(mine.run_relics.size() == Balance.RUN_RELICS_MAIN, "the relics are in the mine")
+	t.check(mine.run_relics.size() >= Balance.RUN_RELICS_MAIN, "the relics are in the mine")
+	# a choice pair: take one, the other crumbles
+	var pa: RunRelic = null
+	var pb: RunRelic = null
+	for r in mine.run_relics:
+		if r.group > 0:
+			if pa == null:
+				pa = r
+			else:
+				pb = r
+	if pa != null and pb != null:
+		pl.global_position = pa.global_position
+		pa.take()
+		await t._frames(2)
+		t.check(not is_instance_valid(pb) or pb.used, "taking one relic of a pair crumbles the other")
+		Game.run["relics"] = []
 	var hp0 := pl.max_hp
 	var spine := -1
 	for k in Balance.RUN_RELICS.size():

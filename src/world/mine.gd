@@ -210,6 +210,7 @@ func _spawn_entities() -> void:
 		var rr := RunRelic.new()
 		rr.mine = self
 		rr.id = int(spec["id"])
+		rr.group = int(spec.get("group", 0))
 		rr.position = grid.cell_center(spec["cell"])
 		entity_root.add_child(rr)
 		run_relics.append(rr)
