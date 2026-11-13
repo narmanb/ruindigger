@@ -132,6 +132,7 @@ class GasSystem extends Node2D:
 					pl.die("toxic gas")
 			for e in mine.enemies:
 				if is_instance_valid(e) and e.global_position.distance_to(c["pos"]) < c["r"]:
+					e.set("last_hit", "gas")
 					e.hit(Balance.GAS_DPS * delta, c["pos"], false)
 			if c["t"] <= 0.0:
 				clouds.erase(c)
@@ -296,6 +297,7 @@ class Collapse extends Node2D:
 					hit = true
 				for e in mine.enemies:
 					if is_instance_valid(e) and e.hit_rect().intersects(r.grow(-1.0)):
+						e.set("last_hit", "rubble")
 						e.hit(Balance.BOULDER_ENEMY_DAMAGE, r.get_center())
 						e.stun(Balance.RUBBLE_STUN)
 						hit = true

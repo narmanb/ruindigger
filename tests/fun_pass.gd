@@ -3,6 +3,7 @@ extends RefCounted
 ## segments. suite=fun
 static func run(t: Node) -> void:
 	await economy(t)
+	await orders(t)
 
 
 static func economy(t: Node) -> void:
@@ -48,5 +49,80 @@ static func economy(t: Node) -> void:
 	key = dp.ore
 	var c: Vector2i = mine.grid.world_to_cell(pl.global_position)
 	t.check(key == Balance.ore_key(2, maxi(0, mine.grid.get_stratum(c.x, c.y))), "fresh ore takes the grade of its zone")
+	Game.goto("title", true)
+	await t._frames(5)
+
+
+static func orders(t: Node) -> void:
+	t.section("orders")
+	var bad := 0
+	var kinds_seen: Dictionary = {}
+	for i in 10:
+		var sd := 1000 + i * 7919
+		var d: Dictionary = MineGenerator.new().generate(sd, Balance.CONTRACTS[i % 4])
+		var g: TerrainGrid = d["grid"]
+		var os: Array = Orders.generate(d, g, sd)
+		var again: Array = Orders.generate(d, g, sd)
+		if os.size() != Balance.ORDER_COUNT or str(os) != str(again):
+			bad += 1
+		var kinds: Dictionary = {}
+		for o: Dictionary in os:
+			kinds_seen[o["kind"]] = true
+			if kinds.has(o["kind"]):
+				bad += 1
+			kinds[o["kind"]] = true
+			if o["kind"] == "ore":
+				var units := 0
+				for k in g.ore.size():
+					if int(g.ore[k]) == int(o["ore"]):
+						units += int(Balance.ORE[int(o["ore"])]["drops"])
+				if int(o["need"]) > units / 2:
+					bad += 1
+			if o["kind"] == "depth" and (int(o["need"]) <= Balance.STRATUM_ROWS[1] or int(o["need"]) >= g.h - 4):
+				bad += 1
+			if String(o["text"]).is_empty() or int(o["reward"]) <= 0:
+				bad += 1
+	t.check(bad == 0, "orders are deterministic, distinct, described and achievable on 10 maps (%d problems)" % bad)
+	t.check(kinds_seen.size() >= 4, "several kinds of order appear (%s)" % str(kinds_seen.keys()))
+	# live: progress, latching and payout
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	Game.start_run()
+	await t._frames(30)
+	var mine: Node = Game.current
+	var os2: Array = Game.run.get("orders", [])
+	t.check(os2.size() == Balance.ORDER_COUNT, "a dive starts with %d orders" % Balance.ORDER_COUNT)
+	t.check(mine.hud.orders_panel != null, "the HUD shows the orders")
+	Game.run["orders"] = [
+		{"kind": "ore", "ore": 2, "need": 3, "reward": 50, "have": 0, "done": false, "text": "Bring back 3 cobalt"},
+		{"kind": "depth", "need": 60, "reward": 40, "have": 0, "done": false, "text": "Reach 102 m"},
+		{"kind": "terrain", "need": 1, "reward": 30, "have": 0, "done": false, "text": "Kill 1 foe with the terrain"},
+	]
+	Game.run["cargo"] = {Balance.ore_key(2, 1): 2, 2: 1}
+	Game.run["max_depth"] = 61
+	await t._frames(20)
+	var o0: Dictionary = Game.run["orders"][0]
+	var o1: Dictionary = Game.run["orders"][1]
+	t.check(Orders.satisfied(o0, Game.run), "graded ore counts toward an ore order")
+	t.check(bool(o1["done"]), "reaching the depth latches the order")
+	Game.run["max_depth"] = 0
+	t.check(Orders.satisfied(o1, Game.run), "a latched order stays done")
+	# a crawler killed by rubble counts as a terrain kill
+	var cr: Node = null
+	for e in mine.enemies:
+		if e is Crawler:
+			cr = e
+			break
+	if cr != null:
+		cr.crushed()
+		cr.crushed()
+		cr.crushed()
+	await t._frames(20)
+	t.check(int(Game.run.get("terrain_kills", 0)) >= 1 and bool(Game.run["orders"][2]["done"]), "a crawler crushed by rubble is a terrain kill")
+	var before := Progress.credits
+	var cargo_v := Game.cargo_value(Game.run["cargo"])
+	Game.end_run(true)
+	t.check(int(Game.last_result.get("orders_bonus", 0)) == 120 and Progress.credits == before + cargo_v + 120, "met orders pay on extraction (%d)" % int(Game.last_result.get("orders_bonus", 0)))
+	await t._frames(5)
 	Game.goto("title", true)
 	await t._frames(5)

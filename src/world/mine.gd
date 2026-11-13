@@ -68,6 +68,8 @@ func _ready() -> void:
 	_spawn_water_props()
 	_build_ui()
 	grid.cell_changed.connect(_on_cell_changed)
+	if not Game.run.has("orders"):
+		Game.run["orders"] = Orders.generate(data, grid, seed_value)
 	if stage == "deep":
 		Audio.play("rumble")
 		toast("THE FIRST CIVILIZATION - no way back. Find the Transit Gate.")
@@ -419,6 +421,7 @@ func _heat_feedback(delta: float) -> void:
 			continue
 		var ec := grid.world_to_cell(e.global_position)
 		if grid.get_lava(ec.x, ec.y) >= Balance.LAVA_BURN_MIN and randf() < delta / Balance.LAVA_BURN_INTERVAL:
+			e.set("last_hit", "lava")
 			e.hit(Balance.LAVA_ENEMY_DAMAGE, e.global_position + Vector2(0, 8), false)
 
 
@@ -467,6 +470,7 @@ func _process(delta: float) -> void:
 		_explore_t = 0.12
 		_explore()
 	Game.run["time"] = float(Game.run.get("time", 0.0)) + delta
+	_update_orders(delta)
 	var depth_cells := int(player.global_position.y / C) + depth_offset
 	Game.run["max_depth"] = maxi(int(Game.run.get("max_depth", 0)), depth_cells)
 	if Game.run.get("relic", false):
@@ -693,6 +697,7 @@ func drill_enemies(r: Rect2, dmg: float, by: Player) -> void:
 	debris.drill_rect(r, dmg)
 	for e in enemies:
 		if is_instance_valid(e) and e.hit_rect().intersects(r):
+			e.set("last_hit", "drill")
 			e.hit(dmg, by.global_position)
 
 
@@ -723,6 +728,7 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 		if is_instance_valid(e):
 			var ed: float = e.global_position.distance_to(pos)
 			if ed < r + 8.0:
+				e.set("last_hit", "charge" if cause == "charge" else "gas")
 				e.hit(ent_dmg * lerpf(1.0, 0.5, ed / (r + 8.0)), pos)
 				e.stun(1.2)
 	if player and not player.dead:
@@ -792,7 +798,24 @@ var _full_warned := false
 
 func on_enemy_killed(e: Node) -> void:
 	Game.run["kills"] = int(Game.run.get("kills", 0)) + 1
+	var src: String = String(e.get("last_hit")) if e.get("last_hit") != null else ""
+	if src in Orders.TERRAIN_SOURCES:
+		Game.run["terrain_kills"] = int(Game.run.get("terrain_kills", 0)) + 1
+		toast("TERRAIN KILL - %s" % {"rubble": "crushed", "gas": "gassed", "lava": "burned", "prop": "flattened", "water": "drowned", "steam": "scalded", "flood": "swept away"}.get(src, src))
 	enemies.erase(e)
+
+
+var _orders_t := 0.0
+
+
+func _update_orders(delta: float) -> void:
+	_orders_t -= delta
+	if _orders_t > 0.0:
+		return
+	_orders_t = 0.25
+	for o: Dictionary in Orders.update(Game.run):
+		toast("ORDER DONE: %s  +%d CR on extraction" % [o["text"], int(o["reward"])])
+		Audio.play("lift_ding", -4.0)
 
 
 func toast(text: String) -> void:

@@ -69,6 +69,12 @@ const CARGO_CAPACITY := [60, 90, 130, 180]
 const ORE_GRADE_MULT := [1.0, 1.3, 2.3, 1.7, 1.7, 3.5]
 const ORE_KEY_STRIDE := 16
 const SWAP_DROP_IGNORE := 1.5      # s a swapped-out unit ignores the magnet
+# --- Orders (short-term goals per dive) ---
+const ORDER_COUNT := 3
+const ORDER_ORE_SHARE := 0.22        # an ore order asks for this share of the map's units
+const ORDER_VALUE_SHARE := 0.1       # a value order asks for this share of the map's ore value
+const ORDER_VALUE_PER_SLOT := 14     # ...capped at this many CR per starting rack slot
+const ORDER_REWARD := {"ore": 60, "value": 120, "depth": 90, "keepsake": 80, "terrain": 110}
 const PICKUP_MAGNET_RADIUS := 34.0
 const RELIC_BONUS := 260
 const CARGO_SCROLL_SPEED := 240.0

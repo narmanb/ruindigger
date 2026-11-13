@@ -7,6 +7,7 @@ var root: Control
 var diag: Diag
 var minimap: Minimap
 var depth_panel: DepthPanel
+var orders_panel: OrdersPanel
 var toast_label: Label
 var banner_label: Label
 var hint_label: Label
@@ -75,6 +76,16 @@ func _ready() -> void:
 	depth_panel.offset_top = 6
 	depth_panel.offset_bottom = 50
 	root.add_child(depth_panel)
+	orders_panel = OrdersPanel.new()
+	orders_panel.hud = self
+	orders_panel.anchor_left = 1.0
+	orders_panel.anchor_right = 1.0
+	orders_panel.offset_left = -206
+	orders_panel.offset_right = -6
+	orders_panel.offset_top = 88
+	orders_panel.offset_bottom = 132
+	orders_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(orders_panel)
 	pause_btn = Button.new()
 	pause_btn.text = "II"
 	pause_btn.focus_mode = Control.FOCUS_NONE
@@ -191,6 +202,29 @@ func _process(delta: float) -> void:
 	ladder_label.visible = mine.player != null and mine.player.on_ladder and not mine.player.dead and not mine.ending
 	diag.queue_redraw()
 	depth_panel.queue_redraw()
+	orders_panel.queue_redraw()
+
+
+## The dive's orders, top right under the cargo button.
+class OrdersPanel extends Control:
+	var hud: Node
+
+	func _draw() -> void:
+		var orders: Array = Game.run.get("orders", [])
+		if orders.is_empty():
+			return
+		var f := UIKit.font_head()
+		var h := 6.0 + orders.size() * 12.0
+		draw_rect(Rect2(0, 0, size.x, h), Color(0.05, 0.04, 0.07, 0.62))
+		draw_rect(Rect2(0, 0, 2, h), UIKit.AMBER)
+		for i in orders.size():
+			var o: Dictionary = orders[i]
+			var met := Orders.satisfied(o, Game.run)
+			var y := 12.0 + i * 12.0
+			var col: Color = UIKit.AMBER if met else UIKit.TEXT
+			draw_rect(Rect2(6, y - 7, 6, 6), col, met)
+			draw_string(f, Vector2(16, y), String(o["text"]), HORIZONTAL_ALIGNMENT_LEFT, size.x - 64, 8, col)
+			draw_string(f, Vector2(size.x - 46, y), Orders.progress_text(o, Game.run), HORIZONTAL_ALIGNMENT_RIGHT, 42, 8, UIKit.AMBER if met else UIKit.MUTED)
 
 
 class Diag extends Control:

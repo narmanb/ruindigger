@@ -68,6 +68,7 @@ func _physics_process(delta: float) -> void:
 	if mine and _hit_t <= 0.0 and linear_velocity.length() > Balance.PROP_HIT_SPEED:
 		for e in mine.enemies.duplicate():
 			if is_instance_valid(e) and e.hit_rect().grow(half.length()).has_point(global_position):
+				e.set("last_hit", "prop")
 				e.hit(minf(Balance.PROP_MAX_DAMAGE, linear_velocity.length() * mass * Balance.PROP_DAMAGE_SCALE), global_position)
 				_hit_t = Balance.PROP_HIT_GRACE
 				break

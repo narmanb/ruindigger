@@ -16,6 +16,7 @@ var grid: TerrainGrid
 var ceiling := false
 var state := S.DORMANT
 var hp := Balance.SENTRY_HP
+var last_hit := ""
 var t := 0.0
 var shots_left := 0
 var lost_t := 0.0
@@ -193,6 +194,7 @@ func hit(dmg: float, _from: Vector2, knock: bool = true) -> void:
 
 
 func crushed() -> void:
+	last_hit = "rubble"
 	hit(Balance.RUBBLE_SENTRY_DAMAGE, global_position)
 	mine.toast("Sentry crushed by rubble!")
 

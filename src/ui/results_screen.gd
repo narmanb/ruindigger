@@ -54,6 +54,12 @@ func _ready() -> void:
 		var description := UIKit.label(find["desc"], 10, UIKit.MUTED)
 		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		list.add_child(description)
+	for o: Dictionary in r.get("orders", []):
+		var met: bool = o.get("met", false)
+		var txt := "ORDER %s: %s" % ["MET" if met else "MISSED", o.get("text", "")]
+		if met:
+			txt += "  +%d CR" % int(o.get("reward", 0)) if ok else "  (lost)"
+		list.add_child(UIKit.label(txt, 11, UIKit.AMBER if met and ok else UIKit.MUTED))
 	if r.get("deep", false):
 		if ok:
 			list.add_child(UIKit.label("Transit Gate restored: +%d CR" % r.get("deep_bonus", 0), 11, Balance.ZONE_COLORS[Balance.Z_FIRST]))
@@ -61,7 +67,7 @@ func _ready() -> void:
 			list.add_child(UIKit.label("Lost in The First Civilization", 11, UIKit.MUTED))
 	list.add_child(UIKit.label("Depth %dm   Time %s   Kills %d" % [r.get("depth", 0), _time(r.get("time", 0.0)), r.get("kills", 0)], 10, UIKit.MUTED))
 	list.add_child(UIKit.label("Seed %d" % r.get("seed", 0), 9, UIKit.MUTED))
-	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0)) + int(r.get("finds_bonus", 0)) + int(r.get("deep_bonus", 0))
+	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0)) + int(r.get("finds_bonus", 0)) + int(r.get("deep_bonus", 0)) + int(r.get("orders_bonus", 0))
 	v.add_child(UIKit.label("EARNED: %d CR    BALANCE: %d CR" % [total, Progress.credits], 12, UIKit.TEAL, true))
 	var b := UIKit.button("RETURN TO OUTPOST", func() -> void: Game.goto("outpost"), 200)
 	v.add_child(b)

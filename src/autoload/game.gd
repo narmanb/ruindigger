@@ -175,7 +175,13 @@ func end_run(extracted: bool, cause: String = "") -> void:
 	var finds_bonus := finds_value(finds) if extracted else 0
 	var deep: bool = run.get("stage", "mine") == "deep"
 	var deep_bonus := Balance.DEEP_EXIT_BONUS if (extracted and deep and run.get("deep_exit", false)) else 0
+	var orders: Array = []
+	var orders_bonus := 0
+	for o: Dictionary in run.get("orders", []):
+		var met := Orders.satisfied(o, run)
+		orders.append({"text": o.get("text", ""), "met": met, "reward": int(o.get("reward", 0))})
 	if extracted:
+		orders_bonus = Orders.payout(run)
 		credits = cargo_value(cargo)
 		if run.get("relic", false):
 			relic_bonus = int(contract.get("reward", Balance.RELIC_BONUS))
@@ -186,13 +192,13 @@ func end_run(extracted: bool, cause: String = "") -> void:
 		Progress.stats["deaths"] = int(Progress.stats.get("deaths", 0)) + 1
 	var depth_m := int(run.get("max_depth", 0) * Balance.METERS_PER_CELL)
 	Progress.stats["best_depth"] = maxi(int(Progress.stats.get("best_depth", 0)), depth_m)
-	Progress.add_credits(credits + relic_bonus + finds_bonus + deep_bonus)
+	Progress.add_credits(credits + relic_bonus + finds_bonus + deep_bonus + orders_bonus)
 	Progress.tutorial_done = true
 	Progress.save_progress()
 	last_result = {
 		"extracted": extracted, "cause": cause, "cargo": cargo, "credits": credits,
 		"relic": run.get("relic", false), "relic_bonus": relic_bonus, "depth": depth_m,
-		"finds": finds, "finds_bonus": finds_bonus,
+		"finds": finds, "finds_bonus": finds_bonus, "orders": orders, "orders_bonus": orders_bonus,
 		"deep": deep, "deep_exit": extracted and deep and run.get("deep_exit", false), "deep_bonus": deep_bonus,
 		"kills": run.get("kills", 0), "time": run.get("time", 0.0), "seed": run.get("seed", 0),
 		"contract": contract.get("name", ""),

@@ -77,7 +77,7 @@ func refresh() -> void:
 	var relic_value := int(Game.contract.get("reward", Balance.RELIC_BONUS)) if Game.run.get("relic", false) else 0
 	var finds: Array = Game.run.get("finds", [])
 	capacity_label.text = "ORE RACK: %d / %d    KEEPSAKES: %d / %d" % [Game.cargo_count(), mine.cargo_cap(), finds.size(), Balance.KEEPSAKES.size()]
-	total_label.text = "EXTRACT NOW: %d CR" % (ore_value + relic_value + Game.finds_value(finds))
+	total_label.text = "EXTRACT NOW: %d CR" % (ore_value + relic_value + Game.finds_value(finds) + Orders.payout(Game.run))
 	relic_label.text = "Relic secured: +%d CR" % relic_value if Game.run.get("relic", false) else "Relic not recovered - bonus not included"
 	var keys: Array = []
 	for k in cargo.keys():
@@ -113,6 +113,13 @@ func refresh() -> void:
 		row.add_child(UIKit.label("x%d @ %d CR    %d CR" % [n, Balance.ore_value(id), n * Balance.ore_value(id)], 11, UIKit.TEXT if n > 0 else UIKit.MUTED))
 	if cargo.is_empty():
 		rows.add_child(UIKit.label("Your ore rack is empty.", 11, UIKit.MUTED))
+	var orders: Array = Game.run.get("orders", [])
+	if not orders.is_empty():
+		rows.add_child(UIKit.Scanline.new())
+		rows.add_child(UIKit.label("ORDERS - paid on extraction", 12, UIKit.TEAL, true))
+		for o: Dictionary in orders:
+			var met := Orders.satisfied(o, Game.run)
+			rows.add_child(UIKit.label("%s %s  %s  +%d CR" % ["[x]" if met else "[ ]", o["text"], Orders.progress_text(o, Game.run), int(o["reward"])], 11, UIKit.AMBER if met else UIKit.TEXT))
 	rows.add_child(UIKit.Scanline.new())
 	rows.add_child(UIKit.label("ZONE KEEPSAKES - separate pouch", 12, UIKit.TEAL, true))
 	if finds.is_empty():

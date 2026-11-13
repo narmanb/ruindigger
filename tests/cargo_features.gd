@@ -72,7 +72,8 @@ static func run(t: Node) -> void:
 	mine.player.global_position = mine.lifts[0].global_position
 	mine.extract(mine.lifts[0])
 	await t._frames(180)
-	t.check(Game.current_name == "results" and Progress.credits == before + ore_value + bonus and Game.last_result.get("finds_bonus", 0) == bonus, "extraction banks ore and keepsake credits exactly once")
+	var orders_bonus := int(Game.last_result.get("orders_bonus", 0))
+	t.check(Game.current_name == "results" and Progress.credits == before + ore_value + bonus + orders_bonus and Game.last_result.get("finds_bonus", 0) == bonus, "extraction banks ore, keepsake and order credits exactly once")
 	Game.start_run()
 	await t._frames(40)
 	t.check(Game.run.get("finds", []).is_empty(), "a fresh run starts with an empty keepsake pouch")

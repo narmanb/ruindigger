@@ -44,6 +44,7 @@ var up_dir := Vector2.UP
 var hitstun := 0.0
 var windup := 0.0
 var water_travel := Vector2.ZERO
+var last_hit := ""          # what hurt it last: drill, charge, rubble, gas, lava, prop, water...
 
 
 func _ready() -> void:
@@ -394,6 +395,7 @@ func stun(t: float) -> void:
 
 func crushed() -> void:
 	stun(Balance.RUBBLE_STUN)
+	last_hit = "rubble"
 	hit(Balance.RUBBLE_ENEMY_DAMAGE, global_position + Vector2(0, -16))
 	if state != S.DEAD:
 		mine.toast("Crawler crushed by rubble!")
