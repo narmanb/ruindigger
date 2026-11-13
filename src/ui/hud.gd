@@ -36,7 +36,7 @@ func _ready() -> void:
 	diag = Diag.new()
 	diag.hud = self
 	diag.position = Vector2(6, 6)
-	diag.size = Vector2(150, 74)
+	diag.size = Vector2(150, 88)
 	root.add_child(diag)
 	var cargo_hit := Control.new()
 	cargo_hit.position = Vector2(6, 34)
@@ -120,10 +120,10 @@ func _ready() -> void:
 	prompt_label.offset_top = -22
 	prompt_label.offset_bottom = -6
 	fps_label = UIKit.label("", 9, UIKit.MUTED)
-	fps_label.position = Vector2(8, 82)
+	fps_label.position = Vector2(8, 96)
 	root.add_child(fps_label)
 	ladder_label = UIKit.label("LADDER ATTACHED", 10, UIKit.TEAL, true)
-	ladder_label.position = Vector2(8, 98)
+	ladder_label.position = Vector2(8, 112)
 	ladder_label.add_theme_stylebox_override("normal", UIKit.panel_box(UIKit.TEAL))
 	ladder_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ladder_label.visible = false
@@ -264,6 +264,13 @@ class Diag extends Control:
 		var sn: int = Game.run.get("scaffold", 0)
 		var scol := Color("f2cc59").lerp(Color("ff5a4a"), hud._scaf_pulse)
 		_bar(f, 8, 61, "SCAF", float(sn) / scap, scol, "%d" % sn, hud._scaf_pulse > 0.5 and int(t * 8) % 2 == 0)
+		var pv: float = float(Game.run.get("pressure", 0.0))
+		var pt := 0
+		for k in Balance.PRESSURE_TIERS.size():
+			if pv >= Balance.PRESSURE_TIERS[k]:
+				pt = k + 1
+		var pcol: Color = [Color("6fd0a0"), Color("f2cc59"), Color("ff8a3a"), Color("ff3a30")][pt]
+		_bar(f, 8, 75, "PRES", pv / 100.0, pcol, ["CALM", "STIR", "UNST", "COLL"][pt], pt == 3 and int(t * 3) % 2 == 0 and not Settings.reduced_flashing())
 		if Game.run.get("relic", false):
 			var rp := Vector2(size.x - 16, 50)
 			draw_colored_polygon(PackedVector2Array([rp + Vector2(0, -6), rp + Vector2(5, 0), rp + Vector2(0, 6), rp + Vector2(-5, 0)]), Color(0.4, 1.0, 1.0, 0.8 + 0.2 * sin(t * 5.0)))

@@ -74,6 +74,26 @@ const ORDER_COUNT := 3
 const ORDER_ORE_SHARE := 0.22        # an ore order asks for this share of the map's units
 const ORDER_VALUE_SHARE := 0.1       # a value order asks for this share of the map's ore value
 const ORDER_VALUE_PER_SLOT := 14     # ...capped at this many CR per starting rack slot
+# --- Pressure (the mine wakes up) ---
+# per-zone, indexed by stratum: Dustworks, Spore, Engine, Aqueducts, Hollows, First Civ
+const PRESSURE_RATE := [0.02, 0.06, 0.14, 0.1, 0.1, 0.15]      # per second spent there
+const PRESSURE_NOISE_MULT := [0.4, 0.7, 1.2, 1.0, 1.0, 1.2]
+const PRESSURE_ZONE_RANK := [0, 1, 3, 2, 2, 4]                  # how deep each zone counts
+const PRESSURE_DRILL := 0.008        # per drill impact that hits something
+const PRESSURE_BLAST := 2.5          # per explosion
+const PRESSURE_RETREAT := 0.25       # per second while above your deepest zone
+const PRESSURE_TIERS := [30.0, 60.0, 85.0]
+const PRESSURE_NAMES := ["", "RUMBLING", "UNSTABLE", "COLLAPSING"]
+const PRESSURE_WARN := ["", "The mine is stirring. Events will start.", "The rock is unstable. Events come faster.", "The mine is collapsing. Get out soon!"]
+const PRESSURE_INTERVAL := [42.0, 26.0, 15.0]  # s between events per tier
+const PRESSURE_FIRST_EVENT := 8.0
+const PRESSURE_EVENT_RADIUS := 10
+const PRESSURE_TREMOR_CELLS := [3, 5, 8]
+const PRESSURE_TREMOR_SAFE := 1      # below the top tier, never within this many columns of you
+const PRESSURE_TREMOR_WARN := 1.4    # s of dust before a tremor ceiling falls
+const PRESSURE_SWARM_SIZE := [1, 2, 3]
+const PRESSURE_SWARM_MAX := 5        # crawlers alive from pressure at once
+const PRESSURE_DESCENT_KEEP := 0.5   # share of pressure carried into the deep stage
 const ORDER_REWARD := {"ore": 60, "value": 120, "depth": 90, "keepsake": 80, "terrain": 110}
 const PICKUP_MAGNET_RADIUS := 34.0
 const RELIC_BONUS := 260

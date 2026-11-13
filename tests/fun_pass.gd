@@ -1,9 +1,18 @@
 extends RefCounted
 ## Fun pass systems: loot economy (S1), orders (S2), pressure (S3) and later
 ## segments. suite=fun
+static func _settle(t: Node) -> void:
+	await t._frames(3)
+	var guard := 0
+	while Game._busy and guard < 600:
+		guard += 1
+		await t._frames(1)
+
+
 static func run(t: Node) -> void:
 	await economy(t)
 	await orders(t)
+	await pressure(t)
 
 
 static func economy(t: Node) -> void:
@@ -123,6 +132,87 @@ static func orders(t: Node) -> void:
 	var cargo_v := Game.cargo_value(Game.run["cargo"])
 	Game.end_run(true)
 	t.check(int(Game.last_result.get("orders_bonus", 0)) == 120 and Progress.credits == before + cargo_v + 120, "met orders pay on extraction (%d)" % int(Game.last_result.get("orders_bonus", 0)))
-	await t._frames(5)
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+static func pressure(t: Node) -> void:
+	t.section("pressure")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	Game.start_run()
+	await t._frames(30)
+	var guard := 0
+	while (Game.current == null or Game.current.get("pressure") == null) and guard < 300:
+		guard += 1
+		await t._frames(1)
+	var mine: Node = Game.current
+	var pr: Pressure = mine.pressure
+	t.check(pr != null and pr.tier == 0 and pr.value < 1.0, "a dive starts calm")
+	var v0 := pr.value
+	mine.noise(mine.player.global_position, 16.0)
+	t.check(pr.value > v0, "a blast raises the pressure")
+	# crossing a tier announces itself and arms events
+	pr.value = 31.0
+	await t._frames(3)
+	t.check(pr.tier == 1 and pr.event_t <= Balance.PRESSURE_FIRST_EVENT, "crossing 30 enters tier 1 and arms an event")
+	# a tremor loosens a ceiling near the player, never straight overhead below tier 3
+	var g: TerrainGrid = mine.grid
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	var pc: Vector2i = g.world_to_cell(pl.global_position)
+	var made: Array[Vector2i] = []
+	for dx in range(3, 8):
+		for dy in range(-4, 0):
+			var c := Vector2i(pc.x + dx, pc.y + dy)
+			if g.has_flag(c.x, c.y, Cell.F_PROTECTED):
+				continue
+			g.set_mat(c.x, c.y, Cell.SOFT if dy == -4 else Cell.AIR)
+			if dy == -4:
+				made.append(c)
+	var got := ""
+	for k in 6:
+		got = pr.trigger_event("tremor")
+		if got != "":
+			break
+	var loose := 0
+	var overhead := 0
+	var queued: Array = mine.collapse.pending.keys()
+	for c: Vector2i in queued:
+		if g.get_mat(c.x, c.y) == Cell.LOOSE:
+			loose += 1
+			if absi(c.x - pc.x) <= Balance.PRESSURE_TREMOR_SAFE:
+				overhead += 1
+	t.check(got == "tremor" and loose >= 1 and overhead == 0, "a tremor loosens a ceiling nearby, not overhead (%d loose)" % loose)
+	await t._frames(int(60 * (Balance.PRESSURE_TREMOR_WARN * 1.4 + 1.0)))
+	var fell := 0
+	for c: Vector2i in queued:
+		if not g.is_solid(c.x, c.y):
+			fell += 1
+	t.check(fell >= 1, "the loosened ceiling comes down after its warning (%d cells)" % fell)
+	var vents_before: int = mine.gas.vents.size() + mine.gas.clouds.size()
+	t.check(pr.trigger_event("gas") == "gas" and mine.gas.vents.size() + mine.gas.clouds.size() > vents_before, "gas can seep out of the rock near you")
+	var enemies_before: int = mine.enemies.size()
+	var sw := pr.trigger_event("swarm")
+	var far := true
+	for e in pr.spawned:
+		if is_instance_valid(e) and e.global_position.distance_to(pl.global_position) < 13 * Balance.CELL:
+			far = false
+	t.check(sw == "swarm" and mine.enemies.size() > enemies_before and far, "a swarm arrives from off screen (%d new)" % (mine.enemies.size() - enemies_before))
+	var capped := true
+	for k in 8:
+		pr.trigger_event("swarm")
+	var alive := 0
+	for e in pr.spawned:
+		if is_instance_valid(e):
+			alive += 1
+	t.check(alive <= Balance.PRESSURE_SWARM_MAX, "swarms are capped (%d alive)" % alive)
+	# retreating to shallower ground eases it
+	pr._deepest_rank = 3
+	pr.value = 50.0
+	await t._frames(60)
+	t.check(pr.value < 50.0, "retreating above your deepest zone lowers the pressure (%.1f)" % pr.value)
+	t.check(is_equal_approx(float(Game.run["pressure"]), pr.value), "the run remembers the pressure")
 	Game.goto("title", true)
 	await t._frames(5)

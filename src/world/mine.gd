@@ -68,6 +68,9 @@ func _ready() -> void:
 	_spawn_water_props()
 	_build_ui()
 	grid.cell_changed.connect(_on_cell_changed)
+	pressure = Pressure.new()
+	pressure.mine = self
+	add_child(pressure)
 	if not Game.run.has("orders"):
 		Game.run["orders"] = Orders.generate(data, grid, seed_value)
 	if stage == "deep":
@@ -702,6 +705,8 @@ func drill_enemies(r: Rect2, dmg: float, by: Player) -> void:
 
 
 func noise(pos: Vector2, radius_cells: float) -> void:
+	if pressure:
+		pressure.on_noise(radius_cells)
 	for e in enemies:
 		if is_instance_valid(e) and e is Crawler:
 			e.hear(pos, radius_cells)
@@ -806,6 +811,16 @@ func on_enemy_killed(e: Node) -> void:
 
 
 var _orders_t := 0.0
+var pressure: Pressure
+
+
+func spawn_crawler(cell: Vector2i) -> Crawler:
+	var cr := Crawler.new()
+	cr.mine = self
+	cr.position = grid.cell_center(cell)
+	entity_root.add_child(cr)
+	enemies.append(cr)
+	return cr
 
 
 func _update_orders(delta: float) -> void:

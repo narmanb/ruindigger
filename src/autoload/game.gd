@@ -111,6 +111,7 @@ func descend(hull_now: float, from_depth_cells: int) -> void:
 		return
 	run["stage"] = "deep"
 	run["hp"] = hull_now
+	run["pressure"] = float(run.get("pressure", 0.0)) * Balance.PRESSURE_DESCENT_KEEP
 	run["depth_offset"] = from_depth_cells
 	run["max_depth"] = maxi(int(run.get("max_depth", 0)), from_depth_cells)
 	goto("mine")

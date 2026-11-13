@@ -94,6 +94,13 @@ class GasSystem extends Node2D:
 		Audio.play_at("gas_warn", centre, 0.0)
 		mine.toast("GAS POCKET RUPTURED - back off!")
 
+	## Gas seeping out of the rock at a point (pressure events): same warning
+	## and cloud as a ruptured pocket, without a pocket.
+	func vent_at(pos: Vector2, size: int) -> void:
+		vents.append({"pos": pos, "t": Balance.GAS_TELEGRAPH * 1.4, "size": size})
+		Audio.play_at("gas_warn", pos, 0.0)
+		mine.toast("GAS SEEPING FROM THE ROCK - back off!")
+
 	func ignite_near(pos: Vector2, radius: float) -> void:
 		for v in vents.duplicate():
 			if v["pos"].distance_to(pos) < radius + 20.0:
