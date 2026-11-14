@@ -120,6 +120,8 @@ func _build_world() -> void:
 	var water_view := WaterRenderer.new()
 	add_child(water_view)
 	water_view.setup(grid, water, self)
+	sand = SandSim.new(grid, water)
+	sand.occupied = _cell_occupied
 	if stage == "deep":
 		steam = SteamField.new(grid)
 		lava = LavaSim.new(grid, water, steam)
@@ -371,6 +373,8 @@ func _physics_process(delta: float) -> void:
 			Audio.play_at("gas_hiss", p, -8.0, 0.2, 0.15)
 		lava.formed_cells.clear()
 		_heat_feedback(delta)
+	if sand:
+		sand.update(delta)
 	if water:
 		water.update(delta)
 		erosion.update(delta)
@@ -594,6 +598,8 @@ func cargo_cap() -> int:
 
 func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, source: String) -> Dictionary:
 	var m := grid.get_mat(c.x, c.y)
+	if source == "blast" and not Cell.is_solid(m) and grid.get_sand(c.x, c.y) > 0:
+		dig_sand(c)
 	var res := grid.damage(c.x, c.y, amount, tier, ignore_tier)
 	if res["broken"]:
 		debris.on_broken(c, m, source)
@@ -615,6 +621,17 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 			fx.flash(pos, Balance.ore_color(o), 0.45, 0.25)
 			Audio.play_at("ore_rare" if o == Cell.ORE_AETHER else "ore", pos, -3.0)
 			Game.run["ore_mined"] = int(Game.run.get("ore_mined", 0)) + 1
+		# loose ground: some drilled sediment and blasted rubble stays behind
+		# as sand that settles into piles
+		if sand and SandSim.enabled():
+			if source == "drill" and m == Cell.SOFT:
+				_sand_drill_n += 1
+				if _sand_drill_n % Balance.SAND_DRILL_EVERY == 0:
+					sand.add(c, Balance.SAND_DRILL_AMOUNT)
+			elif source == "blast" and (m == Cell.SOFT or m == Cell.LOOSE):
+				_sand_blast_n += 1
+				if _sand_blast_n % Balance.SAND_BLAST_EVERY == 0:
+					sand.add(c, Balance.SAND_BLAST_AMOUNT)
 		if m == Cell.GAS:
 			gas.vent(c)
 		if source in ["drill", "blast"]:
@@ -935,6 +952,18 @@ func on_enemy_killed(e: Node) -> void:
 
 var _orders_t := 0.0
 var pressure: Pressure
+var sand: SandSim
+var _sand_drill_n := 0
+var _sand_blast_n := 0
+
+
+## Dig the sand out of a cell (drill or blast).
+func dig_sand(c: Vector2i) -> void:
+	if sand == null or sand.remove(c) <= 0:
+		return
+	var pos := grid.cell_center(c) + Vector2(0, 4)
+	fx.dust(pos, Cell.debris_color(Cell.SOFT, maxi(0, grid.get_stratum(c.x, c.y))), 4)
+	Audio.play_at("break_soft", pos, -8.0, 0.15, 0.05)
 
 
 func spawn_crawler(cell: Vector2i) -> Crawler:

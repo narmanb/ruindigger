@@ -470,6 +470,9 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 		for t in targets:
 			var m := grid.get_mat(t.x, t.y)
 			if not Cell.is_solid(m):
+				if mine and grid.get_sand(t.x, t.y) > 0 and mine.has_method("dig_sand"):
+					mine.dig_sand(t)      # loose sand comes away in one bite
+					hit_any = true
 				continue
 			hit_any = true
 			if mine:

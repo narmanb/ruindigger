@@ -199,6 +199,9 @@ func _process(delta: float) -> void:
 	fps_label.visible = Settings.get_value("show_fps")
 	if fps_label.visible:
 		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+		var sd: SandSim = mine.get("sand")
+		if sd and not sd.active.is_empty():
+			fps_label.text += "  SAND %d (%.1f ms)" % [sd.active.size(), sd.last_us / 1000.0]
 	ladder_label.visible = mine.player != null and mine.player.on_ladder and not mine.player.dead and not mine.ending
 	diag.queue_redraw()
 	depth_panel.queue_redraw()

@@ -1,6 +1,10 @@
 extends RefCounted
 ## Fun pass systems: loot economy (S1), orders (S2), pressure (S3) and later
 ## segments. suite=fun
+static func _settle_scene(t: Node) -> void:
+	await _settle(t)
+
+
 static func _settle(t: Node) -> void:
 	await t._frames(3)
 	var guard := 0
@@ -19,6 +23,7 @@ static func run(t: Node) -> void:
 	await relics(t)
 	await feet(t)
 	await charges(t)
+	await sand(t)
 
 
 static func economy(t: Node) -> void:
@@ -594,3 +599,141 @@ static func charges(t: Node) -> void:
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)
+
+
+static func _sand_box(w: int, h: int) -> TerrainGrid:
+	var g := TerrainGrid.new(w, h)
+	for y in h:
+		for x in w:
+			g.put(x, y, Cell.BEDROCK if (x == 0 or y == 0 or x == w - 1 or y == h - 1) else Cell.AIR)
+	return g
+
+
+static func _settle_sand(sim: SandSim, max_steps: int = 600) -> int:
+	var n := 0
+	while not sim.active.is_empty() and n < max_steps:
+		sim.step()
+		n += 1
+	return n
+
+
+static func sand(t: Node) -> void:
+	t.section("sand piles")
+	var keep_level: int = Settings.get_value("sand_physics")
+	Settings.values["sand_physics"] = 2
+	# a heap dropped in the air falls, then slumps into a mound
+	var g := _sand_box(16, 10)
+	var sim := SandSim.new(g)
+	for k in 4:
+		sim.add(Vector2i(8, 2), Balance.SAND_MAX)
+		for j in 6:
+			sim.step()
+	var start := sim.total()
+	var n := _settle_sand(sim)
+	var floating := 0
+	var steep := 0
+	var width := 0
+	for x in range(1, 15):
+		if g.get_sand(x, 8) > 0:
+			width += 1
+		for y in range(1, 9):
+			var v := g.get_sand(x, y)
+			if v > 0 and not g.is_solid(x, y + 1) and g.get_sand(x, y + 1) < Balance.SAND_MAX:
+				floating += 1
+		var a := g.get_sand(x, 8)
+		var b := g.get_sand(x + 1, 8)
+		if not g.is_solid(x + 1, 8) and absi(a - b) > Balance.SAND_REPOSE + 1 and g.get_sand(x, 7) == 0 and g.get_sand(x + 1, 7) == 0:
+			steep += 1
+	t.check(sim.total() == start and start == 4 * Balance.SAND_MAX, "sand is conserved while it moves (%d px)" % sim.total())
+	t.check(n < 600 and floating == 0, "the heap comes to rest with nothing floating (%d steps)" % n)
+	t.check(width >= 4 and steep == 0, "it slumps into a mound %d cells wide, no step steeper than the angle of repose" % width)
+	# never into an actor's cell
+	var g2 := _sand_box(10, 8)
+	var sim2 := SandSim.new(g2)
+	var blocked := Vector2i(4, 6)
+	sim2.occupied = func(c: Vector2i) -> bool: return c == blocked
+	sim2.add(Vector2i(4, 2), Balance.SAND_MAX)
+	_settle_sand(sim2)
+	t.check(g2.get_sand(4, 6) == 0 and sim2.total() == Balance.SAND_MAX, "sand never enters a cell an actor stands in")
+	# sand that lands in water pushes the water up
+	var g3 := _sand_box(6, 8)
+	var sim3 := SandSim.new(g3)
+	for x in range(1, 5):
+		g3.set_water(x, 6, Balance.WATER_MAX)
+	var w0 := 0
+	for v in g3.water:
+		w0 += v
+	sim3.add(Vector2i(2, 2), Balance.SAND_MAX)
+	_settle_sand(sim3)
+	var w1 := 0
+	for v in g3.water:
+		w1 += v
+	t.check(w1 == w0 and g3.get_sand(2, 6) > 0, "sand sinks into a pool and displaces its water (%d -> %d)" % [w0, w1])
+	# live: a pile you walk over, sources, digging, the Off setting
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle_scene(t)
+	Game.start_run()
+	await _settle_scene(t)
+	await t._frames(20)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	var mg: TerrainGrid = mine.grid
+	var pc: Vector2i = mg.world_to_cell(pl.global_position)
+	var fy := pc.y + 1                 # the floor row under the feet
+	# a flat corridor 12 cells long, then a mound in the middle of it
+	for x in range(pc.x - 1, pc.x + 12):
+		for y in range(pc.y - 3, pc.y + 1):
+			mg.set_mat(x, y, Cell.AIR)
+		mg.set_mat(x, fy, Cell.HARD)
+	mg.set_mat(pc.x + 12, pc.y, Cell.HARD)
+	for x in range(pc.x + 4, pc.x + 7):
+		mine.sand.add(Vector2i(x, pc.y), 12)
+	mine.sand.add(Vector2i(pc.x + 5, pc.y - 1), 4)
+	await t._frames(40)
+	var y0 := pl.global_position.y
+	var top := y0
+	pl.input_override = {"x": 1.0}
+	for k in 90:
+		await t.get_tree().physics_frame
+		top = minf(top, pl.global_position.y)
+	pl.input_override = {"x": 0.0}
+	t.check(y0 - top >= 6.0, "walking over a sand mound lifts the digger onto it (%.1f px)" % (y0 - top))
+	t.check(pl.global_position.x > (pc.x + 7) * 16.0, "and carries on past it")
+	var before: int = mine.sand.total()
+	var soft: Array[Vector2i] = []
+	for k in 3:
+		var c := Vector2i(pc.x + 2 + k, pc.y - 2)
+		mg.set_mat(c.x, c.y, Cell.SOFT)
+		soft.append(c)
+	for c in soft:
+		mine.damage_cell(c, 999.0, 3, true, "drill")
+	await t._frames(10)
+	t.check(mine.sand.total() - before == Balance.SAND_DRILL_AMOUNT, "one in %d sediment cells drilled drops sand (+%d px)" % [Balance.SAND_DRILL_EVERY, mine.sand.total() - before])
+	var sc := Vector2i(-1, -1)
+	for x in range(pc.x + 3, pc.x + 8):
+		if mg.get_sand(x, pc.y) > 0:
+			sc = Vector2i(x, pc.y)
+			break
+	var had := mg.get_sand(sc.x, sc.y)
+	mine.dig_sand(sc)
+	t.check(had > 0 and mg.get_sand(sc.x, sc.y) == 0, "the drill takes sand away in one bite")
+	# a fallen ceiling block lands as rubble that slumps
+	var land := Vector2i(pc.x + 9, pc.y)
+	mg.set_flag(land.x, land.y, Cell.F_NO_RUBBLE, false)
+	var before2: int = mine.sand.total()
+	mine.collapse._land(land.x, land.y, 0)
+	t.check(mine.sand.total() - before2 == Balance.SAND_RUBBLE_AMOUNT and mg.get_mat(land.x, land.y) == Cell.AIR, "a falling ceiling block lands as a rubble pile")
+	# Off: the old behaviour, no new sand
+	Settings.values["sand_physics"] = 0
+	var before3: int = mine.sand.total()
+	for k in 6:
+		var c2 := Vector2i(pc.x + 1 + k, pc.y - 3)
+		mg.set_mat(c2.x, c2.y, Cell.SOFT)
+		mine.damage_cell(c2, 999.0, 3, true, "drill")
+	t.check(mine.sand.total() == before3, "with Sand physics off, no new sand appears")
+	Settings.values["sand_physics"] = keep_level
+	await _settle_scene(t)
+	Game.goto("title", true)
+	await _settle_scene(t)

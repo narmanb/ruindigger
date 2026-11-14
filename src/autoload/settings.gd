@@ -23,6 +23,7 @@ const DEFAULTS := {
 	"stick_deadzone": 0.15,
 	"touch_stick_vertical_assist": false,
 	"jump_grabs_ladders": false,
+	"sand_physics": 2,      # 0 off, 1 low, 2 normal, 3 high (see Balance.SAND_LEVELS)
 	# layout offsets (viewport px) dragged in the layout editor
 	"pos_move_x": 0.0, "pos_move_y": 0.0,
 	"pos_drill_x": 0.0, "pos_drill_y": 0.0,
@@ -30,9 +31,10 @@ const DEFAULTS := {
 	"pos_charge_x": 0.0, "pos_charge_y": 0.0,
 	"pos_interact_x": 0.0, "pos_interact_y": 0.0,
 	"pos_ladder_x": 0.0, "pos_ladder_y": 0.0,
+	"pos_gadget_x": 0.0, "pos_gadget_y": 0.0,
 }
 
-const LAYOUT_KEYS := ["move", "drill", "jump", "charge", "interact", "ladder"]
+const LAYOUT_KEYS := ["move", "drill", "jump", "charge", "interact", "ladder", "gadget"]
 
 const RANGES := {
 	"master_volume": [0.0, 1.0],
@@ -46,6 +48,7 @@ const RANGES := {
 	"move_control": [0, 2],
 	"stick_size": [0.6, 1.8],
 	"stick_deadzone": [0.05, 0.35],
+	"sand_physics": [0, 3],
 }
 
 var values: Dictionary = DEFAULTS.duplicate()

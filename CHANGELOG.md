@@ -1,6 +1,21 @@
 # Changelog
 
 ## 0.7.0 (feature/fun-pass; see docs/plans/fun-pass-plan.md)
+**Sand piles**
+- Loose sand now **piles up**. One in three sediment cells you drill drops some sand, a collapsing ceiling lands as a heap of rubble instead of a square block, and charges throw some loose debris. Sand falls, slides off steep sides and settles into smooth mounds. You **walk up and over** them as slopes, and the drill takes a pile away in one bite.
+- Sand pushes water out of its way and never fills the space you or a crawler stand in. Water and lava treat a half-full pile as ground.
+- **Settings > Sand physics:** Off / Low / Normal / High. Off brings back the old behaviour: no new piles, and collapses land as square rubble blocks. With "Show FPS" on, the HUD also shows how many sand cells are moving and what the last step cost.
+- Phone-friendly limits (all in `Balance`):
+
+  | Setting | Updates per second | Cells per update |
+  |---|---|---|
+  | Low | 10 | 80 |
+  | Normal | 20 | 160 |
+  | High | 30 | 320 |
+
+  Settled sand costs nothing. A step slower than 1.5 ms halves the next one's budget. Beyond 400 moving cells the rest settles at once. Collision for changed sand is rebuilt at most 10 times a second.
+- Measured on desktop, not on a phone. A 28-block cave-in averages 0.12 ms per step (worst 0.2 ms) and settles in under 2 s on Normal. A huge 400-cell pour averages 0.7 ms (worst 1.2 ms).
+
 **Charge upgrades**
 - **CHARGE RACK** (new upgrade, 3 levels): carry up to 8, 10, then 12 charges (6 without it). Buy charges at the Supply Locker up to your rack size.
 - **STICKY CHARGES** (new one-time upgrade): a charge sticks to the first rock, ceiling or foe it touches instead of bouncing and rolling. Stick one to a crawler and it rides along until it blows. If the rock it is stuck to is drilled away, it falls. Toggle sticky ON/OFF at the Supply Locker, or from the Pause menu during a run. The choice is saved.

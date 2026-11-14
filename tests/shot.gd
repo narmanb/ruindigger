@@ -276,6 +276,29 @@ func _process(_d: float) -> void:
 	if mine and args.has("feet") and frame == target - 1:
 		var pl: Player = mine.player
 		print("FEET bottom=%.2f cell_top=%.2f sink=%.2f floor=%s" % [pl.global_position.y + Player.HALF.y, floor((pl.global_position.y + Player.HALF.y + 1.0) / 16.0) * 16.0, pl._sink, str(pl.is_on_floor())])
+	# sandtest=1: a corridor; sand pours onto the floor from above and piles up,
+	# then the digger walks over it
+	if mine and args.has("sandtest") and frame == 20:
+		var g: TerrainGrid = mine.grid
+		var pl: Player = mine.player
+		var pc: Vector2i = g.world_to_cell(pl.global_position)
+		for x in range(pc.x - 2, pc.x + 16):
+			for y in range(pc.y - 6, pc.y + 1):
+				g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE, false)
+				g.set_water(x, y, 0)
+				g.set_mat(x, y, Cell.AIR)
+			g.set_mat(x, pc.y + 1, Cell.HARD)
+			g.set_mat(x, pc.y - 7, Cell.HARD)
+		g.set_mat(pc.x + 16, pc.y, Cell.HARD)
+		pl.invuln = 1e9
+		set_meta("sand_pc", pc)
+	if mine and args.has("sandtest") and frame >= 22 and frame < 60 and frame % 3 == 0:
+		var pc2: Vector2i = get_meta("sand_pc")
+		mine.sand.add(Vector2i(pc2.x + 6, pc2.y - 5), Balance.SAND_MAX)
+		if frame % 6 == 0:
+			mine.sand.add(Vector2i(pc2.x + 11, pc2.y - 5), Balance.SAND_MAX)
+	if mine and args.has("sandtest") and frame == int(args.get("walkat", "100000")):
+		mine.player.input_override = {"x": 1.0}
 	if mine and args.has("ladder") and frame == target - 30:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:

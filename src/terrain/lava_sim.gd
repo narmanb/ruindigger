@@ -70,7 +70,8 @@ func wake_all() -> void:
 
 
 func _open(x: int, y: int) -> bool:
-	return grid.in_bounds(x, y) and not Cell.is_solid(grid.get_mat(x, y)) and not keep_out.has(Vector2i(x, y))
+	return grid.in_bounds(x, y) and not Cell.is_solid(grid.get_mat(x, y)) and not keep_out.has(Vector2i(x, y)) \
+		and grid.sand[y * grid.w + x] < Balance.SAND_MAX / 2
 
 
 ## Lava never flows into water: it stops at the water's face and reacts there,

@@ -19,6 +19,8 @@ var flags: PackedByteArray
 var stratum: PackedByteArray
 var water: PackedByteArray         # 0..WATER_MAX in open cells
 var lava: PackedByteArray          # 0..LAVA_MAX in open cells (deep stage only)
+var sand: PackedByteArray          # 0..SAND_MAX px of loose sand in open cells (SandSim)
+var _sand_col_dirty: Dictionary = {}   # chunk -> true (collision for sand changed)
 var chunks_w: int
 var chunks_h: int
 var _dirty: Dictionary = {}        # Vector2i chunk -> true
@@ -45,6 +47,8 @@ func _init(width: int = 8, height: int = 8) -> void:
 	water.resize(n)
 	lava = PackedByteArray()
 	lava.resize(n)
+	sand = PackedByteArray()
+	sand.resize(n)
 	chunks_w = ceili(float(w) / CHUNK)
 	chunks_h = ceili(float(h) / CHUNK)
 
@@ -138,6 +142,35 @@ func get_lava(x: int, y: int) -> int:
 func set_lava(x: int, y: int, v: int) -> void:
 	if in_bounds(x, y):
 		lava[y * w + x] = clampi(v, 0, 255)
+
+
+func get_sand(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return 0
+	return sand[y * w + x]
+
+
+func set_sand(x: int, y: int, v: int) -> void:
+	if not in_bounds(x, y):
+		return
+	var i := y * w + x
+	var nv := clampi(v, 0, Balance.SAND_MAX)
+	if sand[i] == nv:
+		return
+	sand[i] = nv
+	# the cell and its neighbours' slopes (two cells either side) are drawn
+	# from these heights: dirty the one or two chunks that covers
+	var cy := y / CHUNK
+	for cx in range(maxi(0, x - 2) / CHUNK, mini(w - 1, x + 2) / CHUNK + 1):
+		var k := Vector2i(cx, cy)
+		_dirty[k] = true
+		_sand_col_dirty[k] = true
+
+
+func take_sand_col_dirty() -> Array:
+	var k := _sand_col_dirty.keys()
+	_sand_col_dirty.clear()
+	return k
 
 
 func take_water_dirty() -> Array:
@@ -330,6 +363,7 @@ func to_dict() -> Dictionary:
 		"hp": Marshalls.raw_to_base64(hp.to_byte_array()),
 		"water": Marshalls.raw_to_base64(water),
 		"lava": Marshalls.raw_to_base64(lava),
+		"sand": Marshalls.raw_to_base64(sand),
 	}
 
 
@@ -344,4 +378,6 @@ static func from_dict(d: Dictionary) -> TerrainGrid:
 		g.water = Marshalls.base64_to_raw(d["water"])
 	if d.has("lava"):
 		g.lava = Marshalls.base64_to_raw(d["lava"])
+	if d.has("sand"):
+		g.sand = Marshalls.base64_to_raw(d["sand"])
 	return g

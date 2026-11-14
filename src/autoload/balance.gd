@@ -189,6 +189,19 @@ const SCAFFOLD_ACTIVATE_COST := 2
 const SCAFFOLD_CELL_COST := 1
 const SCAFFOLD_MAX_LEN := 120
 const SCAFFOLD_BUILD_RATE := 60.0   # cells per second
+# --- Sand piles (SandSim) ---
+const SAND_MAX := 16                 # pixels of sand a cell holds (one full cell)
+const SAND_REPOSE := 8               # px a pile may stand above its neighbour (~27 degrees)
+# "Sand physics" setting: 0 Off (old rubble blocks, no new sand), 1 Low, 2 Normal, 3 High
+const SAND_LEVELS := [{"tick": 0.1, "budget": 0}, {"tick": 0.1, "budget": 80}, {"tick": 0.05, "budget": 160}, {"tick": 0.033, "budget": 320}]
+const SAND_MAX_MOVING := 400         # beyond this many active cells, the rest settles at once
+const SAND_STEP_MAX_US := 1500       # a step slower than this halves the next budget
+const SAND_COLLISION_HZ := 10.0      # collision rebuilds for changed sand, at most
+const SAND_DRILL_EVERY := 3          # one in N sediment cells drilled drops sand
+const SAND_DRILL_AMOUNT := 8
+const SAND_BLAST_EVERY := 4
+const SAND_BLAST_AMOUNT := 8
+const SAND_RUBBLE_AMOUNT := 16       # a fallen ceiling block lands as a full cell of rubble
 const FOOT_SINK_MAX := 4             # px the sprite may sink onto rough ground
 const CAMERA_LOOK_AHEAD := 0.11     # fraction of the visible width
 const CHARGE_PRICE := 25

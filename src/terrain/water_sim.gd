@@ -94,11 +94,13 @@ func wake_all() -> void:
 ## Open to water: not rock, and not lava. Lava is far denser, so water rests
 ## on its surface (where LavaSim reacts the two) instead of sinking through it.
 func _open(x: int, y: int) -> bool:
-	return grid.in_bounds(x, y) and not Cell.is_solid(grid.get_mat(x, y)) and grid.lava[y * grid.w + x] == 0
+	return grid.in_bounds(x, y) and not Cell.is_solid(grid.get_mat(x, y)) and grid.lava[y * grid.w + x] == 0 \
+		and grid.sand[y * grid.w + x] < Balance.SAND_MAX / 2
 
 
 func _blocked(x: int, y: int) -> bool:
-	return not grid.in_bounds(x, y) or grid.is_solid(x, y) or grid.lava[y * grid.w + x] > 0
+	return not grid.in_bounds(x, y) or grid.is_solid(x, y) or grid.lava[y * grid.w + x] > 0 \
+		or grid.sand[y * grid.w + x] >= Balance.SAND_MAX / 2
 
 
 func _on_cell_changed(x: int, y: int, _old: int, new_m: int) -> void:
