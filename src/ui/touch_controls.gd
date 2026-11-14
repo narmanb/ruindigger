@@ -522,7 +522,16 @@ func _draw_bar(op: float, sc: float) -> void:
 			if k == 0 and cd > 0.0:
 				HudSkin.label(self, c + Vector2(rect.size.x * 0.33, -rect.size.y * 0.08), "%d" % ceili(cd), 8, Color(HudSkin.YELLOW, op), true)
 			if k == 1:
-				HudSkin.label(self, c + Vector2(rect.size.x * 0.33, -rect.size.y * 0.08), str(lures), 8, Color(HudSkin.CYAN if lures > 0 else HudSkin.MUTED, op), true)
+				# lures left as small cyan pips beside the icon
+				var n := maxi(lures, Balance.LURES_PER_RUN)
+				var ps := maxf(3.0, roundf(3.0 * sc))
+				var px0 := c.x + rect.size.x * 0.24
+				for i in n:
+					var pr := Rect2(roundf(px0), roundf(c.y - rect.size.y * 0.34 + i * (ps + 2.0)), ps, ps)
+					if i < lures:
+						draw_rect(pr, Color(HudSkin.CYAN, op))
+					else:
+						draw_rect(pr, Color(HudSkin.MUTED, op), false, 1.0)
 		var b0: Rect2 = bar["buttons"][0]
 		draw_rect(Rect2(roundf(b0.end.x), b0.position.y + 3.0, maxf(1.0, roundf(sc)), b0.size.y - 6.0), Color(HudSkin.METAL, op))
 	# the tab: a small metal block whose arrow points where the bar will go

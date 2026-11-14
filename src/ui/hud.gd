@@ -348,8 +348,18 @@ class Diag extends Control:
 				draw_rect(Rect2(r.position, Vector2(8, 2)), HudSkin.RED.lightened(0.45))
 			else:
 				draw_rect(r, HudSkin.MUTED, false, 1.0)
+		# lures: cyan pips, like the charges
 		var lures := int(Game.run.get("lures", 0))
-		HudSkin.label(self, Vector2(BX + maxi(ch, 3) * 10 + 12, y), "LURE %d" % lures, 9, HudSkin.CYAN if lures > 0 else HudSkin.MUTED)
+		var lx := BX + maxi(ch, 3) * 10 + 10
+		HudSkin.label(self, Vector2(lx, y), "LURE", 9, HudSkin.MUTED)
+		lx += 34
+		for i in maxi(lures, Balance.LURES_PER_RUN):
+			var lr := Rect2(lx + i * 10, y - 8, 8, 9)
+			if i < lures:
+				draw_rect(lr, HudSkin.CYAN.darkened(0.15))
+				draw_rect(Rect2(lr.position, Vector2(8, 2)), HudSkin.CYAN.lightened(0.4))
+			else:
+				draw_rect(lr, HudSkin.MUTED, false, 1.0)
 		var scap: int = hud.mine.scaffold_cap()
 		var sn: int = Game.run.get("scaffold", 0)
 		var scol := HudSkin.YELLOW.lerp(HudSkin.RED, hud._scaf_pulse)

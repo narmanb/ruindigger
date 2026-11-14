@@ -7,6 +7,7 @@
   - Framed minimap, a depth panel with a zone gem, metal CARGO (crate icon) and pause buttons, and a framed orders list.
   - All values are live game data, as before.
 - Touch controls are a 2x2 block of octagonal buttons in the bottom-right corner, with icons: LADDER (ladder) and DRILL (drill bit) on top, CHARGE (bomb, with a count badge) and JUMP (cyan double chevron) below. The movement stick is a metal ring with orange arrows; the d-pad is restyled to match.
+- Lures show as cyan pips, like the charges (in the status panel and on the toolbar's LURE button).
 - **USE** is a teal button beside the block. It appears only when something is in reach, showing what it will do (EXTRACT, TAKE, DESCEND...).
 - **Gadget toolbar:** a metal bar above the block with your active gadget (SONAR or CRYO, with its cooldown) and LURE (with the count).
   - Tap its arrow tab to slide it off the right edge in 0.2 s. Only the tab stays, and the freed space takes no touches. Tap the tab again to bring it back.
@@ -41,6 +42,7 @@
 - **STICKY CHARGES** (new one-time upgrade): a charge sticks to the first rock, ceiling or foe it touches instead of bouncing and rolling. Stick one to a crawler and it rides along until it blows. If the rock it is stuck to is drilled away, it falls. Toggle sticky ON/OFF at the Supply Locker, or from the Pause menu during a run. The choice is saved.
 
 **Feet on the ground**
+- Follow-up: every tile's top edge begins with a near-black outline row that disappears against the dark cave, so the feet still looked 1 to 3 px high. The sprite now sinks onto that outline row, so the boots touch the bright ground line.
 - The digger now stands on the rock you can see. Tile tops are drawn rough and rounded, which left a 1 to 4 pixel gap under the feet. The sprite now sinks onto the drawn surface under its feet, read from the tile art itself, and eases back up in the air. Collision is unchanged.
 
 **Loot economy**

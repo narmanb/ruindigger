@@ -391,6 +391,12 @@ func surface_depth(wx: float, cy: int) -> int:
 	var d := 0
 	while d < int(C) - 1 and _atlas_img.get_pixel(key.x, key.y + d).a < 0.5:
 		d += 1
+	# the first solid row is a near-black outline that vanishes against the
+	# dark cave behind it; the ground you see starts below it. Feet stand ON
+	# the outline row, so the boot's own outline overlaps it.
+	var px := _atlas_img.get_pixel(key.x, key.y + d)
+	if px.get_luminance() < 0.25 and d < int(C) - 2:
+		d += 1
 	_depth_cache[key] = d
 	return d
 
