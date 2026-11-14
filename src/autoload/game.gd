@@ -126,6 +126,7 @@ func start_run() -> void:
 		"modifiers": modifiers.duplicate(),
 		"charges": charges,
 		"lures": Balance.LURES_PER_RUN,
+		"sticky": Progress.sticky_active(),
 		"relics": [],
 		"loadout": loadout.duplicate(),
 		"gadget_cd": 0.0,

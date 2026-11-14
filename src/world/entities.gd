@@ -229,7 +229,7 @@ class Cache extends Node2D:
 		if used:
 			return
 		used = true
-		Game.run["charges"] = mini(Balance.CHARGES_MAX + 2, int(Game.run.get("charges", 0)) + charges)
+		Game.run["charges"] = mini(Progress.charges_max() + 2, int(Game.run.get("charges", 0)) + charges)
 		if repair > 0.0:
 			pl.heal(repair)
 		spr.modulate = Color(0.5, 0.5, 0.5)

@@ -6,13 +6,14 @@ signal changed
 
 const PATH := "user://progress.json"
 const VERSION := 1
-const TRACKS := ["drill", "heat", "cargo", "hull", "scaffold"]
+const TRACKS := ["drill", "heat", "cargo", "hull", "scaffold", "charge_rack", "sticky"]
 
 var credits: int = 0
 var upgrades: Dictionary = {"drill": 0, "heat": 0, "cargo": 0, "hull": 0}
 var charges: int = 0          # purchased charges waiting for the next run
 var stats: Dictionary = {}
 var tutorial_done: bool = false
+var sticky_on: bool = true     # use sticky charges when the upgrade is owned
 var path: String = PATH
 
 
@@ -30,6 +31,7 @@ func reset() -> void:
 	charges = 0
 	stats = default_stats()
 	tutorial_done = false
+	sticky_on = true
 
 
 func level(track: String) -> int:
@@ -60,13 +62,21 @@ func buy(track: String) -> bool:
 
 
 func buy_charge() -> bool:
-	if credits < Balance.CHARGE_PRICE or charges + Balance.CHARGES_FREE >= Balance.CHARGES_MAX:
+	if credits < Balance.CHARGE_PRICE or charges + Balance.CHARGES_FREE >= charges_max():
 		return false
 	credits -= Balance.CHARGE_PRICE
 	charges += 1
 	save_progress()
 	changed.emit()
 	return true
+
+
+func charges_max() -> int:
+	return Balance.charges_max(level("charge_rack"))
+
+
+func sticky_active() -> bool:
+	return level("sticky") > 0 and sticky_on
 
 
 func add_credits(n: int) -> void:
@@ -77,7 +87,7 @@ func add_credits(n: int) -> void:
 
 func to_dict() -> Dictionary:
 	return {"version": VERSION, "credits": credits, "upgrades": upgrades.duplicate(),
-		"charges": charges, "stats": stats.duplicate(), "tutorial_done": tutorial_done}
+		"charges": charges, "stats": stats.duplicate(), "tutorial_done": tutorial_done, "sticky_on": sticky_on}
 
 
 func from_dict(d: Variant) -> void:
@@ -85,13 +95,14 @@ func from_dict(d: Variant) -> void:
 	if typeof(d) != TYPE_DICTIONARY:
 		return
 	credits = _int(d.get("credits"), 0, 0, 9999999)
-	charges = _int(d.get("charges"), 0, 0, Balance.CHARGES_MAX)
 	tutorial_done = d.get("tutorial_done") == true
+	sticky_on = d.get("sticky_on") != false
 	var up: Variant = d.get("upgrades")
 	if typeof(up) == TYPE_DICTIONARY:
 		for t in TRACKS:
 			var maxlv: int = Balance.UPGRADES[t]["costs"].size()
 			upgrades[t] = _int(up.get(t), 0, 0, maxlv)
+	charges = _int(d.get("charges"), 0, 0, charges_max())
 	var st: Variant = d.get("stats")
 	if typeof(st) == TYPE_DICTIONARY:
 		for k in stats.keys():

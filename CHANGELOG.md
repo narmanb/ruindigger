@@ -1,6 +1,10 @@
 # Changelog
 
 ## 0.7.0 (feature/fun-pass; see docs/plans/fun-pass-plan.md)
+**Charge upgrades**
+- **CHARGE RACK** (new upgrade, 3 levels): carry up to 8, 10, then 12 charges (6 without it). Buy charges at the Supply Locker up to your rack size.
+- **STICKY CHARGES** (new one-time upgrade): a charge sticks to the first rock, ceiling or foe it touches instead of bouncing and rolling. Stick one to a crawler and it rides along until it blows. If the rock it is stuck to is drilled away, it falls. Toggle sticky ON/OFF at the Supply Locker, or from the Pause menu during a run. The choice is saved.
+
 **Feet on the ground**
 - The digger now stands on the rock you can see. Tile tops are drawn rough and rounded, which left a 1 to 4 pixel gap under the feet. The sprite now sinks onto the drawn surface under its feet, read from the tile art itself, and eases back up in the air. Collision is unchanged.
 

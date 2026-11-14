@@ -18,6 +18,7 @@ static func run(t: Node) -> void:
 	await gadgets(t)
 	await relics(t)
 	await feet(t)
+	await charges(t)
 
 
 static func economy(t: Node) -> void:
@@ -527,6 +528,69 @@ static func feet(t: Node) -> void:
 	pl.global_position.y -= 40.0
 	await t._frames(3)
 	t.check(pl._sink < want or want == 0, "in the air the sprite lifts back")
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+static func charges(t: Node) -> void:
+	t.section("charge upgrades")
+	var saved := Progress.to_dict()
+	Progress.reset()
+	t.check(Progress.charges_max() == 6 and not Progress.sticky_active(), "no upgrades: 6 charges max, no sticky charges")
+	Progress.upgrades["charge_rack"] = 2
+	Progress.upgrades["sticky"] = 1
+	t.check(Progress.charges_max() == 10 and Progress.sticky_active(), "Charge Rack II carries 10; Sticky unlocked is on by default")
+	Progress.credits = 1000
+	for k in 12:
+		Progress.buy_charge()
+	t.check(Progress.charges + Balance.CHARGES_FREE == 10, "you can pack charges up to the rack size (%d)" % (Progress.charges + Balance.CHARGES_FREE))
+	Progress.sticky_on = false
+	var d := Progress.to_dict()
+	Progress.from_dict(d)
+	t.check(Progress.level("charge_rack") == 2 and Progress.charges == 8 and not Progress.sticky_on and not Progress.sticky_active(), "rack, packed charges and the sticky toggle survive a save")
+	Progress.sticky_on = true
+	# live: a sticky charge thrown at a wall stays there; a normal one drops
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(20)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	t.check(bool(Game.run.get("sticky", false)) and int(Game.run["charges"]) == 10, "the run gets sticky charges and the full rack")
+	var g: TerrainGrid = mine.grid
+	var pc: Vector2i = g.world_to_cell(pl.global_position)
+	# build a wall 3 cells to the right, open air in front of it
+	for dy in range(-4, 1):
+		for dx in range(1, 3):
+			g.set_mat(pc.x + dx, pc.y + dy, Cell.AIR)
+		g.set_mat(pc.x + 3, pc.y + dy, Cell.HARD)
+	var sticky_pos := Vector2(pc.x * 16 + 24, pc.y * 16 - 24)
+	mine.spawn_charge(sticky_pos, Vector2(220, 0))
+	var ch: Node2D = null
+	for e in mine.entity_root.get_children():
+		if e is Hazards.Charge:
+			ch = e
+	await t._frames(40)
+	var stuck_y := ch.global_position.y if is_instance_valid(ch) else -1.0
+	var stuck_ok: bool = is_instance_valid(ch) and ch.glued and absf(stuck_y - sticky_pos.y) < 4.0 and ch.global_position.x > sticky_pos.x + 8.0
+	t.check(stuck_ok, "a sticky charge sticks to the wall where it hits")
+	if is_instance_valid(ch):
+		ch.queue_free()
+	Game.run["sticky"] = false
+	mine.spawn_charge(sticky_pos, Vector2(220, 0))
+	var ch2: Node2D = null
+	for e in mine.entity_root.get_children():
+		if e is Hazards.Charge and not e.is_queued_for_deletion():
+			ch2 = e
+	await t._frames(40)
+	t.check(is_instance_valid(ch2) and not ch2.sticky and ch2.global_position.y > sticky_pos.y + 8.0, "with sticky off, a charge falls as before")
+	if is_instance_valid(ch2):
+		ch2.queue_free()
+	Progress.from_dict(saved)
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

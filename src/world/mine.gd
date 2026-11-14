@@ -872,6 +872,7 @@ func spawn_lure(pos: Vector2, v: Vector2) -> Node2D:
 func spawn_charge(pos: Vector2, v: Vector2) -> void:
 	var ch := Hazards.Charge.new()
 	ch.mine = self
+	ch.sticky = bool(Game.run.get("sticky", false))
 	ch.vel = v
 	ch.position = pos
 	entity_root.add_child(ch)

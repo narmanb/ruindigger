@@ -172,6 +172,10 @@ const UPGRADES := {
 		"desc": ["60 ore units", "90 ore units", "130 ore units", "180 ore units"]},
 	"hull": {"name": "HULL PLATING", "costs": [110, 260, 520],
 		"desc": ["100 hull", "130 hull", "165 hull", "210 hull"]},
+	"charge_rack": {"name": "CHARGE RACK", "costs": [140, 300, 560],
+		"desc": ["Carry up to 6 charges", "Carry up to 8 charges", "Carry up to 10 charges", "Carry up to 12 charges"]},
+	"sticky": {"name": "STICKY CHARGES", "costs": [240],
+		"desc": ["Charges bounce and roll", "Charges stick to walls, ceilings and foes (toggle at the Supply Locker or in Pause)"]},
 	"scaffold": {"name": "SCAFFOLD HOPPER", "costs": [90, 210, 430],
 		"desc": ["40 ladder energy", "70 ladder energy", "110 ladder energy", "160 ladder energy"]},
 }
@@ -189,7 +193,8 @@ const FOOT_SINK_MAX := 4             # px the sprite may sink onto rough ground
 const CAMERA_LOOK_AHEAD := 0.11     # fraction of the visible width
 const CHARGE_PRICE := 25
 const CHARGES_FREE := 2
-const CHARGES_MAX := 6
+const CHARGES_MAX := 6               # without the Charge Rack upgrade
+const CHARGES_MAX_BY_LEVEL := [6, 8, 10, 12]
 
 # --- Demolition charge ---
 const CHARGE_FUSE := 2.2
@@ -535,6 +540,10 @@ func heat_cooling(level: int) -> float:
 
 func scaffold_capacity(level: int) -> int:
 	return SCAFFOLD_CAPACITY[clampi(level, 0, SCAFFOLD_CAPACITY.size() - 1)]
+
+
+func charges_max(level: int) -> int:
+	return CHARGES_MAX_BY_LEVEL[clampi(level, 0, CHARGES_MAX_BY_LEVEL.size() - 1)]
 
 
 func cargo_capacity(level: int) -> int:

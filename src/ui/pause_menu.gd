@@ -41,6 +41,15 @@ func _ready() -> void:
 	resume_btn = UIKit.button("RESUME", close)
 	v.add_child(resume_btn)
 	v.add_child(UIKit.button("CARGO MANIFEST", func() -> void: mine.hud.cargo_screen.open()))
+	if Progress.level("sticky") > 0:
+		var sb := UIKit.button("STICKY CHARGES: %s" % ("ON" if Game.run.get("sticky", false) else "OFF"), func() -> void: pass)
+		sb.pressed.connect(func() -> void:
+			Progress.sticky_on = not bool(Game.run.get("sticky", false))
+			Game.run["sticky"] = Progress.sticky_on
+			Progress.save_progress()
+			sb.text = "STICKY CHARGES: %s" % ("ON" if Progress.sticky_on else "OFF")
+			Audio.play("ui_confirm"))
+		v.add_child(sb)
 	v.add_child(UIKit.button("SETTINGS", _settings))
 	v.add_child(UIKit.button("ABANDON RUN", _abandon))
 	var c: Dictionary = Game.run.get("contract", {})

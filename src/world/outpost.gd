@@ -473,15 +473,21 @@ func _supply_panel() -> Control:
 	var fr := _frame("SUPPLY LOCKER")
 	var v: VBoxContainer = fr[1]
 	v.add_child(UIKit.label("Each contract includes %d free demolition charges." % Balance.CHARGES_FREE, 10))
-	v.add_child(UIKit.label("Packed for next run: %d extra (max %d total)" % [Progress.charges, Balance.CHARGES_MAX], 10, UIKit.TEAL))
+	v.add_child(UIKit.label("Packed for next run: %d extra (max %d total)" % [Progress.charges, Progress.charges_max()], 10, UIKit.TEAL))
 	var b := UIKit.button("BUY CHARGE - %d CR" % Balance.CHARGE_PRICE, func() -> void:
 		if Progress.buy_charge():
 			Audio.play("ui_buy")
 			_open_panel(_supply_panel())
 		else:
 			Audio.play("ui_deny"), 220)
-	b.disabled = Progress.credits < Balance.CHARGE_PRICE or Progress.charges + Balance.CHARGES_FREE >= Balance.CHARGES_MAX
+	b.disabled = Progress.credits < Balance.CHARGE_PRICE or Progress.charges + Balance.CHARGES_FREE >= Progress.charges_max()
 	v.add_child(b)
+	if Progress.level("sticky") > 0:
+		v.add_child(UIKit.button("STICKY CHARGES: %s" % ("ON" if Progress.sticky_on else "OFF"), func() -> void:
+			Progress.sticky_on = not Progress.sticky_on
+			Progress.save_progress()
+			Audio.play("ui_confirm")
+			_open_panel(_supply_panel()), 220))
 	v.add_child(UIKit.label("GADGETS - one active (GADGET button, G) and one passive", 10, UIKit.TEAL, true))
 	for kind in ["active", "passive"]:
 		var row := HBoxContainer.new()

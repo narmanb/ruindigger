@@ -12,10 +12,16 @@ class Charge extends Node2D:
 	var spr: Sprite2D
 	var ring: Sprite2D
 	var tick_t := 0.0
+	var sticky := false           # sticks where it first touches: rock, ceiling or a foe
+	var glued := false
+	var host: Node2D = null       # the foe it is stuck to
+	var host_off := Vector2.ZERO
 
 	func _ready() -> void:
 		spr = Sprite2D.new()
 		spr.texture = load("res://assets/gen/charge.png")
+		if sticky:
+			spr.modulate = Color(0.8, 1.0, 0.75)
 		spr.hframes = 2
 		add_child(spr)
 		ring = Sprite2D.new()
@@ -28,9 +34,47 @@ class Charge extends Node2D:
 		if is_instance_valid(ring):
 			ring.queue_free()
 
+	## Sticky: glue to the first rock or foe it touches and never move again
+	## (unless the rock under it is drilled away, or its foe dies).
+	func _sticky_step(delta: float) -> bool:
+		var g: TerrainGrid = mine.grid
+		if glued:
+			if host != null:
+				if is_instance_valid(host) and not host.is_queued_for_deletion() and mine.enemies.has(host):
+					global_position = host.global_position + host_off
+					return true
+				host = null
+				glued = false
+				return false
+			for d in [Vector2(0, 6), Vector2(0, -6), Vector2(6, 0), Vector2(-6, 0)]:
+				if g.solid_at(global_position + d):
+					return true
+			glued = false          # the rock it was on is gone: fall
+			return false
+		var np := global_position + vel * delta
+		for e in mine.enemies:
+			if is_instance_valid(e) and e.has_method("hit_rect") and e.hit_rect().grow(2.0).has_point(np):
+				host = e
+				host_off = global_position - e.global_position
+				glued = true
+				vel = Vector2.ZERO
+				Audio.play_at("hit_soft", global_position, -6.0, 0.1, 0.0)
+				return true
+		for d in [Vector2(0, 4), Vector2(0, -4), Vector2(4, 0), Vector2(-4, 0)]:
+			if g.solid_at(np + d):
+				if not g.solid_at(np):
+					global_position = np
+				glued = true
+				vel = Vector2.ZERO
+				Audio.play_at("hit_soft", global_position, -6.0, 0.1, 0.0)
+				return true
+		return false
+
 	func _physics_process(delta: float) -> void:
 		fuse -= delta
-		if not stuck:
+		if sticky and _sticky_step(delta):
+			stuck = true
+		elif not stuck:
 			vel.y = minf(vel.y + 700.0 * delta, 380.0)
 			var np := global_position + vel * delta
 			var g: TerrainGrid = mine.grid
