@@ -239,6 +239,7 @@ func _build_ui() -> void:
 	ui_root.add_child(toast_label)
 	var touch := TouchControls.new()
 	touch.mine = self
+	touch.show_bar = false
 	ui_root.add_child(touch)
 	var menu_btn := Button.new()
 	menu_btn.text = "MENU"

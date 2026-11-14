@@ -524,18 +524,33 @@ func _ui() -> void:
 		for sc in [0.7, 1.0, 1.5]:
 			for mode in [TouchControls.MODE_FIXED, TouchControls.MODE_FLOATING, TouchControls.MODE_DPAD]:
 				var rects: Array[Rect2] = []
+				var top := INF
+				var right := -INF
 				for b in buttons:
-					var p: Vector2 = TouchControls.button_pos(b, sr, sc, Vector2.ZERO)
-					var r: float = float(b["r"]) * sc
-					rects.append(Rect2(p - Vector2(r, r), Vector2(r, r) * 2.0))
+					var br := TouchControls.button_rect(b, sr, sc, Vector2.ZERO)
+					rects.append(br)
+					if b["action"] != "interact":
+						top = minf(top, br.position.y)
+						right = maxf(right, br.end.x)
+				# the gadget toolbar, open and tucked away
+				var bar_open := TouchControls.bar_layout(sr, sc, top, right, 1.0)
+				var bar_shut := TouchControls.bar_layout(sr, sc, top, right, 0.0)
+				rects.append(bar_open["panel"])
+				rects.append(bar_open["tab"])
 				var overlap := false
 				for i in rects.size():
 					for j in range(i + 1, rects.size()):
+						if i == rects.size() - 2 and j == rects.size() - 1:
+							continue          # the tab is attached to its own panel
 						if rects[i].grow(-2.0).intersects(rects[j].grow(-2.0)):
 							overlap = true
-					var top_hud := Rect2(aspect.x - 180, 0, 180, 56)
-					if rects[i].intersects(top_hud) or rects[i].position.x < aspect.x * 0.45 or rects[i].position.y < 60:
+					# clear of the top-right HUD (depth, cargo, orders) and the left half
+					var top_hud := Rect2(aspect.x - 214, 0, 214, 134)
+					if rects[i].intersects(top_hud) or rects[i].position.x < aspect.x * 0.45 or rects[i].position.y < 60 or not sr.encloses(rects[i]):
 						overlap = true
+				var shut_tab: Rect2 = bar_shut["tab"]
+				if not sr.encloses(shut_tab) or (bar_shut["panel"] as Rect2).position.x < sr.end.x:
+					overlap = true      # tucked away: only the tab stays on screen
 				# the resting stick / d-pad stays on screen, clear of the buttons and the HUD
 				var mr: float = 34.0 * sc * (1.25 if mode == TouchControls.MODE_DPAD else 1.0)
 				var mp := TouchControls.move_rest_pos(sr, mr, Vector2.ZERO)
@@ -607,6 +622,43 @@ func _ui() -> void:
 	_drag(tc, 0, tc._rest_pos() + Vector2(22, -22))
 	check(Input.is_action_pressed("aim_up") and Input.is_action_pressed("move_right"), "d-pad diagonal moves and aims")
 	_touch(tc, 0, tc._rest_pos(), false)
+	# the gadget toolbar: tap the tab to tuck it away and back; remembered
+	Settings.values["gadget_bar_open"] = true
+	tc.bar_open = true
+	tc.bar_t = 1.0
+	var bar := tc._bar()
+	var sonar_at: Vector2 = (bar["buttons"][0] as Rect2).get_center()
+	var lure_at: Vector2 = (bar["buttons"][1] as Rect2).get_center()
+	_touch(tc, 2, sonar_at, true)
+	check(Input.is_action_pressed("gadget"), "the toolbar's first button fires the active gadget")
+	_touch(tc, 2, sonar_at, false)
+	_touch(tc, 2, lure_at, true)
+	check(Input.is_action_pressed("lure") and not Input.is_action_pressed("gadget"), "the toolbar's LURE button throws a lure")
+	_touch(tc, 2, lure_at, false)
+	_touch(tc, 3, (bar["tab"] as Rect2).get_center(), true)
+	_touch(tc, 3, (bar["tab"] as Rect2).get_center(), false)
+	check(not tc.bar_open and Settings.values["gadget_bar_open"] == false, "tapping the tab tucks the toolbar away and remembers it")
+	for k in 20:
+		tc._process(0.02)
+	check(tc.bar_t == 0.0, "the toolbar slides away in about 0.2 s")
+	var shut := tc._bar()
+	check((shut["panel"] as Rect2).position.x >= vp.x and (shut["tab"] as Rect2).end.x <= vp.x + 0.5, "tucked away, only its tab is left at the right edge")
+	_touch(tc, 2, sonar_at, true)
+	check(not Input.is_action_pressed("gadget") and tc.stick_finger == -1, "the freed space no longer takes touches")
+	_touch(tc, 2, sonar_at, false)
+	_touch(tc, 3, (shut["tab"] as Rect2).get_center(), true)
+	_touch(tc, 3, (shut["tab"] as Rect2).get_center(), false)
+	_touch(tc, 2, sonar_at, true)
+	check(tc.bar_open and not Input.is_action_pressed("gadget"), "buttons stay inactive while the toolbar slides back")
+	_touch(tc, 2, sonar_at, false)
+	for k in 20:
+		tc._process(0.02)
+	check(tc.bar_t == 1.0 and Settings.values["gadget_bar_open"] == true, "tapping the tab again brings it back")
+	tc.interact_label = ""
+	var use_b: Dictionary = tc.buttons[4]
+	_touch(tc, 2, tc._btn_pos(use_b), true)
+	check(not Input.is_action_pressed("interact"), "USE is hidden (and takes no touches) when nothing is in reach")
+	_touch(tc, 2, tc._btn_pos(use_b), false)
 	# layout editor: dragging a control stores an offset; reset clears it
 	tc.edit_mode = true
 	var drill: Dictionary = tc.buttons[0]

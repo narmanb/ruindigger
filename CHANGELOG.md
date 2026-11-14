@@ -1,6 +1,19 @@
 # Changelog
 
 ## 0.7.0 (feature/fun-pass; see docs/plans/fun-pass-plan.md)
+**New HUD and touch controls**
+- The in-game HUD is redrawn as one industrial interface: chamfered metal panels with bevelled rims, orange corner brackets and hazard strips, and cyan, teal, orange, yellow and red indicators.
+  - Status panel: HULL, HEAT, CARGO, CHRG + LURE, SCAF, PRES, and GADG as "SONAR - READY - MAGNET".
+  - Framed minimap, a depth panel with a zone gem, metal CARGO (crate icon) and pause buttons, and a framed orders list.
+  - All values are live game data, as before.
+- Touch controls are a 2x2 block of octagonal buttons in the bottom-right corner, with icons: LADDER (ladder) and DRILL (drill bit) on top, CHARGE (bomb, with a count badge) and JUMP (cyan double chevron) below. The movement stick is a metal ring with orange arrows; the d-pad is restyled to match.
+- **USE** is a teal button beside the block. It appears only when something is in reach, showing what it will do (EXTRACT, TAKE, DESCEND...).
+- **Gadget toolbar:** a metal bar above the block with your active gadget (SONAR or CRYO, with its cooldown) and LURE (with the count).
+  - Tap its arrow tab to slide it off the right edge in 0.2 s. Only the tab stays, and the freed space takes no touches. Tap the tab again to bring it back.
+  - Your choice is remembered between sessions.
+  - Keyboard: G or V for the gadget, T for a lure.
+- Panels stay inside the screen's safe area (cutouts), and the controls scale with Touch size. The layout is tested at 16:9, wider phone ratios and 16:10, at 70%, 100% and 150% size.
+
 **Sand piles**
 - Loose sand now **piles up**. One in three sediment cells you drill drops some sand, a collapsing ceiling lands as a heap of rubble instead of a square block, and charges throw some loose debris. Sand falls, slides off steep sides and settles into smooth mounds. You **walk up and over** them as slopes, and the drill takes a pile away in one bite.
 - Sand pushes water out of its way and never fills the space you or a crawler stand in. Water and lava treat a half-full pile as ground.

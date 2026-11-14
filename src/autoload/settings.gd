@@ -23,7 +23,8 @@ const DEFAULTS := {
 	"stick_deadzone": 0.15,
 	"touch_stick_vertical_assist": false,
 	"jump_grabs_ladders": false,
-	"sand_physics": 2,      # 0 off, 1 low, 2 normal, 3 high (see Balance.SAND_LEVELS)
+	"sand_physics": 2,
+	"gadget_bar_open": true,  # touch gadget toolbar expanded (remembered)      # 0 off, 1 low, 2 normal, 3 high (see Balance.SAND_LEVELS)
 	# layout offsets (viewport px) dragged in the layout editor
 	"pos_move_x": 0.0, "pos_move_y": 0.0,
 	"pos_drill_x": 0.0, "pos_drill_y": 0.0,

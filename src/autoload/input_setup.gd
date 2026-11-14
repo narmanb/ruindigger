@@ -19,6 +19,7 @@ const KEYS := {
 	"inventory": [KEY_I],
 	"ladder": [KEY_L, KEY_Q],
 	"gadget": [KEY_G, KEY_V],
+	"lure": [KEY_T],
 }
 
 const PAD_BUTTONS := {

@@ -243,6 +243,8 @@ func _physics_process(delta: float) -> void:
 		mine.build_ladder(self)
 	if _just("gadget") and mine:
 		mine.use_gadget(self)
+	if _just("lure") and mine:
+		throw_lure()
 
 	move_and_slide()
 	var now_floor := is_on_floor()
@@ -582,7 +584,7 @@ func stop_sounds() -> void:
 
 # ---------------------------------------------------------------------------
 func throw_lure() -> void:
-	if not mine or dead:
+	if not mine or dead or not mine.has_method("spawn_lure"):
 		return
 	if int(Game.run.get("lures", 0)) <= 0:
 		mine.toast("No lures left")
