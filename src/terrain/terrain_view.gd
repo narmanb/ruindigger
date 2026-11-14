@@ -190,31 +190,28 @@ func _rebuild_collision(key: Vector2i) -> void:
 		PhysicsServer2D.body_add_shape(body, sh, t)
 		new_shapes.append(sh)
 		idx += 1
-	# sand piles: two convex quads per cell (left and right half), their top
-	# edge following the same slope the pile is drawn with
+	# sand piles: one continuous surface line per run of sand along a row
+	# (a chain of segments, so nothing catches on seams between pieces)
 	for y in range(y0, y1):
-		for x in range(x0, x1):
-			if not has_sand_shape(x, y) or not _sand_floor(x, y):
-				continue                   # falling sand does not collide
-			var pr := sand_profile(x, y)
-			var bot := (y + 1) * C
-			for half in 2:
-				var xa := x * C + half * C * 0.5
-				var xb := xa + C * 0.5
-				var ha: float = pr.x if half == 0 else pr.y
-				var hb: float = pr.y if half == 0 else pr.z
-				if ha < 0.5 and hb < 0.5:
-					continue
-				var pts := PackedVector2Array([Vector2(xa, bot)])
-				if ha >= 0.5:
-					pts.append(Vector2(xa, bot - ha))
-				if hb >= 0.5:
-					pts.append(Vector2(xb, bot - hb))
-				pts.append(Vector2(xb, bot))
-				var ps := PhysicsServer2D.convex_polygon_shape_create()
-				PhysicsServer2D.shape_set_data(ps, pts)
-				PhysicsServer2D.body_add_shape(body, ps, Transform2D.IDENTITY)
-				new_shapes.append(ps)
+		var pts := PackedVector2Array()
+		for x in range(x0, x1 + 1):
+			var on := x < x1 and has_sand_shape(x, y) and _sand_floor(x, y)
+			if on:
+				for k in 4:
+					pts.append(Vector2(x * C + k * 4.0, sand_top(x, y, k * 4.0)))
+			if (not on or x == x1 - 1) and pts.size() > 0:
+				var last := x if not on else x + 1
+				pts.append(Vector2(last * C, sand_top(last - 1, y, C)))
+				if pts.size() >= 2:
+					var segs := PackedVector2Array()
+					for k in pts.size() - 1:
+						segs.append(pts[k])
+						segs.append(pts[k + 1])
+					var cs := PhysicsServer2D.concave_polygon_shape_create()
+					PhysicsServer2D.shape_set_data(cs, segs)
+					PhysicsServer2D.body_add_shape(body, cs, Transform2D.IDENTITY)
+					new_shapes.append(cs)
+				pts = PackedVector2Array()
 	# one-way platforms (thin top slab)
 	for y in range(y0, y1):
 		var platform_idx := 0
@@ -298,69 +295,119 @@ func tile_rect(m: int, s: int, mask: int, x: int, y: int) -> Rect2:
 	return Rect2((bi % ATLAS_COLS) * 256 + (t % 16) * C, (bi / ATLAS_COLS) * 256 + (t / 16) * C, C, C)
 
 
-## Sand surface of a cell as heights in px above its floor: left edge, middle,
-## right edge. Edges meet the neighbour halfway (a wall keeps the height), so
-## piles read as smooth mounds and walk as slopes.
-func sand_profile(x: int, y: int) -> Vector3:
-	if grid.is_solid(x, y):
-		return Vector3.ZERO
-	var h := float(grid.get_sand(x, y))
-	if h <= 0.0:
-		# a skirt: bare floor beside a pile slopes up to meet it, so a mound
-		# rises from the ground instead of starting with a step
-		if not _sand_floor(x, y):
-			return Vector3.ZERO
-		return Vector3(_skirt(x - 1, y), 0.0, _skirt(x + 1, y))
-	if not _sand_floor(x, y):
-		return Vector3(h, h, h)        # still falling: a flat clump
-	return Vector3(_sand_edge(h, x - 1, y), h, _sand_edge(h, x + 1, y))
+## Sand piles. A cell holds 0..SAND_MAX px of settled sand. Its surface is
+## drawn and collides as a smooth curve between neighbouring cell centres
+## (so a pile rises from bare floor and rounds over at the top), with a pixel
+## of grain noise, and it sits on the visible ground line of the rock below
+## (the same sink the feet use) so it never floats.
+
+## Settled height used for the surface curve: -1 for rock (a wall), 0 for no
+## settled sand (empty, or sand still falling), 16 under stacked sand.
+func _sand_h(x: int, y: int) -> float:
+	if not grid.in_bounds(x, y) or grid.is_solid(x, y):
+		return -1.0
+	var s := grid.get_sand(x, y)
+	if s <= 0 or not _sand_floor(x, y):
+		return 0.0
+	if grid.get_sand(x, y - 1) > 0:
+		return float(Balance.SAND_MAX)
+	return float(s)
 
 
 func _sand_floor(x: int, y: int) -> bool:
 	return grid.is_solid(x, y + 1) or grid.get_sand(x, y + 1) >= Balance.SAND_MAX
 
 
-func _skirt(nx: int, y: int) -> float:
-	if not grid.in_bounds(nx, y) or grid.is_solid(nx, y):
-		return 0.0
-	return float(grid.get_sand(nx, y)) * 0.5
+## Height of the pile surface at pixel column fx (0..16) of cell (x, y).
+func sand_height(x: int, y: int, fx: float) -> float:
+	var h0 := maxf(0.0, _sand_h(x, y))
+	var other: float
+	var u: float
+	if fx < C * 0.5:
+		other = _sand_h(x - 1, y)
+		u = (C * 0.5 - fx) / C          # 0 at the centre .. 0.5 at the edge
+	else:
+		other = _sand_h(x + 1, y)
+		u = (fx - C * 0.5) / C
+	if other < 0.0:
+		other = h0                       # against rock: keep the height
+	return lerpf(h0, other, smoothstep(0.0, 1.0, u))
 
 
-## Does this cell draw or collide as sand (a pile, or a skirt beside one)?
+## The pile's surface y at column fx (world px). The rough ground below only
+## matters at a pile's thin feet; under thicker sand the top is smooth.
+func sand_top(x: int, y: int, fx: float) -> float:
+	var h := sand_height(x, y, fx)
+	var sink := sand_base(x, y, fx) - (y + 1) * C
+	return (y + 1) * C - h + sink * clampf(1.0 - h / 4.0, 0.0, 1.0)
+
+
+## Where the pile's base sits at column fx: the cell's floor, lowered onto the
+## visible ground of the rock below it.
+func sand_base(x: int, y: int, fx: float) -> float:
+	var b := (y + 1) * C
+	if grid.is_solid(x, y + 1):
+		b += float(surface_depth(x * C + clampf(fx, 0.0, C - 1.0), y + 1))
+	return b
+
+
+## Does this cell draw or collide as sand (a pile, a pile's foot beside it,
+## or sand still falling)?
 func has_sand_shape(x: int, y: int) -> bool:
+	if grid.is_solid(x, y):
+		return false
 	if grid.get_sand(x, y) > 0:
-		return not grid.is_solid(x, y)
-	return (grid.get_sand(x - 1, y) > 0 or grid.get_sand(x + 1, y) > 0) and not grid.is_solid(x, y) and _sand_floor(x, y)
-
-
-func _sand_edge(h: float, nx: int, y: int) -> float:
-	if not grid.in_bounds(nx, y) or grid.is_solid(nx, y):
-		return h
-	return (h + float(grid.get_sand(nx, y))) * 0.5
+		return true
+	return _sand_floor(x, y) and (_sand_h(x - 1, y) > 0.0 or _sand_h(x + 1, y) > 0.0)
 
 
 func draw_sand(ci: CanvasItem, x: int, y: int, p: Vector2) -> void:
-	var pr := sand_profile(x, y)
-	var s := maxi(0, grid.get_stratum(x, y))
-	var base := Cell.debris_color(Cell.SOFT, s).lightened(0.12)
-	var top := base.lightened(0.3)
-	var dark := base.darkened(0.25)
-	var b := p.y + C
-	var mid := p.x + C * 0.5
-	var poly := PackedVector2Array([Vector2(p.x, b), Vector2(p.x, b - pr.x), Vector2(mid, b - pr.y), Vector2(p.x + C, b - pr.z), Vector2(p.x + C, b)])
-	ci.draw_colored_polygon(poly, base)
-	if pr.x > 0.5 or pr.y > 0.5:
-		ci.draw_line(Vector2(p.x, b - pr.x), Vector2(mid, b - pr.y), top, 1.0)
-	if pr.y > 0.5 or pr.z > 0.5:
-		ci.draw_line(Vector2(mid, b - pr.y), Vector2(p.x + C, b - pr.z), top, 1.0)
-	# grains: a few darker specks, fixed per cell so they do not shimmer
-	var hs := TerrainView.hash2(x, y)
-	for k in 4:
-		var gx := p.x + 1.0 + float(((hs >> (k * 4)) & 0xff) % 14)
-		var gyf := float((hs >> (k * 3 + 2)) & 7) / 7.0
-		var surf: float = lerpf(pr.x, pr.y, clampf((gx - p.x) / (C * 0.5), 0.0, 1.0)) if gx < mid else lerpf(pr.y, pr.z, clampf((gx - mid) / (C * 0.5), 0.0, 1.0))
-		if surf > 3.0:
-			ci.draw_rect(Rect2(gx, b - 1.0 - gyf * (surf - 3.0), 1, 1), dark)
+	var st := maxi(0, grid.get_stratum(x, y))
+	var base := Cell.debris_color(Cell.SOFT, st).lightened(0.12)
+	var top := base.lightened(0.28)
+	var dark := base.darkened(0.28)
+	if not _sand_floor(x, y):
+		# still falling: a loose scatter of grains, not a block
+		var n := grid.get_sand(x, y) / 2 + 1
+		var hs := TerrainView.hash2(x, y) + int(Time.get_ticks_msec() / 90)
+		for k in n:
+			var gx := float((hs >> (k % 8)) % 15)
+			var gy := float(((hs >> ((k + 3) % 9)) + k * 7) % 15)
+			ci.draw_rect(Rect2(p.x + gx, p.y + gy, 1 + (k % 2), 1 + (k % 2)), base if k % 3 else dark)
+		return
+	var wy := y * int(C)
+	var stacked := grid.get_sand(x, y - 1) > 0     # more sand on top: no surface here
+	for fx in int(C):
+		var wx := x * int(C) + fx
+		var h := sand_height(x, y, fx + 0.5)
+		if h < 0.6:
+			continue
+		var hs2 := TerrainView.hash2(wx, wy)
+		# a little grain noise along the surface, in 2-px clumps
+		var hn := h
+		if h > 2.5 and not stacked:
+			hn += (float(TerrainView.hash2(wx / 2, wy) % 3) - 1.0) * 0.55
+		var b := sand_base(x, y, fx)
+		var sink := b - (y + 1) * C
+		var t := roundf((y + 1) * C - hn + sink * clampf(1.0 - hn / 4.0, 0.0, 1.0))
+		var bl := roundf(b)
+		ci.draw_rect(Rect2(p.x + fx, p.y + t - wy, 1, bl - t), base)
+		if not stacked:
+			ci.draw_rect(Rect2(p.x + fx, p.y + t - wy, 1, 1), top)
+		# grains and the odd pebble inside the pile
+		if bl - t > 3.0:
+			var gy := t + 2.0 + float((hs2 >> 3) % int(maxf(1.0, bl - t - 2.0)))
+			ci.draw_rect(Rect2(p.x + fx, p.y + gy - wy, 1, 1), dark)
+			if (hs2 >> 6) % 7 == 0 and fx < int(C) - 1:
+				ci.draw_rect(Rect2(p.x + fx, p.y + gy - wy - 1.0, 2, 2), dark.darkened(0.15))
+			if (hs2 >> 9) % 5 == 0:
+				ci.draw_rect(Rect2(p.x + fx, p.y + t - wy + 1.0, 1, 1), top.darkened(0.1))
+
+
+## Sand surface heights at the left edge, middle and right edge of a cell
+## (kept for tests and older callers).
+func sand_profile(x: int, y: int) -> Vector3:
+	return Vector3(sand_height(x, y, 0.0), sand_height(x, y, C * 0.5), sand_height(x, y, C))
 
 
 ## How far below the top of its cell the drawn surface sits at world x, in
@@ -421,6 +468,7 @@ class TerrainChunk extends Node2D:
 		var x0 := key.x * CHUNK
 		var y0 := key.y * CHUNK
 		var cracked_tex := view.tex_cracks
+		var sand_cells: Array = []        # drawn after the rock, so piles cover its top edge
 		for ly in CHUNK:
 			var y := y0 + ly
 			if y >= g.h:
@@ -457,7 +505,9 @@ class TerrainChunk extends Node2D:
 					elif m == Cell.PLATFORM:
 						draw_texture_rect_region(view.tex_props, Rect2(p, Vector2(C, C)), view.prop_rect("platform"))
 					if view.has_sand_shape(x, y):
-						view.draw_sand(self, x, y, p)
+						sand_cells.append([x, y, p])
+		for sc in sand_cells:
+			view.draw_sand(self, sc[0], sc[1], sc[2])
 
 
 class BackChunk extends Node2D:

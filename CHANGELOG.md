@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.7.0 (feature/fun-pass; see docs/plans/fun-pass-plan.md)
+## 0.8.0 (feature/fun-pass)
+From now on every build gets its own version: the last number for fixes, the middle one for new features. A test fails if the game's version, the Android build name and this changelog disagree.
+
+**This update**
+- **Sand piles reworked.** They looked like blocks spawned by code: straight sides, and floating above the ground. Now dirt flies as grains that land where they land and pile up from what fell. Piles are drawn as grainy mounds with rounded tops, sit on the visible ground, and collide where they are drawn (details under Sand piles below).
+- **CARGO button removed.** Tap the CARGO row of the status panel instead (it has a small arrow); the manifest is also in Pause and on I. The objectives moved up into the space.
+- **Zone changes happen where you are.** The zone name, music, lighting and banner used to follow the camera, which looks ahead when you fall or drill down, and switched the moment you touched the wavy border, so you were "in" the Forgotten Engine while still at the bottom of a wing. They now follow the digger and only switch once you are 3 rows past the border.
+- **Water is one colour everywhere.** It used to take the zone's tint, so it turned purple in the Forgotten Engine and the Crystal Hollows.
+
+**Also new since the first 0.7.0 builds**
 **New HUD and touch controls**
 - The in-game HUD is redrawn as one industrial interface: chamfered metal panels with bevelled rims, orange corner brackets and hazard strips, and cyan, teal, orange, yellow and red indicators.
   - Status panel: HULL, HEAT, CARGO, CHRG + LURE, SCAF, PRES, and GADG as "SONAR - READY - MAGNET".
@@ -23,7 +32,8 @@
 - You can use it from anywhere on the deck.
 
 **Sand piles**
-- Loose sand now **piles up**. One in three sediment cells you drill drops some sand, a collapsing ceiling lands as a heap of rubble instead of a square block, and charges throw some loose debris. Sand falls, slides off steep sides and settles into smooth mounds. You **walk up and over** them as slopes, and the drill takes a pile away in one bite.
+- Loose sand now **piles up**. One in three sediment cells you drill throws a few dirt grains, a collapsing ceiling comes down as scattered rubble, and charges throw loose debris. The grains fly, bounce off walls, slow in water and land where they land. What lands slides off steep sides and settles into mounds that you **walk up and over**. The drill takes a pile away in one bite.
+- Piles are drawn one pixel column at a time: a curve that rises from the floor and rounds over at the top, grainy, with the odd pebble, and sitting on the visible ground line. Sand that is still falling shows as loose grains, not a block. Collision follows the drawn surface as one continuous line, so you walk on what you see.
 - Sand pushes water out of its way and never fills the space you or a crawler stand in. Water and lava treat a half-full pile as ground.
 - **Settings > Sand physics:** Off / Low / Normal / High. Off brings back the old behaviour: no new piles, and collapses land as square rubble blocks. With "Show FPS" on, the HUD also shows how many sand cells are moving and what the last step cost.
 - Phone-friendly limits (all in `Balance`):
@@ -45,6 +55,7 @@
 - Follow-up: every tile's top edge begins with a near-black outline row that disappears against the dark cave, so the feet still looked 1 to 3 px high. The sprite now sinks onto that outline row, so the boots touch the bright ground line.
 - The digger now stands on the rock you can see. Tile tops are drawn rough and rounded, which left a 1 to 4 pixel gap under the feet. The sprite now sinks onto the drawn surface under its feet, read from the tile art itself, and eases back up in the air. Collision is unchanged.
 
+## 0.7.0 (feature/fun-pass; see docs/plans/fun-pass-plan.md)
 **Loot economy**
 - The ore rack holds **60** units to start (upgrades 90 / 130 / 180).
 - **Deeper ore is worth more.** Ore is graded by the zone it was mined in: Spore Veins x1.3, Aqueducts and Hollows x1.7, Forgotten Engine x2.3, The First Civilization x3.5. The manifest and results show the grade (e.g. "Cobalt x1.7").

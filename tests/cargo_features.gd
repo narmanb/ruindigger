@@ -13,7 +13,7 @@ static func run(t: Node) -> void:
 	if screen == null:
 		return
 	var cargo_button: Button = mine.hud.get("cargo_btn")
-	t.check(cargo_button != null, "live HUD has a clearly labeled cargo button")
+	t.check(cargo_button != null, "the status panel's CARGO row is a button that opens the manifest")
 	if cargo_button == null:
 		return
 	Game.run["cargo"] = {1: 3, 2: 2}

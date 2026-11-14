@@ -623,7 +623,7 @@ class Collapse extends Node2D:
 		landed += 1
 		if mine.get("sand") != null and SandSim.enabled():
 			# the ceiling comes down as a heap of rubble that slumps into a pile
-			mine.sand.add(Vector2i(x, y), Balance.SAND_RUBBLE_AMOUNT)
+			mine.spray_sand(Vector2i(x, y), Balance.SAND_RUBBLE_AMOUNT, 7, 45.0, 0.45)
 			Audio.play_at("rubble", r.get_center(), -2.0, 0.1, 0.06)
 			mine.fx.dust(r.get_center() + Vector2(0, 6), Color(0.8, 0.7, 0.5))
 			mine.shake(0.08)

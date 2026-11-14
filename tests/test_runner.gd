@@ -258,6 +258,17 @@ func _boulder_units() -> void:
 
 # ---------------------------------------------------------------------------
 func _save() -> void:
+	section("version")
+	var ver := String(ProjectSettings.get_setting("application/config/version", ""))
+	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
+	var log := FileAccess.get_file_as_string("res://CHANGELOG.md")
+	var top := ""
+	for line in log.split("\n"):
+		if line.begins_with("## "):
+			top = line.substr(3).split(" ")[0]
+			break
+	check(ver != "" and presets.contains('version/name="%s"' % ver), "the Android build is named for the game version (%s)" % ver)
+	check(top == ver, "the newest changelog entry is this version (%s vs %s): bump the version with every update" % [top, ver])
 	section("save")
 	Progress.reset()
 	Progress.credits = 777

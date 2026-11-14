@@ -24,6 +24,8 @@ static func run(t: Node) -> void:
 	await feet(t)
 	await charges(t)
 	await sand(t)
+	await sand_look(t)
+	await zones(t)
 
 
 static func economy(t: Node) -> void:
@@ -707,10 +709,15 @@ static func sand(t: Node) -> void:
 		var c := Vector2i(pc.x + 2 + k, pc.y - 2)
 		mg.set_mat(c.x, c.y, Cell.SOFT)
 		soft.append(c)
+	var lost0: int = mine.sand_drops.lost
 	for c in soft:
 		mine.damage_cell(c, 999.0, 3, true, "drill")
-	await t._frames(10)
-	t.check(mine.sand.total() - before == Balance.SAND_DRILL_AMOUNT, "one in %d sediment cells drilled drops sand (+%d px)" % [Balance.SAND_DRILL_EVERY, mine.sand.total() - before])
+	t.check(mine.sand_drops.in_flight() == Balance.SAND_DRILL_AMOUNT, "drilled sediment throws its sand as flying grains (%d px in the air)" % mine.sand_drops.in_flight())
+	for k in 240:
+		if mine.sand_drops.pos.is_empty():
+			break
+		await t.get_tree().physics_frame
+	t.check(mine.sand_drops.pos.is_empty() and mine.sand.total() - before == Balance.SAND_DRILL_AMOUNT and mine.sand_drops.lost == lost0, "the grains land and become sand where they fall (+%d px, one in %d cells)" % [mine.sand.total() - before, Balance.SAND_DRILL_EVERY])
 	var sc := Vector2i(-1, -1)
 	for x in range(pc.x + 3, pc.x + 8):
 		if mg.get_sand(x, pc.y) > 0:
@@ -724,7 +731,11 @@ static func sand(t: Node) -> void:
 	mg.set_flag(land.x, land.y, Cell.F_NO_RUBBLE, false)
 	var before2: int = mine.sand.total()
 	mine.collapse._land(land.x, land.y, 0)
-	t.check(mine.sand.total() - before2 == Balance.SAND_RUBBLE_AMOUNT and mg.get_mat(land.x, land.y) == Cell.AIR, "a falling ceiling block lands as a rubble pile")
+	for k in 240:
+		if mine.sand_drops.pos.is_empty():
+			break
+		await t.get_tree().physics_frame
+	t.check(mine.sand.total() - before2 == Balance.SAND_RUBBLE_AMOUNT and mg.get_mat(land.x, land.y) == Cell.AIR, "a falling ceiling block lands as scattered rubble that piles up (+%d px)" % (mine.sand.total() - before2))
 	# Off: the old behaviour, no new sand
 	Settings.values["sand_physics"] = 0
 	var before3: int = mine.sand.total()
@@ -732,8 +743,91 @@ static func sand(t: Node) -> void:
 		var c2 := Vector2i(pc.x + 1 + k, pc.y - 3)
 		mg.set_mat(c2.x, c2.y, Cell.SOFT)
 		mine.damage_cell(c2, 999.0, 3, true, "drill")
-	t.check(mine.sand.total() == before3, "with Sand physics off, no new sand appears")
+	t.check(mine.sand.total() == before3 and mine.sand_drops.pos.is_empty(), "with Sand physics off, no new sand appears")
 	Settings.values["sand_physics"] = keep_level
 	await _settle_scene(t)
 	Game.goto("title", true)
 	await _settle_scene(t)
+
+
+
+static func sand_look(t: Node) -> void:
+	t.section("sand piles sit on the ground")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var view: TerrainView = mine.view
+	var g: TerrainGrid = mine.grid
+	var pc: Vector2i = g.world_to_cell(mine.player.global_position)
+	var c := Vector2i(pc.x + 4, pc.y)
+	for x in range(c.x - 2, c.x + 3):
+		g.set_mat(x, c.y, Cell.AIR)
+		g.set_mat(x, c.y + 1, Cell.HARD)
+	mine.sand.add(c, 12)
+	var foot_l := view.sand_height(c.x - 1, c.y, 0.0)
+	var foot_r := view.sand_height(c.x + 1, c.y, 16.0)
+	var peak := view.sand_height(c.x, c.y, 8.0)
+	t.check(peak >= 11.5 and foot_l < 0.5 and foot_r < 0.5, "a pile rises from nothing at its feet to its peak (%.1f / %.1f / %.1f)" % [foot_l, peak, foot_r])
+	var smooth := true
+	var prev := view.sand_height(c.x - 1, c.y, 0.0)
+	for k in range(1, 48):
+		var x := c.x - 1 + k / 16
+		var h := view.sand_height(x, c.y, float(k % 16))
+		if absf(h - prev) > 2.0:
+			smooth = false
+		prev = h
+	t.check(smooth, "the surface has no steps or hard corners")
+	var b := view.sand_base(c.x, c.y, 8.0)
+	t.check(b > (c.y + 1) * 16.0, "the pile sits on the visible ground line, not on the cell edge above it")
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+
+static func zones(t: Node) -> void:
+	t.section("zone you are in")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var g: TerrainGrid = mine.grid
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	# find a column where a wing meets the Engine: the first Engine row
+	var bx := -1
+	var by := -1
+	for x in range(10, 60):
+		for y in range(196, 214):
+			if g.get_stratum(x, y) == Balance.Z_ENGINE and g.get_stratum(x, y - 1) == Balance.Z_AQUEDUCT:
+				bx = x
+				by = y
+				break
+		if bx >= 0:
+			break
+	t.check(bx >= 0, "found the wing / Engine border")
+	if bx < 0:
+		return
+	mine.presented_zone = Balance.Z_AQUEDUCT
+	var place := func(row: int) -> void:
+		pl.global_position = Vector2(bx * 16 + 8, (row + 1) * 16 - Player.HALF.y - 0.5)
+		pl.velocity = Vector2.ZERO
+		mine._update_presented_zone()
+	place.call(by)
+	t.check(mine.presented_zone == Balance.Z_AQUEDUCT, "just past the border you are still in the wing")
+	place.call(by + Balance.ZONE_ENTRY_ROWS + 1)
+	t.check(mine.presented_zone == Balance.Z_ENGINE, "a few rows in, you are in the Forgotten Engine")
+	place.call(by - 1)
+	t.check(mine.presented_zone == Balance.Z_ENGINE, "stepping back over the line does not flicker the zone")
+	place.call(by - Balance.ZONE_ENTRY_ROWS - 1)
+	t.check(mine.presented_zone == Balance.Z_AQUEDUCT, "climbing well back up returns you to the wing")
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)

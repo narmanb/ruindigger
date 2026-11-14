@@ -153,9 +153,8 @@ func _process(delta: float) -> void:
 	field.view_rect = Rect2(tl, Vector2(want))
 	_ease(delta, field.view_rect)
 	field.queue_redraw()
-	# tint by the stratum at the centre of the view
-	var s := grid.get_stratum(int((tl.x + size.x * 0.5) / Balance.CELL), int((tl.y + size.y * 0.5) / Balance.CELL))
-	var c: Array = COLORS[s]
+	# water is one colour everywhere (zone-tinted water read as a different liquid)
+	var c: Array = COLORS[Balance.WATER_TINT]
 	for m in [back_mat, front_mat]:
 		m.set_shader_parameter("shallow_color", c[0])
 		m.set_shader_parameter("deep_color", c[1])

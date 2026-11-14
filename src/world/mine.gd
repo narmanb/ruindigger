@@ -122,6 +122,10 @@ func _build_world() -> void:
 	water_view.setup(grid, water, self)
 	sand = SandSim.new(grid, water)
 	sand.occupied = _cell_occupied
+	sand_drops = SandDrops.new()
+	sand_drops.sim = sand
+	sand_drops.grid = grid
+	add_child(sand_drops)
 	if stage == "deep":
 		steam = SteamField.new(grid)
 		lava = LavaSim.new(grid, water, steam)
@@ -528,11 +532,38 @@ func shake(amount: float) -> void:
 	trauma = minf(1.0, trauma + amount)
 
 
+## The zone you are in, as the game presents it (name, music, light, water,
+## banner). It follows the digger, not the camera (which looks ahead), and
+## only changes once you are ZONE_ENTRY_ROWS past the wavy border, so
+## touching the boundary at the bottom of a wing does not count as arriving.
+var presented_zone := -1
+
+
+func _update_presented_zone() -> void:
+	if player == null:
+		return
+	var c := grid.world_to_cell(player.global_position + Vector2(0, Player.HALF.y - 1.0))
+	c.x = clampi(c.x, 0, grid.w - 1)
+	c.y = clampi(c.y, 0, grid.h - 1)
+	var s := maxi(0, grid.get_stratum(c.x, c.y))
+	if presented_zone < 0:
+		presented_zone = s
+		return
+	if s == presented_zone:
+		return
+	var m := Balance.ZONE_ENTRY_ROWS
+	var up := grid.get_stratum(c.x, clampi(c.y - m, 0, grid.h - 1))
+	var dn := grid.get_stratum(c.x, clampi(c.y + m, 0, grid.h - 1))
+	if up == s and dn == s:
+		presented_zone = s
+
+
 func _atmosphere(delta: float) -> void:
-	# the zone under the middle of the screen sets light, backdrop and music
+	# the zone you are in sets light, backdrop and music
+	_update_presented_zone()
 	var mid := camera.get_screen_center_position() / C
 	var y := mid.y
-	var s := grid.get_stratum(clampi(int(mid.x), 0, grid.w - 1), clampi(int(y), 0, grid.h - 1))
+	var s := maxi(0, presented_zone)
 	var target: Color = AMBIENT[s]
 	var dark := float(Game.run.get("contract", {}).get("dark", 1.0))
 	if dark < 1.0:
@@ -627,11 +658,11 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 			if source == "drill" and m == Cell.SOFT:
 				_sand_drill_n += 1
 				if _sand_drill_n % Balance.SAND_DRILL_EVERY == 0:
-					sand.add(c, Balance.SAND_DRILL_AMOUNT)
+					spray_sand(c, Balance.SAND_DRILL_AMOUNT, 4, 55.0, 0.7)
 			elif source == "blast" and (m == Cell.SOFT or m == Cell.LOOSE):
 				_sand_blast_n += 1
 				if _sand_blast_n % Balance.SAND_BLAST_EVERY == 0:
-					sand.add(c, Balance.SAND_BLAST_AMOUNT)
+					spray_sand(c, Balance.SAND_BLAST_AMOUNT, 4, 150.0, 1.0)
 		if m == Cell.GAS:
 			gas.vent(c)
 		if source in ["drill", "blast"]:
@@ -953,7 +984,16 @@ func on_enemy_killed(e: Node) -> void:
 var _orders_t := 0.0
 var pressure: Pressure
 var sand: SandSim
+var sand_drops: SandDrops
 var _sand_drill_n := 0
+
+
+## Throw loose dirt from a broken or fallen cell as flying grains.
+func spray_sand(c: Vector2i, total: int, grains: int, speed: float, up: float) -> void:
+	if sand_drops == null:
+		return
+	var col := Cell.debris_color(Cell.SOFT, maxi(0, grid.get_stratum(c.x, c.y))).lightened(0.12)
+	sand_drops.spray(grid.cell_center(c), total, grains, speed, up, col)
 var _sand_blast_n := 0
 
 

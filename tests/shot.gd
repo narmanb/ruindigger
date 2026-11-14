@@ -314,6 +314,10 @@ func _process(_d: float) -> void:
 			ov = {"drill": true, "y": 1.0}
 		if args.has("drill_right") and frame > 25:
 			ov = {"drill": true, "x": 1.0}
+		if args.has("drill_left") and frame > 25 and frame < int(args.get("stopat", "100000")):
+			ov = {"drill": true, "x": -1.0}
+		if args.has("drill_left") and frame >= int(args.get("stopat", "100000")):
+			ov = {"x": 1.0 if frame < int(args.get("stopat", "100000")) + int(args.get("back", "0")) else 0.0}
 		if args.has("walk") and frame > 25:
 			ov = {"x": float(args["walk"])}
 		if not ov.is_empty():

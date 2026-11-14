@@ -44,15 +44,17 @@ func _ready() -> void:
 	diag.position = Vector2(6, 6)
 	diag.size = Vector2(196, 114)
 	panels.add_child(diag)
-	var cargo_hit := Control.new()
-	cargo_hit.position = Vector2(6, 36)
-	cargo_hit.size = Vector2(196, 14)
-	cargo_hit.tooltip_text = "Cargo manifest (I)"
-	cargo_hit.mouse_filter = Control.MOUSE_FILTER_STOP
-	cargo_hit.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-			open_cargo())
-	panels.add_child(cargo_hit)
+	# the CARGO row of the status panel opens the manifest (also Pause, or I)
+	cargo_btn = Button.new()
+	cargo_btn.position = Vector2(6, 35)
+	cargo_btn.size = Vector2(196, 16)
+	cargo_btn.flat = true
+	cargo_btn.focus_mode = Control.FOCUS_NONE
+	cargo_btn.tooltip_text = "Cargo manifest (I)"
+	for st in ["normal", "hover", "pressed", "focus", "disabled", "hover_pressed"]:
+		cargo_btn.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	cargo_btn.pressed.connect(open_cargo)
+	panels.add_child(cargo_btn)
 	cargo_screen = CargoScreen.new()
 	cargo_screen.mine = mine
 	add_child(cargo_screen)
@@ -96,8 +98,8 @@ func _ready() -> void:
 	orders_panel.anchor_right = 1.0
 	orders_panel.offset_left = -212
 	orders_panel.offset_right = -4
-	orders_panel.offset_top = 84
-	orders_panel.offset_bottom = 132
+	orders_panel.offset_top = 58
+	orders_panel.offset_bottom = 106
 	orders_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panels.add_child(orders_panel)
 	pause_btn = _skin_button("", "pause", func() -> void: mine.pause_menu.open())
@@ -106,12 +108,6 @@ func _ready() -> void:
 	pause_btn.offset_top = 4
 	pause_btn.offset_bottom = 34
 	panels.add_child(pause_btn)
-	cargo_btn = _skin_button("CARGO", "crate", open_cargo)
-	cargo_btn.offset_left = -112
-	cargo_btn.offset_right = -4
-	cargo_btn.offset_top = 56
-	cargo_btn.offset_bottom = 80
-	panels.add_child(cargo_btn)
 	toast_label = _center_label(13, UIKit.TEXT, 66)
 	banner_label = _center_label(24, UIKit.AMBER, 130, true)
 	hint_label = _center_label(11, UIKit.TEAL, 0)
@@ -251,9 +247,8 @@ func _process(delta: float) -> void:
 	diag.queue_redraw()
 	depth_panel.queue_redraw()
 	orders_panel.queue_redraw()
-	for b in [cargo_btn, pause_btn]:
-		if b.get_child_count() > 0:
-			b.get_child(0).queue_redraw()
+	if pause_btn.get_child_count() > 0:
+		pause_btn.get_child(0).queue_redraw()
 
 
 ## The dive's orders, top right under the cargo button.
@@ -337,6 +332,10 @@ class Diag extends Control:
 		if n >= cap:
 			ccol = HudSkin.ORANGE
 		_row(2, "CARGO", float(n) / cap, ccol, "%d/%d" % [n, cap], false)
+		# a small tab: this row opens the cargo manifest
+		var ty := Y0 + 2.0 * ROW - 4.0
+		var pressed: bool = hud.cargo_btn != null and hud.cargo_btn.is_pressed()
+		draw_colored_polygon(PackedVector2Array([Vector2(size.x - 9, ty - 3), Vector2(size.x - 5, ty), Vector2(size.x - 9, ty + 3)]), HudSkin.YELLOW if pressed else HudSkin.ORANGE)
 		# charges as red pips, lures beside them
 		var y := Y0 + 3.0 * ROW
 		HudSkin.label(self, Vector2(10, y), "CHRG", 9, HudSkin.MUTED)
@@ -415,7 +414,7 @@ class DepthPanel extends Control:
 		var depth := int(maxf(0.0, pl.global_position.y / Balance.CELL - 9.0 + mine.depth_offset) * Balance.METERS_PER_CELL)
 		HudSkin.label(self, Vector2(10, 16), "DEPTH", 9, HudSkin.MUTED)
 		HudSkin.label(self, Vector2(56, 17), "%d M" % depth, 13, HudSkin.ORANGE)
-		var s: int = maxi(0, mine.grid.get_stratum(int(pl.global_position.x / Balance.CELL), int(pl.global_position.y / Balance.CELL)))
+		var s: int = maxi(0, int(mine.get("presented_zone")) if mine.get("presented_zone") != null and int(mine.get("presented_zone")) >= 0 else mine.grid.get_stratum(int(pl.global_position.x / Balance.CELL), int(pl.global_position.y / Balance.CELL)))
 		var zc: Color = Balance.ZONE_COLORS[s]
 		# a small zone gem before the name
 		var gp := Vector2(13, 26)
