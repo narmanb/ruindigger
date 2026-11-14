@@ -307,41 +307,74 @@ class AncientDescent extends Node2D:
 	var t := 0.0
 
 	func _ready() -> void:
+		z_index = -1
 		light = PointLight2D.new()
 		light.texture = load("res://assets/gen/light.png")
-		light.texture_scale = 1.0
-		light.color = Color(1.0, 0.62, 0.3)
-		light.energy = 0.9
-		light.position = Vector2(0, -22)
+		light.texture_scale = 1.8
+		light.color = Color(1.0, 0.6, 0.28)
+		light.energy = 0.6
+		light.position = Vector2(0, -30)
 		add_child(light)
 
 	func _process(d: float) -> void:
 		t += d
-		light.energy = 0.8 + 0.25 * sin(t * 2.2)
+		light.energy = 0.55 + 0.15 * sin(t * 2.2)
 		queue_redraw()
 
+	## A grand gate, about 96 x 62 px (it fits the compact room too): a wide
+	## deck over a glowing grate, two stepped pylons with rune slots, and a
+	## heavy arch whose eye glyph pulses. Origin = the deck's top centre.
 	func _draw() -> void:
-		var bronze := Color("51422a")
-		var edge := Color("b59a5e")
-		var dark := Color("14100a")
-		# platform deck with a stepped rim
-		draw_rect(Rect2(-22, -4, 44, 4), bronze)
-		draw_rect(Rect2(-22, -4, 44, 1), edge)
-		draw_rect(Rect2(-18, -6, 36, 2), dark)
-		# two pylons and a lintel carrying the glyph
-		for sx in [-20.0, 16.0]:
-			draw_rect(Rect2(sx, -40, 4, 36), bronze)
-			draw_rect(Rect2(sx, -40, 1, 36), edge)
-		draw_rect(Rect2(-22, -44, 44, 5), bronze)
-		draw_rect(Rect2(-22, -44, 44, 1), edge)
+		var bronze := Color("5b4a2e")
+		var bronze_d := Color("3a2f1d")
+		var edge := Color("c8a868")
+		var dark := Color("120d08")
 		var pulse := 0.55 + 0.45 * sin(t * 2.2)
-		var glow := Color(1.0, 0.55, 0.22, pulse)
-		draw_rect(Rect2(-5, -43, 10, 3), glow)
-		draw_rect(Rect2(-2, -42, 4, 1), Color(1, 0.9, 0.7, pulse))
-		# a shaft of heat haze dropping away under the deck
-		for k in 4:
-			var yy := -34.0 + k * 8.0 + fmod(t * 14.0, 8.0)
-			draw_rect(Rect2(-14, yy, 28, 1), Color(1.0, 0.5, 0.2, 0.18 * pulse))
+		var hot := Color(1.0, 0.55, 0.2)
+		var cyan := Color(0.45, 1.0, 0.9)
+		# heat rising through the gate
+		for k in 6:
+			var yy := -6.0 - fmod(t * 18.0 + k * 9.0, 52.0)
+			var a := 0.16 * pulse * (1.0 - absf(yy + 30.0) / 30.0)
+			draw_rect(Rect2(-26, yy, 52, 1), Color(hot.r, hot.g, hot.b, maxf(0.0, a)))
+		# deck: wide, stepped, with a glowing grate in the middle
+		draw_rect(Rect2(-48, -5, 96, 5), bronze_d)
+		draw_rect(Rect2(-48, -5, 96, 1), edge)
+		draw_rect(Rect2(-44, -8, 88, 3), bronze)
+		draw_rect(Rect2(-44, -8, 88, 1), edge)
+		draw_rect(Rect2(-24, -4, 48, 3), Color(hot.r, hot.g * 0.8, hot.b, 0.55 + 0.35 * pulse))
+		for gx in range(-22, 24, 5):
+			draw_rect(Rect2(gx, -4, 2, 3), dark)
+		# side braziers
+		for sx in [-44.0, 40.0]:
+			draw_rect(Rect2(sx, -14, 4, 6), bronze)
+			var fl := 2.0 + 1.5 * sin(t * 7.0 + sx)
+			draw_rect(Rect2(sx, -14 - fl, 4, fl), Color(1.0, 0.75, 0.3, 0.9))
+		# two stepped pylons carrying rune slots
+		for sx in [-38.0, 28.0]:
+			draw_rect(Rect2(sx, -52, 10, 44), bronze)
+			draw_rect(Rect2(sx - 2, -16, 14, 8), bronze_d)
+			draw_rect(Rect2(sx, -52, 1, 44), edge)
+			draw_rect(Rect2(sx + 9, -52, 1, 44), bronze_d)
+			for k in 4:
+				var lit := fmod(t * 1.5 + k * 0.25, 1.0) < 0.5
+				var rc := cyan if lit else Color(0.15, 0.35, 0.32)
+				draw_rect(Rect2(sx + 3, -46 + k * 8, 4, 4), Color(rc.r, rc.g, rc.b, 0.9))
+		# the arch: a heavy lintel with a stepped crown
+		draw_rect(Rect2(-44, -60, 88, 9), bronze)
+		draw_rect(Rect2(-44, -60, 88, 1), edge)
+		draw_rect(Rect2(-44, -52, 88, 1), bronze_d)
+		draw_rect(Rect2(-18, -64, 36, 4), bronze)
+		draw_rect(Rect2(-18, -64, 36, 1), edge)
+		# the eye glyph: it watches, and burns brighter as it pulses
+		var c := Vector2(0, -56)
+		draw_colored_polygon(PackedVector2Array([c + Vector2(-10, 0), c + Vector2(0, -5), c + Vector2(10, 0), c + Vector2(0, 5)]), dark)
+		draw_colored_polygon(PackedVector2Array([c + Vector2(-8, 0), c + Vector2(0, -3.5), c + Vector2(8, 0), c + Vector2(0, 3.5)]), Color(hot.r, hot.g, hot.b, 0.6 + 0.4 * pulse))
+		draw_circle(c, 2.0, Color(1.0, 0.95, 0.75, pulse))
+		# chains hanging from the arch to the deck
+		for sx in [-24.0, 22.0]:
+			for k in 6:
+				draw_rect(Rect2(sx, -50 + k * 7, 2, 4), Color("2a2216"))
 
 
 ## Transit Gate: the only way out of The First Civilization. It must be powered

@@ -14,6 +14,13 @@
   - Keyboard: G or V for the gadget, T for a lure.
 - Panels stay inside the screen's safe area (cutouts), and the controls scale with Touch size. The layout is tested at 16:9, wider phone ratios and 16:10, at 70%, 100% and 150% size.
 
+**Ancient Descent Platform**
+- The one-way lift down to The First Civilization now looks like what it is: a grand gate twice the old size, filling its room.
+  - A wide stepped deck over a glowing grate, with braziers either side.
+  - Two tall pylons with cycling rune slots and hanging chains.
+  - A heavy arch whose eye glyph pulses, with heat rising through the gate.
+- You can use it from anywhere on the deck.
+
 **Sand piles**
 - Loose sand now **piles up**. One in three sediment cells you drill drops some sand, a collapsing ceiling lands as a heap of rubble instead of a square block, and charges throw some loose debris. Sand falls, slides off steep sides and settles into smooth mounds. You **walk up and over** them as slopes, and the drill takes a pile away in one bite.
 - Sand pushes water out of its way and never fills the space you or a crawler stand in. Water and lava treat a half-full pile as ground.

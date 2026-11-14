@@ -1013,7 +1013,7 @@ func nearest_interactable(pl: Player) -> Dictionary:
 	for rr in run_relics:
 		if not rr.used and rr.global_position.distance_to(pc) < 22.0:
 			return {"kind": "run_relic", "node": rr, "label": "TAKE"}
-	if descent and descent.global_position.distance_to(pc + Vector2(0, 13)) < 26.0:
+	if descent and absf(descent.global_position.x - pc.x) < 40.0 and absf(descent.global_position.y - (pc.y + 13.0)) < 26.0:
 		return {"kind": "descent", "node": descent, "label": "DESCEND"}
 	for v in valves:
 		if v.global_position.distance_to(pc + Vector2(0, 13)) < 22.0:
