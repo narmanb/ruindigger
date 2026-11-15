@@ -26,6 +26,7 @@ static func run(t: Node) -> void:
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
+	await kit(t)
 
 
 static func economy(t: Node) -> void:
@@ -828,6 +829,111 @@ static func zones(t: Node) -> void:
 	t.check(mine.presented_zone == Balance.Z_ENGINE, "stepping back over the line does not flicker the zone")
 	place.call(by - Balance.ZONE_ENTRY_ROWS - 1)
 	t.check(mine.presented_zone == Balance.Z_AQUEDUCT, "climbing well back up returns you to the wing")
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+
+## A test room beside the digger: open floor, a soft roof 3 cells thick.
+static func _roofed_room(mine: Node, pc: Vector2i) -> Array[Vector2i]:
+	var g: TerrainGrid = mine.grid
+	var roof: Array[Vector2i] = []
+	for x in range(pc.x - 1, pc.x + 12):
+		for y in range(pc.y - 8, pc.y + 2):
+			g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE, false)
+			g.set_water(x, y, 0)
+			if y == pc.y + 1 or x == pc.x - 1 or x == pc.x + 11:
+				g.set_mat(x, y, Cell.HARD)
+			elif y <= pc.y - 5:
+				g.set_mat(x, y, Cell.SOFT)
+				if y == pc.y - 5:
+					roof.append(Vector2i(x, y))
+			else:
+				g.set_mat(x, y, Cell.AIR)
+	return roof
+
+
+static func kit(t: Node) -> void:
+	t.section("shear charges, anchor bolts, breakers")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var g: TerrainGrid = mine.grid
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	t.check(int(Game.run["shears"]) == Balance.SHEARS_PER_RUN and int(Game.run["bolts"]) == Balance.BOLTS_PER_RUN, "a dive starts with shear charges and anchor bolts")
+	var pc: Vector2i = g.world_to_cell(pl.global_position)
+	var roof := _roofed_room(mine, pc)
+	await t._frames(3)
+	# bolt the roof above the digger, then shear the roof further along
+	pl.global_position = Vector2((pc.x + 2) * 16 + 8, (pc.y + 1) * 16 - Player.HALF.y - 0.5)
+	var bolted: bool = mine.fire_bolt(pl, Vector2i.UP)
+	var held := Vector2i(pc.x + 2, pc.y - 5)
+	t.check(bolted and mine.is_anchored(held), "an anchor bolt pins the roof above you")
+	mine.shear_blast(Vector2((pc.x + 7) * 16 + 8, (pc.y - 4) * 16 + 8))
+	for k in 150:
+		await t.get_tree().physics_frame
+	var fell := 0
+	for c in roof:
+		if absi(c.x - (pc.x + 7)) <= 3 and not g.is_solid(c.x, c.y):
+			fell += 1
+	t.check(fell >= 4, "a shear charge brings the roof around it down (%d cells)" % fell)
+	t.check(g.is_solid(held.x, held.y), "the bolted part of the roof holds")
+	# bolts work loose
+	var bolt: Node = null
+	for e in mine.entity_root.get_children():
+		if e is Hazards.Bolt:
+			bolt = e
+	if bolt:
+		bolt.t = Balance.BOLT_TIME - 0.02
+		await t._frames(5)
+	t.check(not mine.is_anchored(held), "a bolt works loose after %d s" % int(Balance.BOLT_TIME))
+	# a breaker gnaws the roof over the digger
+	roof = _roofed_room(mine, pc)
+	mine.anchored.clear()
+	await t._frames(3)
+	pl.global_position = Vector2((pc.x + 7) * 16 + 8, (pc.y + 1) * 16 - Player.HALF.y - 0.5)
+	pl.velocity = Vector2.ZERO
+	await t._frames(3)
+	var br: Breaker = mine.spawn_crawler(Vector2i(pc.x + 2, pc.y), true)
+	await t._frames(2)
+	t.check(br is Breaker and br.hp == Balance.BREAKER_HP, "breakers are tougher burrowers")
+	t.check(br.try_gnaw() and br.gnawing, "a breaker that sees you under a roof starts gnawing it")
+	var hp0 := br.hp
+	br.hit(10.0, br.global_position, false)
+	t.check(is_equal_approx(hp0 - br.hp, 10.0 * Balance.BREAKER_GNAW_MULT), "it takes double damage while it gnaws")
+	var target: Array[Vector2i] = br.gnaw_cells.duplicate()
+	pl.global_position.x -= 48.0           # step out from under it
+	for k in int(60 * (Balance.BREAKER_GNAW + Balance.BREAKER_DROP_WARN + 1.5)):
+		await t.get_tree().physics_frame
+	var gone := 0
+	for c in target:
+		if not g.is_solid(c.x, c.y):
+			gone += 1
+	t.check(gone >= 2 and br.gnaws == 1, "after its warning the gnawed roof comes down (%d cells)" % gone)
+	# bolted roofs defeat it
+	roof = _roofed_room(mine, pc)
+	await t._frames(3)
+	pl.global_position = Vector2((pc.x + 7) * 16 + 8, (pc.y + 1) * 16 - Player.HALF.y - 0.5)
+	mine.fire_bolt(pl, Vector2i.UP)
+	br.gnaw_cd = 0.0
+	if is_instance_valid(br) and br.state != Crawler.S.DEAD:
+		br.state = Crawler.S.CHASE
+		var started: bool = br.try_gnaw()
+		t.check(not started, "a breaker cannot gnaw a bolted roof")
+	# breakers only appear in their zones
+	var wrong := 0
+	for e in mine.enemies:
+		if e is Breaker and e != br:
+			var ec: Vector2i = g.world_to_cell(e.global_position)
+			if not (g.get_stratum(ec.x, ec.y) in Balance.BREAKER_ZONES):
+				wrong += 1
+	t.check(wrong == 0, "breakers spawn only in the Forgotten Engine and Drowned Aqueducts")
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

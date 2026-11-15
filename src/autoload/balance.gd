@@ -138,6 +138,27 @@ const CRYO_THROW := Vector2(160, -170)
 const MAGNET_MULT := 3.0
 const PLATING_MULT := 0.5
 const COOLANT_MULT := 0.7
+# --- Shear charge: cuts supports, drops what rested on them ---
+const SHEARS_PER_RUN := 2
+const SHEAR_FUSE := 1.6
+const SHEAR_RADIUS := 1.6            # cells cut around the charge
+const SHEAR_ENTITY_DAMAGE := 15.0    # only a nudge: the falling rock does the work
+const SHEAR_REACH := Vector2i(5, 8)  # how far sideways / up ground is checked for support
+const SHEAR_DROP_WARN := 0.5         # s of dust before the cut ground falls
+# --- Anchor bolts: pin rock so collapses cannot take it ---
+const BOLTS_PER_RUN := 4
+const BOLT_RANGE := 4                # cells to the rock you bolt into
+const BOLT_RADIUS := 1.6             # cells held around the bolt
+const BOLT_TIME := 75.0              # s before a bolt works loose
+# --- Breaker: an enemy that gnaws the roof above you ---
+const BREAKER_HP := 70.0
+const BREAKER_RANGE := 9             # cells: how close it must be to start gnawing
+const BREAKER_GNAW := 3.0            # s of gnawing (dust rains above you) before the roof drops
+const BREAKER_COOLDOWN := 8.0
+const BREAKER_DROP_WARN := 0.4
+const BREAKER_GNAW_MULT := 2.0       # damage it takes while it is busy gnawing
+const BREAKER_EVERY := 3             # one in N crawlers in its zones is a breaker
+const BREAKER_ZONES := [2, 3]        # Forgotten Engine, Drowned Aqueducts
 # --- Lure (throwable noise maker; USE with nothing nearby) ---
 const LURES_PER_RUN := 3
 const LURE_TIME := 9.0               # seconds it keeps pinging once it lands

@@ -42,7 +42,7 @@ func _ready() -> void:
 	diag = Diag.new()
 	diag.hud = self
 	diag.position = Vector2(6, 6)
-	diag.size = Vector2(196, 114)
+	diag.size = Vector2(196, 128)
 	panels.add_child(diag)
 	# the CARGO row of the status panel opens the manifest (also Pause, or I)
 	cargo_btn = Button.new()
@@ -121,10 +121,10 @@ func _ready() -> void:
 	prompt_label.offset_top = -22
 	prompt_label.offset_bottom = -6
 	fps_label = UIKit.label("", 9, UIKit.MUTED)
-	fps_label.position = Vector2(8, 122)
+	fps_label.position = Vector2(8, 136)
 	panels.add_child(fps_label)
 	ladder_label = UIKit.label("LADDER ATTACHED", 10, UIKit.TEAL, true)
-	ladder_label.position = Vector2(8, 138)
+	ladder_label.position = Vector2(8, 152)
 	ladder_label.add_theme_stylebox_override("normal", UIKit.panel_box(UIKit.TEAL))
 	ladder_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ladder_label.visible = false
@@ -391,6 +391,22 @@ class Diag extends Control:
 			if pid != "":
 				draw_circle(Vector2(x + 1, y - 3), 1.5, HudSkin.YELLOW)
 				HudSkin.label(self, Vector2(x + 6, y), String(Balance.GADGETS[pid]["name"]), 9, HudSkin.YELLOW)
+		# kit: shear charges and anchor bolts, as pips
+		y = Y0 + 7.0 * ROW
+		HudSkin.label(self, Vector2(10, y), "KIT", 9, HudSkin.MUTED)
+		var kx := BX
+		for kit in [["SHEAR", "shears", Balance.SHEARS_PER_RUN, Color("8fd0ff")], ["BOLT", "bolts", Balance.BOLTS_PER_RUN, HudSkin.TEAL]]:
+			HudSkin.label(self, Vector2(kx, y), kit[0], 9, HudSkin.MUTED)
+			kx += 6.0 + UIKit.font_head().get_string_size(kit[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x
+			var have := int(Game.run.get(kit[1], 0))
+			for i in maxi(have, int(kit[2])):
+				var kr := Rect2(kx + i * 7, y - 8, 5, 9)
+				if i < have:
+					draw_rect(kr, (kit[3] as Color).darkened(0.1))
+					draw_rect(Rect2(kr.position, Vector2(5, 2)), (kit[3] as Color).lightened(0.4))
+				else:
+					draw_rect(kr, HudSkin.MUTED, false, 1.0)
+			kx += maxi(have, int(kit[2])) * 7 + 8
 		if Game.run.get("relic", false):
 			var rp := Vector2(size.x - 14, Y0 + 3.0 * ROW - 4.0)
 			draw_colored_polygon(PackedVector2Array([rp + Vector2(0, -6), rp + Vector2(5, 0), rp + Vector2(0, 6), rp + Vector2(-5, 0)]), Color(0.4, 1.0, 1.0, 0.8 + 0.2 * sin(t * 5.0)))

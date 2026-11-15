@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 (feature/fun-pass)
+**The terrain is a weapon, part 2**
+- **Breakers** (new enemy, in the Forgotten Engine and the Drowned Aqueducts; about one in three burrowers there). A bigger, orange burrower with a drill horn. It hunts like a crawler, but when it sees you under a roof it stops and gnaws at that roof. Dust rains above you and an arc fills around it for 3 seconds, then the roof comes down. While it gnaws it is planted and takes **double damage**. Stunning it breaks its grip. A late collapse swarm can bring one with it.
+- **Shear charges** (2 per dive; R on keyboard, SHEAR on the toolbar). A small, clean cut that barely hurts anything, then the ground resting on what it cut comes down after a short dust warning. Throw one up at a ceiling to drop it on crawlers you lured underneath. Sticky charges stick these too.
+- **Anchor bolts** (4 per dive; B, BOLT on the toolbar). Fire one up (or at a wall when aiming sideways) and the rock around it is pinned for 75 seconds: collapses, tremors, shear charges and breakers cannot take it. A light on the bolt dims as it works loose and blinks near the end.
+- The gadget toolbar now has four buttons (gadget, LURE, SHEAR, BOLT), each showing what is left as pips. The status panel has a new **KIT** row with shear and bolt pips.
+
 ## 0.8.0 (feature/fun-pass)
 From now on every build gets its own version: the last number for fixes, the middle one for new features. A test fails if the game's version, the Android build name and this changelog disagree.
 

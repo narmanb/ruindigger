@@ -141,6 +141,8 @@ static func icon(ci: CanvasItem, kind: String, c: Vector2, s: float, a: float = 
 		"crate": _crate(ci, c, s, a)
 		"pause": _pause(ci, c, s, a)
 		"use": _use(ci, c, s, a)
+		"shear": _shear(ci, c, s, a)
+		"bolt": _bolt(ci, c, s, a)
 
 
 static func _drill(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
@@ -242,6 +244,24 @@ static func _use(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
 	var r := s * 0.32
 	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -r), c + Vector2(r, 0), c + Vector2(0, r), c + Vector2(-r, 0)]), Color(TEAL, a))
 	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -r * 0.45), c + Vector2(r * 0.45, 0), c + Vector2(0, r * 0.45), c + Vector2(-r * 0.45, 0)]), Color(INTERIOR, a))
+
+
+static func _shear(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
+	# a slim charge with a blade line across it
+	var r := Rect2((c - Vector2(s * 0.22, s * 0.36)).round(), (Vector2(s * 0.44, s * 0.72)).round())
+	ci.draw_rect(r, Color(METAL_HI.lerp(CYAN, 0.35), a))
+	ci.draw_rect(r.grow(-1.0), Color(METAL.lerp(CYAN, 0.25), a))
+	ci.draw_line(c + Vector2(-s * 0.45, s * 0.12), c + Vector2(s * 0.45, -s * 0.12), Color(CYAN, a), 2.0)
+	ci.draw_rect(Rect2(c + Vector2(-1, -s * 0.5), Vector2(2, 3)), Color(YELLOW, a))
+
+
+static func _bolt(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
+	# a bolt driven into a plate
+	ci.draw_rect(Rect2((c + Vector2(-s * 0.36, -s * 0.42)).round(), (Vector2(s * 0.72, 3)).round()), Color(METAL_HI, a))
+	ci.draw_rect(Rect2((c + Vector2(-1.5, -s * 0.36)).round(), Vector2(3, roundf(s * 0.7))), Color(METAL_HI.lightened(0.2), a))
+	for k in 3:
+		ci.draw_line(c + Vector2(-2.5, -s * 0.2 + k * s * 0.18), c + Vector2(2.5, -s * 0.12 + k * s * 0.18), Color(METAL_LO, a), 1.0)
+	ci.draw_circle(c + Vector2(0, -s * 0.44), 1.5, Color(TEAL, a))
 
 
 ## A small arrow (for the toolbar tab): dir -1 points left, +1 right.

@@ -21,7 +21,7 @@ const MODE_FLOATING := 1
 const MODE_DPAD := 2
 
 const BAR_SLIDE := 0.2           # seconds for the toolbar to slide
-const BAR_BTN := Vector2(52, 26) # one toolbar button, base px
+const BAR_BTN := Vector2(44, 26) # one toolbar button, base px
 const BAR_H := 34.0
 const TAB := Vector2(14, 26)
 const GAP := 5.0
@@ -43,7 +43,9 @@ var bar_open := true
 var bar_t := 1.0
 var bar_buttons: Array = [
 	{"name": "GADGET", "action": "gadget", "finger": -1},
-	{"name": "LURE", "action": "lure", "finger": -1},
+	{"name": "LURE", "action": "lure", "finger": -1, "count": "lures", "per_run": "LURES_PER_RUN"},
+	{"name": "SHEAR", "action": "shear", "finger": -1, "count": "shears", "per_run": "SHEARS_PER_RUN"},
+	{"name": "BOLT", "action": "bolt", "finger": -1, "count": "bolts", "per_run": "BOLTS_PER_RUN"},
 ]
 var _tab_finger := -1
 var show_bar := true          # the outpost has no gadgets: it turns the toolbar off
@@ -125,7 +127,8 @@ static func button_rect(b: Dictionary, sr: Rect2, scale: float, user_off: Vector
 static func bar_layout(sr: Rect2, scale: float, top_y: float, right_x: float, t: float) -> Dictionary:
 	var s := scale
 	var bw := BAR_BTN.x * s
-	var pw := (BAR_BTN.x * 2.0 + 10.0) * s
+	var nb := 4
+	var pw := (BAR_BTN.x * nb + 2.0 * (nb - 1) + 8.0) * s
 	var ph := BAR_H * s
 	var tw := TAB.x * s
 	var th := TAB.y * s
@@ -136,9 +139,12 @@ static func bar_layout(sr: Rect2, scale: float, top_y: float, right_x: float, t:
 	var tab_x := minf(px - tw + 2.0 * s, sr.end.x - tw)
 	var panel := Rect2(px, y, pw, ph)
 	var tab := Rect2(roundf(tab_x), roundf(y + (ph - th) * 0.5), tw, th)
-	var b0 := Rect2(px + 4.0 * s, roundf(y + (ph - BAR_BTN.y * s) * 0.5), bw, BAR_BTN.y * s)
-	var b1 := Rect2(b0.end.x + 2.0 * s, b0.position.y, bw, BAR_BTN.y * s)
-	return {"tab": tab, "panel": panel, "buttons": [b0, b1]}
+	var btns: Array = []
+	var bx := px + 4.0 * s
+	for k in nb:
+		btns.append(Rect2(roundf(bx), roundf(y + (ph - BAR_BTN.y * s) * 0.5), bw, BAR_BTN.y * s))
+		bx += bw + 2.0 * s
+	return {"tab": tab, "panel": panel, "buttons": btns}
 
 
 func _btn_pos(b: Dictionary) -> Vector2:
@@ -199,7 +205,7 @@ static func move_rest_pos(sr: Rect2, radius: float, user_off: Vector2) -> Vector
 ## The area where a floating stick may spawn: the left side, below the status panel.
 func float_zone() -> Rect2:
 	var vp := get_viewport_rect().size
-	return Rect2(0, 124, vp.x * 0.45, vp.y - 124)
+	return Rect2(0, 138, vp.x * 0.45, vp.y - 138)
 
 
 func _button_visible(b: Dictionary) -> bool:
@@ -505,35 +511,36 @@ func _draw_bar(op: float, sc: float) -> void:
 		HudSkin.frame(self, panel, HudSkin.ORANGE, true, 5.0 * sc)
 		var gid := String(Game.run.get("loadout", {}).get("active", "sonar"))
 		var cd := float(Game.run.get("gadget_cd", 0.0))
-		var lures := int(Game.run.get("lures", 0))
-		for k in 2:
+		for k in bar_buttons.size():
+			var bb: Dictionary = bar_buttons[k]
 			var rect: Rect2 = bar["buttons"][k]
-			var held: bool = bar_buttons[k]["finger"] != -1
+			var held: bool = bb["finger"] != -1
+			var icon: String = gid if k == 0 else String(bb["name"]).to_lower()
+			var label := String(Balance.GADGETS.get(gid, {"name": "GADGET"})["name"]) if k == 0 else String(bb["name"])
+			var count := int(Game.run.get(bb.get("count", ""), 0)) if bb.has("count") else 0
 			var dim := 1.0
-			var icon := gid if k == 0 else "lure"
-			var label := String(Balance.GADGETS.get(gid, {"name": "GADGET"})["name"]) if k == 0 else "LURE"
-			if (k == 0 and cd > 0.0) or (k == 1 and lures <= 0):
+			if (k == 0 and cd > 0.0) or (bb.has("count") and count <= 0):
 				dim = 0.45
 			if held:
 				draw_rect(rect.grow(-1.0), Color(1, 1, 1, 0.1 * op))
 			var c := rect.get_center()
 			HudSkin.icon(self, icon, c + Vector2(0, -rect.size.y * 0.18), rect.size.y * 0.5, op * dim)
-			HudSkin.label(self, c + Vector2(0, rect.size.y * 0.44), label, clampi(int(9 * sc), 8, 13), Color(HudSkin.TEXT, op * dim), true)
+			HudSkin.label(self, c + Vector2(0, rect.size.y * 0.44), label, clampi(int(8 * sc), 8, 12), Color(HudSkin.TEXT, op * dim), true)
 			if k == 0 and cd > 0.0:
-				HudSkin.label(self, c + Vector2(rect.size.x * 0.33, -rect.size.y * 0.08), "%d" % ceili(cd), 8, Color(HudSkin.YELLOW, op), true)
-			if k == 1:
-				# lures left as small cyan pips beside the icon
-				var n := maxi(lures, Balance.LURES_PER_RUN)
-				var ps := maxf(3.0, roundf(3.0 * sc))
-				var px0 := c.x + rect.size.x * 0.24
+				HudSkin.label(self, c + Vector2(rect.size.x * 0.32, -rect.size.y * 0.08), "%d" % ceili(cd), 8, Color(HudSkin.YELLOW, op), true)
+			if bb.has("count"):
+				# what is left, as small pips beside the icon
+				var n := maxi(count, int(Balance.get(bb["per_run"])))
+				var ps := maxf(2.0, roundf(2.0 * sc))
+				var px0 := c.x + rect.size.x * 0.28
 				for i in n:
-					var pr := Rect2(roundf(px0), roundf(c.y - rect.size.y * 0.34 + i * (ps + 2.0)), ps, ps)
-					if i < lures:
+					var pr := Rect2(roundf(px0 + (i / 4) * (ps + 1.0)), roundf(c.y - rect.size.y * 0.38 + (i % 4) * (ps + 1.0)), ps, ps)
+					if i < count:
 						draw_rect(pr, Color(HudSkin.CYAN, op))
 					else:
 						draw_rect(pr, Color(HudSkin.MUTED, op), false, 1.0)
-		var b0: Rect2 = bar["buttons"][0]
-		draw_rect(Rect2(roundf(b0.end.x), b0.position.y + 3.0, maxf(1.0, roundf(sc)), b0.size.y - 6.0), Color(HudSkin.METAL, op))
+			if k < bar_buttons.size() - 1:
+				draw_rect(Rect2(roundf(rect.end.x), rect.position.y + 3.0, maxf(1.0, roundf(sc)), rect.size.y - 6.0), Color(HudSkin.METAL, op))
 	# the tab: a small metal block whose arrow points where the bar will go
 	HudSkin.frame(self, tab, HudSkin.ORANGE, false, 3.0)
 	HudSkin.arrow(self, tab.get_center(), tab.size.y * 0.42, 1 if bar_open else -1, Color(HudSkin.ORANGE, op))

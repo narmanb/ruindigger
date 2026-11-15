@@ -303,11 +303,7 @@ func _spawn_entities() -> void:
 					pr.position = Vector2(cell.x * C + 8, cell.y * C + 8)
 				entity_root.add_child(pr)
 			"crawler":
-				var cr := Crawler.new()
-				cr.mine = self
-				cr.position = grid.cell_center(cell)
-				entity_root.add_child(cr)
-				enemies.append(cr)
+				spawn_crawler(cell, _breaker_here(cell))
 			"sentry":
 				var s := Sentry.new()
 				s.mine = self
@@ -497,6 +493,7 @@ func _process(delta: float) -> void:
 	Game.run["time"] = float(Game.run.get("time", 0.0)) + delta
 	_update_orders(delta)
 	Game.run["gadget_cd"] = maxf(0.0, float(Game.run.get("gadget_cd", 0.0)) - delta * (2.0 if Game.has_relic("coil") else 1.0))
+	_tick_anchors(delta)
 	var depth_cells := int(player.global_position.y / C) + depth_offset
 	Game.run["max_depth"] = maxi(int(Game.run.get("max_depth", 0)), depth_cells)
 	if Game.run.get("relic", false):
@@ -908,6 +905,122 @@ func cryo_burst(pos: Vector2) -> void:
 		toast("CRYO - %d cells of lava crusted" % crusted)
 
 
+# --- anchors, shear charges, bolts ---------------------------------------------
+var anchored: Dictionary = {}      # Vector2i -> seconds left (rock pinned by bolts)
+
+
+func is_anchored(c: Vector2i) -> bool:
+	return anchored.has(c)
+
+
+func _tick_anchors(delta: float) -> void:
+	if anchored.is_empty():
+		return
+	for c in anchored.keys():
+		anchored[c] = float(anchored[c]) - delta
+		if float(anchored[c]) <= 0.0:
+			anchored.erase(c)
+
+
+## Can a collapse, a tremor or a breaker take this cell?
+func breakable_support(c: Vector2i) -> bool:
+	if not grid.in_bounds(c.x, c.y) or grid.has_flag(c.x, c.y, Cell.F_PROTECTED) or is_anchored(c):
+		return false
+	var m := grid.get_mat(c.x, c.y)
+	return m == Cell.SOFT or m == Cell.HARD or m == Cell.LOOSE or m == Cell.CRACKED
+
+
+## Loosen ground that has nothing under it any more, around a cut: soft
+## ground slumps as rubble (after a short warning), hard rock goes to the
+## boulder system as a falling mass. Returns how many cells were set to fall.
+func drop_unsupported(c: Vector2i, reach: Vector2i, warn: float) -> int:
+	var n := 0
+	for y in range(c.y, c.y - reach.y - 1, -1):
+		for x in range(c.x - reach.x, c.x + reach.x + 1):
+			var cc := Vector2i(x, y)
+			if not breakable_support(cc) or grid.is_solid(x, y + 1):
+				continue
+			var m := grid.get_mat(x, y)
+			if m == Cell.HARD:
+				collapse._boulder_checks[cc] = true
+				n += 1
+			elif not collapse.pending.has(cc):
+				if m != Cell.LOOSE:
+					grid.set_mat(x, y, Cell.LOOSE)
+				collapse.pending[cc] = warn * randf_range(0.9, 1.3)
+				n += 1
+	return n
+
+
+## A shear charge: a small, clean cut, then whatever rested on it comes down.
+func shear_blast(pos: Vector2) -> void:
+	var c := grid.world_to_cell(pos)
+	var r := Balance.SHEAR_RADIUS
+	var ri := ceili(r)
+	for dy in range(-ri, ri + 1):
+		for dx in range(-ri, ri + 1):
+			var cc := c + Vector2i(dx, dy)
+			if Vector2(dx, dy).length() > r or not breakable_support(cc):
+				continue
+			damage_cell(cc, 999.0, 99, true, "shear")
+	for e in enemies:
+		if is_instance_valid(e) and e.global_position.distance_to(pos) < (r + 1.0) * C:
+			e.set("last_hit", "rubble")
+			e.hit(Balance.SHEAR_ENTITY_DAMAGE, pos)
+	fx.burst(pos, Color(0.7, 0.85, 1.0), 10)
+	fx.flash(pos, Color(0.6, 0.85, 1.0), 0.5, 0.25)
+	Audio.play_at("explode", pos, -6.0, 0.15, 0.0)
+	shake(0.35)
+	noise(pos, 10.0)
+	var dropped := drop_unsupported(c, Balance.SHEAR_REACH, Balance.SHEAR_DROP_WARN)
+	if dropped > 0:
+		toast("SHEARED - the ground above is coming down!")
+
+
+func spawn_shear(pos: Vector2, v: Vector2) -> void:
+	var ch := Hazards.Charge.new()
+	ch.mine = self
+	ch.shear = true
+	ch.fuse = Balance.SHEAR_FUSE
+	ch.sticky = bool(Game.run.get("sticky", false))
+	ch.vel = v
+	ch.position = pos
+	entity_root.add_child(ch)
+
+
+## Fire an anchor bolt from the digger toward where it aims (up by default):
+## it pins the rock around the spot it hits for BOLT_TIME.
+func fire_bolt(pl: Player, aim: Vector2i) -> bool:
+	var from := grid.world_to_cell(pl.global_position + Vector2(0, -8))
+	var hit := Vector2i(-1, -1)
+	for k in range(1, Balance.BOLT_RANGE + 1):
+		var cc := from + aim * k
+		if grid.is_solid(cc.x, cc.y):
+			hit = cc
+			break
+	if hit.x < 0:
+		toast("Nothing in reach to bolt into")
+		Audio.play("ui_deny")
+		return false
+	var held: Array[Vector2i] = []
+	var ri := ceili(Balance.BOLT_RADIUS)
+	for dy in range(-ri, ri + 1):
+		for dx in range(-ri, ri + 1):
+			var cc := hit + Vector2i(dx, dy)
+			if Vector2(dx, dy).length() <= Balance.BOLT_RADIUS and grid.in_bounds(cc.x, cc.y) and grid.is_solid(cc.x, cc.y):
+				anchored[cc] = Balance.BOLT_TIME
+				collapse.pending.erase(cc)
+				held.append(cc)
+	var b := Hazards.Bolt.new()
+	b.mine = self
+	b.cells = held
+	b.dir = aim
+	b.position = grid.cell_center(hit) - Vector2(aim) * 7.0
+	entity_root.add_child(b)
+	Audio.play_at("hit_metal", b.position, -2.0, 0.1, 0.0)
+	return true
+
+
 func spawn_lure(pos: Vector2, v: Vector2) -> Node2D:
 	var lu := Hazards.Lure.new()
 	lu.mine = self
@@ -1006,8 +1119,15 @@ func dig_sand(c: Vector2i) -> void:
 	Audio.play_at("break_soft", pos, -8.0, 0.15, 0.05)
 
 
-func spawn_crawler(cell: Vector2i) -> Crawler:
-	var cr := Crawler.new()
+## One in BREAKER_EVERY crawlers in the breaker zones is a breaker (fixed per
+## cell, so a seed always has the same ones).
+func _breaker_here(cell: Vector2i) -> bool:
+	var z := grid.get_stratum(cell.x, cell.y)
+	return z in Balance.BREAKER_ZONES and TerrainView.hash2(cell.x * 7 + seed_value, cell.y) % Balance.BREAKER_EVERY == 0
+
+
+func spawn_crawler(cell: Vector2i, breaker: bool = false) -> Crawler:
+	var cr: Crawler = Breaker.new() if breaker else Crawler.new()
 	cr.mine = self
 	cr.position = grid.cell_center(cell)
 	entity_root.add_child(cr)

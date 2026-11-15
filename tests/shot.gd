@@ -299,6 +299,33 @@ func _process(_d: float) -> void:
 			mine.sand.add(Vector2i(pc2.x + 11, pc2.y - 5), Balance.SAND_MAX)
 	if mine and args.has("sandtest") and frame == int(args.get("walkat", "100000")):
 		mine.player.input_override = {"x": 1.0}
+	# kitdemo=1: a soft-roofed room; a bolt in the roof, a breaker gnawing
+	if mine and args.has("kitdemo") and frame == 20:
+		var g: TerrainGrid = mine.grid
+		var pl: Player = mine.player
+		var pc: Vector2i = g.world_to_cell(pl.global_position)
+		for x in range(pc.x - 1, pc.x + 12):
+			for y in range(pc.y - 8, pc.y + 2):
+				g.set_flag(x, y, Cell.F_PROTECTED | Cell.F_NO_RUBBLE, false)
+				g.set_water(x, y, 0)
+				if y == pc.y + 1 or x == pc.x - 1 or x == pc.x + 11:
+					g.set_mat(x, y, Cell.HARD)
+				elif y <= pc.y - 5:
+					g.set_mat(x, y, Cell.SOFT)
+				else:
+					g.set_mat(x, y, Cell.AIR)
+		pl.invuln = 1e9
+		pl.global_position = Vector2((pc.x + 2) * 16 + 8, (pc.y + 1) * 16 - Player.HALF.y - 0.5)
+		set_meta("kit_pc", pc)
+	if mine and args.has("kitdemo") and frame == 24:
+		var pc2: Vector2i = get_meta("kit_pc")
+		mine.fire_bolt(mine.player, Vector2i.UP)
+		mine.player.global_position = Vector2((pc2.x + 7) * 16 + 8, (pc2.y + 1) * 16 - Player.HALF.y - 0.5)
+		var br: Node = mine.spawn_crawler(Vector2i(pc2.x + 3, pc2.y), true)
+		set_meta("kit_br", br)
+	if mine and args.has("kitdemo") and frame == 28:
+		var br2: Node = get_meta("kit_br")
+		br2.try_gnaw()
 	if mine and args.has("ladder") and frame == target - 30:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:

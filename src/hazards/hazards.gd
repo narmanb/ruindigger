@@ -13,6 +13,7 @@ class Charge extends Node2D:
 	var ring: Sprite2D
 	var tick_t := 0.0
 	var sticky := false           # sticks where it first touches: rock, ceiling or a foe
+	var shear := false            # a shear charge: clean cut, drops what rested on it
 	var glued := false
 	var host: Node2D = null       # the foe it is stuck to
 	var host_off := Vector2.ZERO
@@ -22,11 +23,13 @@ class Charge extends Node2D:
 		spr.texture = load("res://assets/gen/charge.png")
 		if sticky:
 			spr.modulate = Color(0.8, 1.0, 0.75)
+		if shear:
+			spr.modulate = Color(0.65, 0.85, 1.0)
 		spr.hframes = 2
 		add_child(spr)
 		ring = Sprite2D.new()
 		ring.texture = load("res://assets/gen/ring.png")
-		var r := Balance.CHARGE_RADIUS_CELLS * Balance.CELL
+		var r := (Balance.SHEAR_RADIUS if shear else Balance.CHARGE_RADIUS_CELLS) * Balance.CELL
 		ring.scale = Vector2.ONE * (r * 2.0 / 64.0)
 		mine.glow_root.add_child(ring)
 
@@ -100,11 +103,54 @@ class Charge extends Node2D:
 			Audio.play_at("fuse", global_position, -4.0, 0.0, 0.01)
 		spr.frame = 1 if fmod(fuse * rate, 1.0) < 0.5 else 0
 		ring.global_position = global_position
-		var urgency := clampf(1.0 - fuse / Balance.CHARGE_FUSE, 0.0, 1.0)
-		ring.modulate = Color(1.0, 0.5 - urgency * 0.3, 0.2, 0.25 + urgency * 0.5 * (0.6 + 0.4 * sin(fuse * 30.0)))
+		var urgency := clampf(1.0 - fuse / (Balance.SHEAR_FUSE if shear else Balance.CHARGE_FUSE), 0.0, 1.0)
+		var ra := 0.25 + urgency * 0.5 * (0.6 + 0.4 * sin(fuse * 30.0))
+		ring.modulate = Color(0.5, 0.8, 1.0, ra) if shear else Color(1.0, 0.5 - urgency * 0.3, 0.2, ra)
 		if fuse <= 0.0:
-			mine.explode(global_position, Balance.CHARGE_RADIUS_CELLS, Balance.CHARGE_TILE_DAMAGE, Balance.CHARGE_ENTITY_DAMAGE, "charge")
+			if shear:
+				mine.shear_blast(global_position)
+			else:
+				mine.explode(global_position, Balance.CHARGE_RADIUS_CELLS, Balance.CHARGE_TILE_DAMAGE, Balance.CHARGE_ENTITY_DAMAGE, "charge")
 			queue_free()
+
+
+## Anchor bolt: driven into rock, it pins the cells around it so collapses,
+## tremors and breakers cannot take them, until it works loose.
+class Bolt extends Node2D:
+	var mine: Node
+	var cells: Array[Vector2i] = []
+	var dir := Vector2i.UP
+	var t := 0.0
+
+	func _ready() -> void:
+		z_index = 3
+
+	func _process(delta: float) -> void:
+		t += delta
+		if t >= Balance.BOLT_TIME:
+			for c in cells:
+				mine.anchored.erase(c)
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var left := 1.0 - t / Balance.BOLT_TIME
+		var d := Vector2(dir)
+		var side := Vector2(-d.y, d.x)
+		# the plate against the rock and the bolt head
+		var plate := d * 6.0
+		draw_colored_polygon(PackedVector2Array([plate + side * 5.0, plate - side * 5.0, plate - side * 5.0 - d * 2.0, plate + side * 5.0 - d * 2.0]), Color("6a6f7a"))
+		draw_line(plate - d * 2.0, -d * 1.0, Color("9aa2b0"), 3.0)
+		draw_circle(-d * 1.0, 2.5, Color("c8d0dc"))
+		# how much hold is left: a small light that dims, then blinks near the end
+		var blink := left > 0.15 or int(t * 6.0) % 2 == 0
+		draw_circle(-d * 1.0, 1.2, Color(0.45, 1.0, 0.85, (0.3 + 0.7 * left) if blink else 0.1))
+		if t < 1.2:
+			var a := 1.0 - t / 1.2
+			for c in cells:
+				var p: Vector2 = mine.grid.cell_center(c) - global_position
+				draw_rect(Rect2(p - Vector2(8, 8), Vector2(16, 16)), Color(0.45, 1.0, 0.85, 0.25 * a), false, 1.0)
 
 
 ## Lure: a thrown beacon that pings for a while. Crawlers in range drop what
@@ -398,7 +444,7 @@ class Collapse extends Node2D:
 			if _claimed.has(c):
 				continue
 			var mass := Boulders.unsupported_mass(g, c)
-			if mass.is_empty() or _lava_owned(mass):
+			if mass.is_empty() or _lava_owned(mass) or _bolted(mass):
 				continue
 			for m in mass:
 				_claimed[m] = true
@@ -406,6 +452,15 @@ class Collapse extends Node2D:
 			Audio.play_at("rumble", g.cell_center(mass[0]), 0.0, 0.1, 0.2)
 			mine.shake(0.15)
 		_boulder_checks.clear()
+
+	## A mass with a bolted cell in it stays up.
+	func _bolted(mass: Array) -> bool:
+		if not mine.has_method("is_anchored"):
+			return false
+		for m in mass:
+			if mine.is_anchored(m):
+				return true
+		return false
 
 	## Fresh crust on lava or water belongs to LavaSim, which sinks it itself.
 	func _lava_owned(mass: Array) -> bool:
@@ -518,6 +573,8 @@ class Collapse extends Node2D:
 	func _queue(c: Vector2i) -> void:
 		if pending.has(c) or cascade_budget <= 0:
 			return
+		if mine.has_method("is_anchored") and mine.is_anchored(c):
+			return
 		cascade_budget -= 1
 		pending[c] = Balance.COLLAPSE_TELEGRAPH * randf_range(0.85, 1.25)
 		if pending.size() == 1 or randf() < 0.3:
@@ -572,6 +629,8 @@ class Collapse extends Node2D:
 				mine.fx.dust(g.cell_center(c) + Vector2(randf_range(-6, 6), 8), Color(0.8, 0.7, 0.5))
 			if pending[c] <= 0.0:
 				pending.erase(c)
+				if mine.has_method("is_anchored") and mine.is_anchored(c):
+					continue            # bolted: it holds
 				if g.get_mat(c.x, c.y) == Cell.LOOSE and not g.is_solid(c.x, c.y + 1) and falling.size() < Balance.COLLAPSE_MAX_FALLING:
 					var s := g.get_stratum(c.x, c.y)
 					g.set_mat(c.x, c.y, Cell.AIR, false)

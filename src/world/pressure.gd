@@ -120,7 +120,7 @@ func _tremor() -> bool:
 			continue        # below the top tier, never straight overhead
 		if not g.in_bounds(c.x, c.y) or g.get_mat(c.x, c.y) != Cell.SOFT or g.get_ore(c.x, c.y) != 0:
 			continue
-		if g.has_flag(c.x, c.y, Cell.F_PROTECTED) or g.is_solid(c.x, c.y + 1) or cells.has(c):
+		if g.has_flag(c.x, c.y, Cell.F_PROTECTED) or g.is_solid(c.x, c.y + 1) or cells.has(c) or mine.is_anchored(c):
 			continue
 		if mine.collapse.pending.has(c):
 			continue
@@ -179,7 +179,8 @@ func _swarm() -> bool:
 			continue
 		if g.get_water(c.x, c.y) > 0 or g.get_lava(c.x, c.y) > 0 or g.get_stratum(c.x, c.y) < 0:
 			continue
-		var cr: Node = mine.spawn_crawler(c)
+		# deep in a collapse, a breaker comes with the swarm
+		var cr: Node = mine.spawn_crawler(c, tier >= 3 and made == 0 and rng.randf() < 0.5)
 		cr.hear(mine.player.global_position, 60.0)
 		spawned.append(cr)
 		made += 1

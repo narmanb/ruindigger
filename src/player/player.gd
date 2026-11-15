@@ -245,6 +245,10 @@ func _physics_process(delta: float) -> void:
 		mine.use_gadget(self)
 	if _just("lure") and mine:
 		throw_lure()
+	if _just("shear") and mine:
+		throw_shear(ay)
+	if _just("bolt") and mine:
+		fire_bolt(ay)
 
 	move_and_slide()
 	var now_floor := is_on_floor()
@@ -583,6 +587,42 @@ func stop_sounds() -> void:
 
 
 # ---------------------------------------------------------------------------
+func throw_shear(ay: float) -> void:
+	if not mine or dead or not mine.has_method("spawn_shear"):
+		return
+	if int(Game.run.get("shears", 0)) <= 0:
+		mine.toast("No shear charges left")
+		Audio.play("ui_deny")
+		return
+	Game.run["shears"] = int(Game.run["shears"]) - 1
+	var v := Vector2(Balance.CHARGE_THROW.x * facing, Balance.CHARGE_THROW.y)
+	if ay > 0.5:
+		v = Vector2(0, 40)          # drop at feet
+	elif ay < -0.5:
+		v = Vector2(40 * facing, -260)   # up at the ceiling
+	v += velocity * 0.4
+	mine.spawn_shear(global_position + Vector2(facing * 6, -6), v)
+	Audio.play("throw")
+
+
+## Aim up (or with no aim) bolts the ceiling; aim sideways bolts the wall.
+func fire_bolt(ay: float) -> void:
+	if not mine or dead or not mine.has_method("fire_bolt"):
+		return
+	if int(Game.run.get("bolts", 0)) <= 0:
+		mine.toast("No anchor bolts left")
+		Audio.play("ui_deny")
+		return
+	var ax := _axis()
+	var aim := Vector2i.UP
+	if ay > 0.5:
+		aim = Vector2i.DOWN
+	elif absf(ax) > 0.5 and ay > -0.5:
+		aim = Vector2i(signi(int(signf(ax))), 0)
+	if mine.fire_bolt(self, aim):
+		Game.run["bolts"] = int(Game.run["bolts"]) - 1
+
+
 func throw_lure() -> void:
 	if not mine or dead or not mine.has_method("spawn_lure"):
 		return
