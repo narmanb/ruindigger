@@ -108,6 +108,23 @@ parse error makes a headless run hang. The screenshot harness is
 - The owner likes relic pairs being a lucky find. Making them easier to find
   (sonar or map marks) is a "maybe later".
 
+## Next up (owner's idea, agreed 2026-11-16): explosives and a Demolitions counter
+- Split charges into separate types you buy and carry: **normal** and
+  **sticky** (sticky is currently a one-time upgrade with an ON/OFF toggle; it
+  becomes its own charge type instead).
+- **Drill rocket:** fires straight in the facing direction, bores through
+  sediment, rubble and basalt for a set time, then explodes (early on alloy,
+  bedrock or a foe).
+- **Remote charge:** throw it, press again to detonate (probably one out at a time).
+- **Proximity mine:** dropped at your feet, arms after ~1 s, set off by a foe
+  or the player.
+- Sell them at a **separate Demolitions counter** at the outpost; the owner does
+  not want the Supply Locker crowded.
+- **Ask the owner first:** how to pick which explosive the CHARGE button throws
+  on touch (e.g. a selector on the gadget toolbar, or long-press CHARGE to cycle).
+- Related "kit shop" idea: buying extra lures. The owner is not keen on shears
+  and bolts, so leave those alone unless asked.
+
 ## Open items and ideas the owner liked
 - **Zone guardians:** one optional boss arena per zone, beaten by using that zone's terrain against it. Proposed: start with Dustworks and Spore Veins. This was my top recommendation. The owner asked for details, then chose breakers first.
 - **Physics puzzle vaults:** templates checked by a solver, guarding rare relics.
