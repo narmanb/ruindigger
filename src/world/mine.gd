@@ -68,6 +68,9 @@ func _ready() -> void:
 	_spawn_player()
 	_spawn_water_props()
 	_build_ui()
+	compass = OreCompass.new()
+	compass.mine = self
+	glow_root.add_child(compass)
 	grid.cell_changed.connect(_on_cell_changed)
 	pressure = Pressure.new()
 	pressure.mine = self
@@ -368,6 +371,8 @@ func _physics_process(delta: float) -> void:
 	_grow_ladders(delta)
 	_glutton_rattle(delta)
 	_dust_cloak(delta)
+	_dowse(delta)
+	_greedy_light()
 	if lava:
 		lava.update(delta)
 		steam.update(delta)
@@ -851,6 +856,8 @@ func _zone_reached(z: int) -> void:
 		return
 	seen.append(z)
 	Game.run["zones_seen"] = seen
+	if Game.has_relic("cartographer"):
+		reveal_zone(z)
 	if not Game.has_relic("spares"):
 		return
 	if int(Game.run.get("charges", 0)) < Progress.charges_max():
@@ -863,6 +870,76 @@ func _zone_reached(z: int) -> void:
 		toast("SPARE PARTS - your kit is already full")
 		return
 	Audio.play("pickup", -4.0)
+
+
+## Cartographer's Eye: every cell of a zone is drawn on the map. Returns how
+## many cells were newly revealed.
+func reveal_zone(z: int) -> int:
+	var n := 0
+	for y in grid.h:
+		for x in grid.w:
+			if grid.get_stratum(x, y) == z and grid.explore(x, y):
+				n += 1
+	if n > 0:
+		toast("CARTOGRAPHER'S EYE - %s is on your map" % Balance.STRATUM_NAMES[clampi(z, 0, Balance.STRATUM_NAMES.size() - 1)])
+	return n
+
+
+## A run relic was just taken (RunRelic.take): effects that start at once.
+func on_relic_taken(id: String) -> void:
+	match id:
+		"cartographer":
+			for z in Game.run.get("zones_seen", []):
+				reveal_zone(int(z))
+		"dowsing":
+			_dowse_t = 0.0
+
+
+var _dowse_t := 0.0
+var dowsed: Dictionary = {}      # Vector2i -> true: water cells sensed on the map
+
+
+## Dowsing Rod: water near you shows on the map before you see it.
+func _dowse(delta: float) -> void:
+	if not Game.has_relic("dowsing") or player == null or hud == null or hud.get("minimap") == null:
+		return
+	_dowse_t -= delta
+	if _dowse_t > 0.0:
+		return
+	_dowse_t = Balance.DOWSE_TICK
+	var mm: Minimap = hud.minimap
+	var pc := grid.world_to_cell(player.global_position)
+	var r := Balance.DOWSE_RADIUS
+	var now: Dictionary = {}
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			if dx * dx + dy * dy > r * r:
+				continue
+			var c := pc + Vector2i(dx, dy)
+			if not grid.in_bounds(c.x, c.y) or grid.has_flag(c.x, c.y, Cell.F_EXPLORED):
+				continue
+			if not grid.is_solid(c.x, c.y) and grid.get_water(c.x, c.y) >= Balance.WATER_MAX / 3:
+				now[c] = true
+	for c in dowsed.keys():
+		if not now.has(c):
+			mm.sense(c.x, c.y, false)
+	for c in now.keys():
+		if not dowsed.has(c):
+			mm.sense(c.x, c.y, true)
+	dowsed = now
+
+
+var compass: OreCompass
+var _lamp_base := -1.0
+
+
+## Greedy Lamp's cost: a smaller lamp (the pressure part is in Pressure._mult).
+func _greedy_light() -> void:
+	if player == null or player.lamp == null:
+		return
+	if _lamp_base < 0.0:
+		_lamp_base = player.lamp.texture_scale
+	player.lamp.texture_scale = _lamp_base * (Balance.GREEDY_LIGHT if Game.has_relic("greedy") else 1.0)
 
 
 var _echo_n := 0

@@ -116,6 +116,8 @@ func open() -> void:
 		map_view.grid = mine.grid
 		map_view.img = mine.hud.minimap.img
 		map_view.tex = mine.hud.minimap.tex
+		map_view.sense_img = mine.hud.minimap.sense_img
+		map_view.sense_tex = mine.hud.minimap.sense_tex
 		map_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		map_view.set_process(false)
 	map_view.queue_redraw()

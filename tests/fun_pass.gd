@@ -23,6 +23,7 @@ static func run(t: Node) -> void:
 	await relics(t)
 	await relics_batch_a(t)
 	await relics_batch_b(t)
+	await relics_batch_c(t)
 	await feet(t)
 	await charges(t)
 	await sand(t)
@@ -792,6 +793,137 @@ static func relics_batch_b(t: Node) -> void:
 	mine.lava = null
 	mine.steam = null
 	pl.hp = pl.max_hp
+
+
+## 0.12.0 relics: Dowsing Rod, Greedy Lamp and Cartographer's Eye.
+static func relics_batch_c(t: Node) -> void:
+	t.section("new relics: dowsing rod, greedy lamp, cartographer's eye")
+	for id in ["dowsing", "greedy", "cartographer"]:
+		var found := false
+		for info: Dictionary in Balance.RUN_RELICS:
+			found = found or info["id"] == id
+		t.check(found, "relic %s is in the pool" % id)
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 17
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	var held: Array = Game.run["relics"]
+	held.clear()
+	var gc: Vector2i = g.world_to_cell(pl.global_position)
+	# Dowsing Rod: unexplored water near you is sensed on the map
+	var wc := Vector2i(gc.x + 14, gc.y + 3)
+	g.set_mat(wc.x, wc.y, Cell.AIR)
+	g.set_water(wc.x, wc.y, Balance.WATER_MAX)
+	g.set_flag(wc.x, wc.y, Cell.F_EXPLORED, false)
+	var mm: Minimap = mine.hud.minimap
+	mine._dowse_t = 0.0
+	mine._dowse(0.1)
+	t.check(not mine.dowsed.has(wc), "nothing is sensed without the Dowsing Rod")
+	held.append("dowsing")
+	mine._dowse_t = 0.0
+	mine._dowse(0.1)
+	t.check(mine.dowsed.has(wc) and mm.sense_img.get_pixel(wc.x, wc.y).a > 0.1, "Dowsing Rod: unexplored water 14 cells away shows on the map")
+	var far := Vector2i(gc.x + Balance.DOWSE_RADIUS + 3, gc.y)
+	if g.in_bounds(far.x, far.y):
+		g.set_mat(far.x, far.y, Cell.AIR)
+		g.set_water(far.x, far.y, Balance.WATER_MAX)
+		g.set_flag(far.x, far.y, Cell.F_EXPLORED, false)
+		mine._dowse_t = 0.0
+		mine._dowse(0.1)
+		t.check(not mine.dowsed.has(far), "Dowsing Rod: water beyond %d cells is not sensed" % Balance.DOWSE_RADIUS)
+		g.set_water(far.x, far.y, 0)
+	g.set_water(wc.x, wc.y, 0)
+	mine._dowse_t = 0.0
+	mine._dowse(0.1)
+	t.check(not mine.dowsed.has(wc) and mm.sense_img.get_pixel(wc.x, wc.y).a < 0.01, "Dowsing Rod: the mark clears when the water is gone")
+	held.clear()
+	# Cartographer's Eye: a zone you reach is fully drawn on the map
+	var zone_cells := 0
+	var zone_seen := 0
+	for y in g.h:
+		for x in g.w:
+			if g.get_stratum(x, y) == Balance.Z_CRYSTAL:
+				zone_cells += 1
+	Game.run["zones_seen"] = [0]
+	mine._zone_reached(Balance.Z_CRYSTAL)
+	for y in g.h:
+		for x in g.w:
+			if g.get_stratum(x, y) == Balance.Z_CRYSTAL and g.has_flag(x, y, Cell.F_EXPLORED):
+				zone_seen += 1
+	t.check(zone_seen < zone_cells, "a zone is not revealed without the relic")
+	held.append("cartographer")
+	mine._zone_reached(Balance.Z_SPORE)
+	var spore_left := 0
+	for y in g.h:
+		for x in g.w:
+			if g.get_stratum(x, y) == Balance.Z_SPORE and not g.has_flag(x, y, Cell.F_EXPLORED):
+				spore_left += 1
+	t.check(spore_left == 0, "Cartographer's Eye: reaching a zone reveals all of it")
+	# taking the relic reveals the zones you already visited
+	held.clear()
+	Game.run["zones_seen"] = [0, Balance.Z_SPORE, Balance.Z_AQUEDUCT]
+	held.append("cartographer")
+	mine.on_relic_taken("cartographer")
+	var aq_left := 0
+	for y in g.h:
+		for x in g.w:
+			if g.get_stratum(x, y) == Balance.Z_AQUEDUCT and not g.has_flag(x, y, Cell.F_EXPLORED):
+				aq_left += 1
+	t.check(aq_left == 0, "Cartographer's Eye: taking it reveals zones you already visited")
+	held.clear()
+	# Greedy Lamp: arrows to ore you can't see, a smaller lamp, a faster mine
+	var cp: OreCompass = mine.compass
+	for k in 120:
+		await t._frames(1)
+		if not cp.visible:
+			break
+	t.check(not cp.visible, "no compass without the Greedy Lamp")
+	var lamp0: float = pl.lamp.texture_scale
+	var mult0: float = mine.pressure._mult()
+	held.append("greedy")
+	for k in 120:
+		await t._frames(1)
+		if cp.visible:
+			break
+	t.check(is_equal_approx(pl.lamp.texture_scale, lamp0 * Balance.GREEDY_LIGHT), "Greedy Lamp: the lamp shrinks")
+	t.check(is_equal_approx(mine.pressure._mult(), mult0 * Balance.GREEDY_PRESSURE), "Greedy Lamp: the mine wakes faster")
+	var vr: Rect2 = cp.view_rect()
+	var oc := Vector2i(-1, -1)
+	for dx in range(1, Balance.GREEDY_RADIUS):
+		var c := Vector2i(gc.x + dx, gc.y)
+		if g.in_bounds(c.x, c.y) and not vr.has_point(g.cell_center(c)):
+			oc = c
+			break
+	t.check(oc.x >= 0, "there is room for an ore cell just off screen")
+	if oc.x >= 0:
+		g.set_mat(oc.x, oc.y, Cell.HARD)
+		g.ore[g.idx(oc.x, oc.y)] = Cell.ORE_AETHER
+		cp.scan()
+		var toward := (g.cell_center(oc) - pl.global_position).normalized()
+		var points := false
+		var all_off := true
+		for tg: Dictionary in cp.targets:
+			if absf((tg["dir"] as Vector2).angle_to(toward)) < deg_to_rad(Balance.GREEDY_SEP_DEG):
+				points = true
+			if vr.has_point(tg["pos"]):
+				all_off = false
+		t.check(points, "Greedy Lamp: an arrow points toward off-screen ore")
+		t.check(all_off and cp.targets.size() <= Balance.GREEDY_ARROWS, "Greedy Lamp: arrows only for ore off screen, at most %d" % Balance.GREEDY_ARROWS)
+		t.check(cp.visible, "the compass shows while you hold the relic")
+	held.clear()
+	# the compass updates on idle frames, which headless runs space out more
+	# than the physics ticks the test waits on
+	for k in 120:
+		await t._frames(1)
+		if not cp.visible:
+			break
+	t.check(not cp.visible and cp.targets.is_empty(), "without the relic the compass hides")
+	t.check(is_equal_approx(pl.lamp.texture_scale, lamp0), "without the relic the lamp is back to normal (%.3f vs %.3f)" % [pl.lamp.texture_scale, lamp0])
 
 
 static func feet(t: Node) -> void:

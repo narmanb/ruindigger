@@ -59,6 +59,8 @@ func take() -> void:
 		if info["id"] == "spine" and mine.player:
 			mine.player.max_hp += Balance.SPINE_HULL
 			mine.player.hp = mine.player.max_hp
+		if mine.has_method("on_relic_taken"):
+			mine.on_relic_taken(String(info["id"]))
 	Audio.play("lift_ding", -2.0)
 	mine.hud.banner(String(info["name"]).to_upper())
 	mine.toast("RUN RELIC: %s" % info["desc"])

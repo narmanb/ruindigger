@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.11.0** (Android code 24). **`main` is the
+Last updated at version **0.12.0** (Android code 25). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,9 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.11.0. Wrap Godot in `timeout`: a
+`structures` separately. All are green at 0.12.0. Note: `t._frames(n)` waits on
+physics ticks; headless runs space idle `_process` frames out more, so a test
+of something updated in `_process` should poll with a cap, not wait a fixed n. Wrap Godot in `timeout`: a
 parse error makes a headless run hang. The screenshot harness is
 `tests/shot.gd`; useful args include `deep=1`, `at=lm:<kind or NAME>`,
 `decor=<kind>`, `sandtest=1`, `kitdemo=1`, `pourtest=1|2`,
@@ -48,6 +50,13 @@ parse error makes a headless run hang. The screenshot harness is
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.12.0:** three map relics. Dowsing Rod (`Mine._dowse` writes a second
+  "sensed" layer, `Minimap.sense_img/sense_tex`, drawn under the explored
+  map in the minimap, pause map and survey map), Greedy Lamp
+  (`src/world/ore_compass.gd`, a ring of arrows in the glow layer, plus
+  `Mine._greedy_light` and `Pressure._mult`), Cartographer's Eye
+  (`Mine.reveal_zone`, from `_zone_reached` and `Mine.on_relic_taken`, which
+  `RunRelic.take` now calls for effects that start at once).
 - **0.11.0:** four more run relics. Fault Line (`Mine.fault_line`, called from
   `Mine.explode` for charges), Pressure Valve (`Pressure.vent`), Dust Cloak
   (`Mine.raise_dust` / `Mine.cloaked`, checked in `Crawler._sees_player` and
@@ -90,12 +99,9 @@ parse error makes a headless run hang. The screenshot harness is
 ## Run relic plan (agreed with the owner)
 - **Batch B: done in 0.11.0.** Sand piles do not slow the player and crawlers
   ignore sand, so Sand Strider was replaced by Dust Cloak (owner's choice).
-- **Batch C (next, 0.12.0):** Dowsing Rod (water pockets show on the minimap through
-  rock within ~20 cells, tinted as "sensed"; the minimap already shows water you
-  have seen), Greedy Lamp (edge-of-screen arrows to the nearest unseen,
-  reachable ore within ~30 cells, coloured by ore; cost: smaller light and
-  faster pressure; needs the UI layout checks), Cartographer's Eye (zones you
-  have visited are fully drawn on the map).
+- **Batch C: done in 0.12.0.** Greedy Lamp's arrows ring the digger instead of
+  sitting at the screen edge (so they never fight the HUD); the owner has not
+  seen it yet and may want edge arrows instead. The relic plan is complete.
 - **Dropped or held:** Hot Core (hurt you while drilling: rejected), Gnaw Ward
   (replaced by Hard Hat), Anchor Charm (held: the owner is unsure about bolts),
   "greater" relics (wait until the pool is bigger).

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0
+**Three map relics** (the pool grows from 16 to 19). This finishes the relic plan.
+- **Dowsing Rod:** water within 20 cells of you shows on the minimap and the survey map before you get there, even through solid rock. It's drawn in a paler blue than water you have actually seen (normally only about 7 cells around you), and the survey map's legend lists it as SENSED WATER. The marks update every second and clear when the water drains away.
+- **Greedy Lamp:** up to four small arrows float in a ring around the digger, each pointing toward the nearest ore that is off screen (within 30 cells), in that ore's colour. Better ore draws a brighter arrow. The cost: your lamp lights a smaller area, and the mine wakes 25% faster.
+  - The arrows circle the digger rather than sitting at the screen edge, so they never collide with the HUD panels or touch buttons on any phone shape.
+- **Cartographer's Eye:** every zone you reach is fully drawn on your map. Taking it also draws the zones you have already visited this run. The First Civilization counts as one zone, so the whole deep map is revealed when you arrive.
+
 ## 0.11.0
 **Four more run relics** (the pool grows from 12 to 16).
 - **Fault Line:** when one of your charges goes off, the ceiling above it cracks across five columns, two rows deep. After about a second of dust it comes down as rubble. Blast a crawler, then let the roof finish it. It cannot crack alloy, bedrock, protected or bolted rock, and it doesn't trigger on gas explosions.

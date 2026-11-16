@@ -93,6 +93,8 @@ class View extends Control:
 		grid = m.grid
 		tex = m.hud.minimap.tex
 		m.hud.minimap.tex.update(m.hud.minimap.img)
+		if m.hud.minimap.sense_tex:
+			m.hud.minimap.sense_tex.update(m.hud.minimap.sense_img)
 		touches.clear()
 		zoom = 2.0
 		centre_on_player()
@@ -196,6 +198,9 @@ class View extends Control:
 		var s := px()
 		var tl := to_screen(Vector2.ZERO)
 		draw_rect(Rect2(tl, Vector2(grid.w, grid.h) * s), Color(0.05, 0.04, 0.07, 1.0))
+		var sense: ImageTexture = mine.hud.minimap.sense_tex
+		if sense:
+			draw_texture_rect(sense, Rect2(tl, Vector2(grid.w, grid.h) * s), false)
 		draw_texture_rect(tex, Rect2(tl, Vector2(grid.w, grid.h) * s), false)
 		draw_rect(Rect2(tl, Vector2(grid.w, grid.h) * s), Color(0.35, 0.28, 0.5), false, 1.0)
 		var f := UIKit.font_head()
@@ -238,7 +243,11 @@ class View extends Control:
 		draw_rect(Rect2(0, size.y - 18, size.x, 18), Color(0.03, 0.02, 0.05, 0.9))
 		var ly := size.y - 6.0
 		var lx := 10.0
-		for item in [["YOU", Color(1.0, 0.75, 0.3)], ["LIFT", Color(0.3, 1.0, 0.4)], ["DORMANT LIFT", Color(1.0, 0.5, 0.2)], ["RELIC", Color(0.4, 1.0, 1.0)], ["WATER", Color(0.2, 0.5, 0.9)], ["LANDMARK (TAP)", Color(1.0, 0.8, 0.35)]]:
+		var legend: Array = [["YOU", Color(1.0, 0.75, 0.3)], ["LIFT", Color(0.3, 1.0, 0.4)], ["DORMANT LIFT", Color(1.0, 0.5, 0.2)], ["RELIC", Color(0.4, 1.0, 1.0)], ["WATER", Color(0.2, 0.5, 0.9)]]
+		if Game.has_relic("dowsing"):
+			legend.append(["SENSED WATER", Balance.DOWSE_COLOR])
+		legend.append(["LANDMARK (TAP)", Color(1.0, 0.8, 0.35)])
+		for item in legend:
 			draw_rect(Rect2(lx, ly - 6, 6, 6), item[1])
 			draw_string(f, Vector2(lx + 9, ly), item[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 8, UIKit.MUTED)
 			lx += 16.0 + f.get_string_size(item[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x

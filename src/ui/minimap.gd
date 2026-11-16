@@ -12,6 +12,11 @@ var _upload_t := 0.0
 var view_cells := Vector2i(52, 26)
 var scale_px := 2.0
 var full := false   # full-map mode (pause screen)
+# "sensed" layer drawn under the explored map (Dowsing Rod): only shows where
+# the cell has not been explored, since explored pixels cover it
+var sense_img: Image
+var sense_tex: ImageTexture
+var _sense_dirty := false
 
 
 func setup(m: Node) -> void:
@@ -20,6 +25,9 @@ func setup(m: Node) -> void:
 	img = Image.create(grid.w, grid.h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	tex = ImageTexture.create_from_image(img)
+	sense_img = Image.create(grid.w, grid.h, false, Image.FORMAT_RGBA8)
+	sense_img.fill(Color(0, 0, 0, 0))
+	sense_tex = ImageTexture.create_from_image(sense_img)
 	grid.cell_changed.connect(_on_changed)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
@@ -56,6 +64,14 @@ static func cell_color(g: TerrainGrid, x: int, y: int) -> Color:
 	return Color.MAGENTA
 
 
+## Mark or clear a sensed cell (shown only while unexplored).
+func sense(x: int, y: int, on: bool) -> void:
+	if sense_img == null:
+		return
+	sense_img.set_pixel(x, y, Balance.DOWSE_COLOR if on else Color(0, 0, 0, 0))
+	_sense_dirty = true
+
+
 func _on_changed(x: int, y: int, _o: int, _n: int) -> void:
 	if grid.has_flag(x, y, Cell.F_EXPLORED):
 		img.set_pixel(x, y, cell_color(grid, x, y))
@@ -69,10 +85,14 @@ func _process(delta: float) -> void:
 		img.set_pixel(c.x, c.y, cell_color(grid, c.x, c.y))
 		_dirty = true
 	_upload_t -= delta
-	if _dirty and _upload_t <= 0.0:
+	if (_dirty or _sense_dirty) and _upload_t <= 0.0:
 		_upload_t = 0.2
+		if _dirty:
+			tex.update(img)
+		if _sense_dirty and sense_tex:
+			sense_tex.update(sense_img)
 		_dirty = false
-		tex.update(img)
+		_sense_dirty = false
 	queue_redraw()
 
 
@@ -95,6 +115,8 @@ func _draw() -> void:
 		var tl := (pc - vc * 0.5).clamp(Vector2.ZERO, Vector2(grid.w, grid.h) - vc)
 		src = Rect2(tl, vc)
 	draw_rect(Rect2(Vector2.ZERO, area), Color(0.02, 0.015, 0.03, 0.85))
+	if sense_tex:
+		draw_texture_rect_region(sense_tex, Rect2(origin, src.size * sc), src)
 	draw_texture_rect_region(tex, Rect2(origin, src.size * sc), src)
 	var t := Time.get_ticks_msec() / 1000.0
 	# markers

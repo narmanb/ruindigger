@@ -123,6 +123,9 @@ const RUN_RELICS := [
 	{"id": "faultline", "name": "Fault Line", "desc": "Your charges crack the ceiling above them; it falls a moment later.", "color": "d9a066"},
 	{"id": "valve", "name": "Pressure Valve", "desc": "At high pressure the mine vents: the meter drops and nearby foes are stunned.", "color": "7ad7ff"},
 	{"id": "dustcloak", "name": "Dust Cloak", "desc": "Running on sand or drilling sediment raises dust: foes over 3 cells away lose sight of you.", "color": "d8c49a"},
+	{"id": "dowsing", "name": "Dowsing Rod", "desc": "Water within 20 cells shows on your map, even through rock.", "color": "6fc8ff"},
+	{"id": "greedy", "name": "Greedy Lamp", "desc": "Arrows point to unseen ore; your lamp shrinks and the mine wakes faster.", "color": "ffcf6b"},
+	{"id": "cartographer", "name": "Cartographer's Eye", "desc": "Every zone you visit is fully drawn on your map.", "color": "e8d9b0"},
 	# "deep": only ever offered in The First Civilization
 	{"id": "slag", "name": "Slag Heart", "desc": "Lava doesn't burn you; it crusts into rock around you.", "color": "ff5a2a", "deep": true},
 ]
@@ -152,6 +155,16 @@ const DUST_CLOAK_TIME := 3.0         # Dust Cloak: s you stay hidden after raisi
 const DUST_CLOAK_NEAR := 3.0         # cells: foes closer than this still see you
 const DUST_CLOAK_FORGET := 0.6       # s a chasing foe keeps hunting once you vanish
 const DUST_CLOAK_RUN := 60.0         # px/s: running this fast over sand raises dust
+const DOWSE_RADIUS := 20             # Dowsing Rod: cells around you searched for water
+const DOWSE_TICK := 1.0              # s between searches
+const DOWSE_COLOR := Color(0.45, 0.8, 1.0, 0.6)   # "sensed" water on the map (seen water is solid blue)
+const GREEDY_RADIUS := 30            # Greedy Lamp: cells around you searched for ore
+const GREEDY_TICK := 0.4
+const GREEDY_ARROWS := 4             # at most this many arrows at once
+const GREEDY_SEP_DEG := 25.0         # arrows closer together than this merge into one
+const GREEDY_RING := 34.0            # px from the digger the arrows float at
+const GREEDY_LIGHT := 0.72           # lamp size kept with the relic
+const GREEDY_PRESSURE := 1.25        # the mine wakes this much faster
 # --- Gadgets: one active (GADGET button, on a cooldown) + one passive ---
 const GADGETS := {
 	"sonar": {"name": "SONAR", "kind": "active", "cooldown": 22.0, "desc": "Ping: reveals the map nearby and marks ore, gas and loose rock."},
