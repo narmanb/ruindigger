@@ -576,9 +576,15 @@ func _demolitions_panel() -> Control:
 			pips += "#" if i < lv else "-"
 		left.add_child(UIKit.label("%s  [%s]" % [info["name"], pips], 11, UIKit.AMBER, true))
 		var detail := String(info["desc"])
-		if info.has("mult"):
+		if info.has("levels"):
+			var lvls: Array = info["levels"]
+			detail += "  %s -> %s" % [lvls[lv], lvls[lv + 1] if lv + 1 < lvls.size() else "MAXED"]
+		elif info.has("mult"):
 			detail += "  Now x%s" % String.num(Balance.demo_mult(track, lv), 2)
-		left.add_child(UIKit.label(detail, 9, UIKit.TEXT))
+		var dl := UIKit.label(detail, 9, UIKit.TEXT)
+		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		dl.custom_minimum_size.x = 290
+		left.add_child(dl)
 		row.add_child(left)
 		var cost := Progress.demo_cost(track)
 		var ub := UIKit.button("MAX" if cost < 0 else "%d CR" % cost, func() -> void:

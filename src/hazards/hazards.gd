@@ -214,7 +214,8 @@ class Rocket extends Node2D:
 
 ## Proximity mine: laid at your feet. It arms after MINE_ARM seconds, but
 ## only once the digger has stepped out of its reach; after that the next foe
-## or digger to come near sets it off (after a short beep).
+## or digger to come near sets it off (after a short beep). Any blast that
+## reaches it sets it off too, armed or not (Mine._chain_mines).
 class ProxMine extends Node2D:
 	var mine: Node
 	var t := 0.0
@@ -226,7 +227,7 @@ class ProxMine extends Node2D:
 	func _ready() -> void:
 		ring = Sprite2D.new()
 		ring.texture = load("res://assets/gen/ring.png")
-		ring.scale = Vector2.ONE * (Balance.MINE_TRIGGER * Balance.CELL * 2.0 / 64.0)
+		ring.scale = Vector2.ONE * (mine.mine_trigger() * Balance.CELL * 2.0 / 64.0)
 		ring.modulate = Color(1.0, 0.8, 0.3, 0.12)
 		mine.glow_root.add_child(ring)
 
@@ -235,9 +236,11 @@ class ProxMine extends Node2D:
 			ring.queue_free()
 
 	func _near(p: Vector2) -> bool:
-		return p.distance_to(global_position) <= Balance.MINE_TRIGGER * Balance.CELL
+		return p.distance_to(global_position) <= mine.mine_trigger() * Balance.CELL
 
 	func _digger_near() -> bool:
+		if mine.mines_ignore_digger():
+			return false
 		var pl: Player = mine.player
 		return pl != null and not pl.dead and _near(pl.global_position + Vector2(0, Player.HALF.y - 4.0))
 

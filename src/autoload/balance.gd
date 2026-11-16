@@ -293,12 +293,22 @@ const MINE_ARM := 1.0                # s before a proximity mine can arm
 const MINE_TRIGGER := 1.3            # cells: a foe or the digger this close sets it off
 const MINE_DELAY := 0.35             # s of warning beep before it blows
 # capped upgrades sold at the Demolitions counter (cost per next level)
-const DEMO_TRACKS := ["capacity", "power", "radius"]
+const DEMO_TRACKS := ["capacity", "power", "radius", "fuse", "bore", "sensor", "shield"]
 const DEMO_UPGRADES := {
 	"capacity": {"name": "BIGGER RACK", "costs": [140, 300, 560], "desc": "Carry more of every explosive."},
 	"power": {"name": "BLAST POWER", "costs": [180, 380], "mult": [1.0, 1.25, 1.5], "desc": "Explosions hit rock and foes harder."},
 	"radius": {"name": "BLAST RADIUS", "costs": [200, 420], "mult": [1.0, 1.15, 1.3], "desc": "Explosions reach further."},
+	# "levels": what you have at each level (shown as now -> next)
+	"fuse": {"name": "QUICK FUSE", "costs": [120, 260], "mult": [1.0, 0.8, 0.6], "desc": "Demo and sticky charges go off sooner.",
+		"levels": ["2.2 s fuse", "1.8 s fuse", "1.3 s fuse"]},
+	"bore": {"name": "ROCKET DRIVE", "costs": [160, 340], "mult": [1.0, 1.3, 1.6], "desc": "Drill rockets bore further before they blow.",
+		"levels": ["1.6 s of boring", "2.1 s of boring", "2.6 s of boring"]},
+	"sensor": {"name": "MINE SENSOR", "costs": [150, 320], "mult": [1.0, 1.4, 1.4], "desc": "Proximity mines sense foes from further off.",
+		"levels": ["Standard sensor", "Senses 40% further", "40% further, and ignores you"]},
+	"shield": {"name": "BLAST SHIELDING", "costs": [170, 360], "mult": [1.0, 0.7, 0.4], "desc": "Your own explosives hurt you less.",
+		"levels": ["Full self-damage", "30% less self-damage", "60% less self-damage"]},
 }
+const MINE_FRIENDLY_LEVEL := 2       # MINE SENSOR level at which mines stop reacting to the digger
 const STICKY_REFUND := 240           # old saves: the retired STICKY CHARGES upgrade is paid back
 
 # --- Demolition charge ---

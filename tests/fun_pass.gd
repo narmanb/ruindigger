@@ -956,6 +956,10 @@ static func feet(t: Node) -> void:
 	await _settle(t)
 
 
+static func mines_ignore(mine: Node) -> bool:
+	return mine.mines_ignore_digger()
+
+
 static func charges(t: Node) -> void:
 	t.section("explosives and the Demolitions counter")
 	var saved := Progress.to_dict()
@@ -970,6 +974,13 @@ static func charges(t: Node) -> void:
 	Progress.credits = 5000
 	t.check(Progress.buy_demo("power") and Progress.buy_demo("power") and not Progress.buy_demo("power"), "BLAST POWER has two levels and then stops")
 	t.check(Progress.buy_demo("radius") and Progress.buy_demo("radius") and not Progress.buy_demo("radius"), "BLAST RADIUS has two levels and then stops")
+	var capped := true
+	for track: String in Balance.DEMO_TRACKS:
+		var info: Dictionary = Balance.DEMO_UPGRADES[track]
+		var n: int = (info["costs"] as Array).size()
+		if n < 1 or n > 3 or (info.has("mult") and (info["mult"] as Array).size() != n + 1) or (info.has("levels") and (info["levels"] as Array).size() != n + 1):
+			capped = false
+	t.check(capped and Balance.DEMO_TRACKS.size() == Balance.DEMO_UPGRADES.size(), "every Demolitions upgrade is capped and has a value for each level")
 	t.check(Progress.set_slot(1, "rocket") and Progress.slots == ["charge", "rocket"], "a backup explosive can be packed")
 	t.check(Progress.free_units("charge") == 2 and Progress.free_units("rocket") == 0, "only the main slot gets free units")
 	t.check(Progress.set_slot(0, "rocket") and Progress.slots == ["rocket", "charge"], "picking the other slot's type swaps the two")
@@ -1133,6 +1144,78 @@ static func charges(t: Node) -> void:
 	t.check(is_equal_approx(mine.blast_radius(), Balance.CHARGE_RADIUS_CELLS) and is_equal_approx(mine.blast_power(), 1.0), "no upgrades: the standard blast")
 	Progress.demo = {"power": 2, "radius": 2}
 	t.check(is_equal_approx(mine.blast_radius(), Balance.CHARGE_RADIUS_CELLS * 1.3) and is_equal_approx(mine.blast_power(), 1.5), "BLAST RADIUS and BLAST POWER scale your explosives")
+	Progress.demo = {}
+	# the other upgrades: fuse, rocket drive, blast shielding, mine sensor
+	var c0: Hazards.Charge = mine.spawn_charge(home + Vector2(200, -40), Vector2.ZERO, "charge")
+	var r0: Hazards.Rocket = mine.spawn_rocket(home + Vector2(200, -60), Vector2i(1, 0))
+	var base_fuse := c0.fuse
+	var base_life := r0.life
+	c0.queue_free()
+	r0.queue_free()
+	Progress.demo = {"fuse": 2, "bore": 2, "sensor": 1, "shield": 2}
+	var c1: Hazards.Charge = mine.spawn_charge(home + Vector2(200, -40), Vector2.ZERO, "sticky")
+	var r1: Hazards.Rocket = mine.spawn_rocket(home + Vector2(200, -60), Vector2i(1, 0))
+	t.check(is_equal_approx(base_fuse, Balance.CHARGE_FUSE) and is_equal_approx(c1.fuse, Balance.CHARGE_FUSE * 0.6), "QUICK FUSE shortens the fuse (%.1f s to %.1f s)" % [base_fuse, c1.fuse])
+	t.check(is_equal_approx(base_life, Balance.ROCKET_LIFE) and is_equal_approx(r1.life, Balance.ROCKET_LIFE * 1.6), "ROCKET DRIVE lets a rocket bore for longer")
+	c1.queue_free()
+	r1.queue_free()
+	t.check(is_equal_approx(mine.mine_trigger(), Balance.MINE_TRIGGER * 1.4) and not mines_ignore(mine), "MINE SENSOR I: mines sense 40% further")
+	await t._frames(3)
+	# blast shielding: your own blast hurts less
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	Progress.demo = {}
+	pl.invuln = 0.0
+	pl.hp = pl.max_hp
+	mine.charge_blast(home + Vector2(20, 0))
+	var hurt_plain := pl.max_hp - pl.hp
+	Progress.demo = {"shield": 2}
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	pl.invuln = 0.0
+	pl.hp = pl.max_hp
+	mine.charge_blast(home + Vector2(20, 0))
+	var hurt_shield := pl.max_hp - pl.hp
+	t.check(hurt_plain > 0.0 and absf(hurt_shield - hurt_plain * 0.4) < 0.5, "BLAST SHIELDING II: your own blast does 60%% less (%.1f to %.1f)" % [hurt_plain, hurt_shield])
+	pl.invuln = 1e9
+	pl.hp = pl.max_hp
+	Progress.demo = {}
+	# rebuild the floor the blasts chewed up
+	for x in range(pc.x - 8, pc.x + 22):
+		for y in range(pc.y - 5, pc.y + 4):
+			g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.HARD)
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	await t._frames(3)
+	# a blast sets mines off, armed or not; the next mine along chains
+	var ma: Hazards.ProxMine = mine.spawn_mine(home + Vector2(5 * 16, Player.HALF.y - 5.0))
+	var mb: Hazards.ProxMine = mine.spawn_mine(home + Vector2(8 * 16, Player.HALF.y - 5.0))
+	var far_mine: Hazards.ProxMine = mine.spawn_mine(home + Vector2(18 * 16, Player.HALF.y - 5.0))
+	await t._frames(4)
+	t.check(not ma.armed and ma.tripped < 0.0, "a fresh mine is not armed yet")
+	mine.charge_blast(home + Vector2(3 * 16, 0))
+	t.check(ma.tripped >= 0.0 and mb.tripped < 0.0, "a blast in reach sets a mine off, even before it arms")
+	for k in 120:
+		if not is_instance_valid(mb):
+			break
+		await t._frames(1)
+	t.check(not is_instance_valid(ma) and not is_instance_valid(mb), "that mine's blast sets off the next one along")
+	t.check(is_instance_valid(far_mine) and far_mine.tripped < 0.0, "a mine out of reach is left alone")
+	# MINE SENSOR II: your own mines ignore you
+	Progress.demo = {"sensor": 2}
+	for x in range(pc.x - 8, pc.x + 22):
+		for y in range(pc.y - 5, pc.y + 4):
+			g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.HARD)
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	await t._frames(3)
+	var mf: Hazards.ProxMine = mine.spawn_mine(home + Vector2(0, Player.HALF.y - 5.0))
+	await t._frames(int((Balance.MINE_ARM + 0.8) * 60.0))
+	t.check(mines_ignore(mine) and is_instance_valid(mf) and mf.armed and mf.tripped < 0.0, "MINE SENSOR II: a mine arms under you and does not go off")
+	if is_instance_valid(mf):
+		mf.queue_free()
+	if is_instance_valid(far_mine):
+		far_mine.queue_free()
 	Progress.demo = {}
 	# a supply cache restocks whatever your main explosive is
 	Game.run["slots"] = ["rocket", ""]

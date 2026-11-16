@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.13.0** (Android code 26). **`main` is the
+Last updated at version **0.14.0** (Android code 27). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.13.0. Note: `t._frames(n)` waits on
+`structures` separately. All are green at 0.14.0. Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
 of something updated in `_process` should poll with a cap, not wait a fixed n. Wrap Godot in `timeout`: a
 parse error makes a headless run hang. The screenshot harness is
@@ -125,12 +125,15 @@ parse error makes a headless run hang. The screenshot harness is
 ## Explosives follow-ups (0.13.0 built the plan; these are what is left)
 - The owner has not played 0.13.0 yet. Prices, carry limits, rocket life and
   speed, mine timings and the upgrade multipliers are first guesses in `Balance`.
-- Upgrade ideas the owner is open to, not built: shorter fuse, drill rocket
-  bore range, mine trigger range or "ignores you", more than one remote charge
-  out (`REMOTE_MAX_OUT`), blast shielding (less self-damage).
+- 0.14.0 added QUICK FUSE, ROCKET DRIVE, MINE SENSOR and BLAST SHIELDING
+  (`Balance.DEMO_UPGRADES`, applied in `Mine.spawn_charge/spawn_rocket/
+  mine_trigger/explode`) and mine chaining (`Mine._chain_mines`). The owner
+  did not want more than one remote charge out. Crawlers do not avoid mines,
+  on purpose (owner agreed).
+- The owner had not played 0.13.0 when 0.14.0 was pushed, so 0.14.0 was pushed
+  with "[skip ci]": the newest APK is 0.13.0 until the next normal push.
 - "Kit shop": buying extra lures. The owner is not keen on shears and bolts.
-- Not done: mines do not chain when another blast catches them; crawlers do
-  not avoid mines; the counter's slot buttons show 4-letter names only (the
+- Not done: the counter's slot buttons show 4-letter names only (the
   full name and description appear once a type is in a slot).
 
 ## Open items and ideas the owner liked

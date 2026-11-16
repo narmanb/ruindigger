@@ -1021,10 +1021,11 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 	if player and not player.dead:
 		var pd := player.global_position.distance_to(pos)
 		if pd < r + 6.0:
-			var self_dmg := Balance.CHARGE_SELF_DAMAGE if cause == "charge" else ent_dmg * 0.55
+			var self_dmg := Balance.CHARGE_SELF_DAMAGE * Balance.demo_mult("shield", Progress.demo_level("shield")) if cause == "charge" else ent_dmg * 0.55
 			player.take_damage(self_dmg * lerpf(1.0, 0.4, pd / (r + 6.0)), pos, "own charge" if cause == "charge" else "gas ignition")
 	debris.blast(pos, r)
 	noise(pos, 16.0)
+	_chain_mines(pos, r)
 	if ignite:
 		gas.ignite_near(pos, r)
 	if cause == "charge" and Game.has_relic("faultline"):
@@ -1282,6 +1283,7 @@ func spawn_charge(pos: Vector2, v: Vector2, kind: String = "charge") -> Hazards.
 	ch.mine = self
 	ch.sticky = kind == "sticky"
 	ch.remote = kind == "remote"
+	ch.fuse = Balance.CHARGE_FUSE * Balance.demo_mult("fuse", Progress.demo_level("fuse"))
 	ch.vel = v
 	ch.position = pos
 	entity_root.add_child(ch)
@@ -1317,6 +1319,7 @@ func spawn_rocket(pos: Vector2, dir: Vector2i) -> Hazards.Rocket:
 	var rk := Hazards.Rocket.new()
 	rk.mine = self
 	rk.dir = dir
+	rk.life = Balance.ROCKET_LIFE * Balance.demo_mult("bore", Progress.demo_level("bore"))
 	rk.position = pos
 	entity_root.add_child(rk)
 	return rk
@@ -1327,7 +1330,36 @@ func spawn_mine(pos: Vector2) -> Hazards.ProxMine:
 	pm.mine = self
 	pm.position = pos
 	entity_root.add_child(pm)
+	mines.append(pm)
 	return pm
+
+
+var mines: Array = []            # proximity mines lying in the mine
+
+
+## How close (cells) something must come to set a proximity mine off.
+func mine_trigger() -> float:
+	return Balance.MINE_TRIGGER * Balance.demo_mult("sensor", Progress.demo_level("sensor"))
+
+
+## MINE SENSOR at its top level: mines no longer react to the digger.
+func mines_ignore_digger() -> bool:
+	return Progress.demo_level("sensor") >= Balance.MINE_FRIENDLY_LEVEL
+
+
+## A blast catches the mines in reach: they go off too, after their beep.
+func _chain_mines(pos: Vector2, r: float) -> int:
+	var n := 0
+	var live: Array = []
+	for pm in mines:
+		if not is_instance_valid(pm) or pm.is_queued_for_deletion():
+			continue
+		live.append(pm)
+		if pm.tripped < 0.0 and pm.global_position.distance_to(pos) <= r + 4.0:
+			pm.trip()
+			n += 1
+	mines = live
+	return n
 
 
 ## Blast radius (cells) and power of your explosives, with the Demolitions

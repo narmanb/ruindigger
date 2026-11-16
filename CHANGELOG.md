@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.0
+**More Demolitions upgrades, and mines that chain**
+- Four new upgrades at the Demolitions counter, two levels each. The counter shows what you have now and what the next level gives.
+  - **QUICK FUSE** (120 / 260 CR): demo and sticky charges go off sooner: 2.2 s, then 1.8 s, then 1.3 s.
+  - **ROCKET DRIVE** (160 / 340 CR): drill rockets bore for longer before they blow: 1.6 s, then 2.1 s, then 2.6 s.
+  - **MINE SENSOR** (150 / 320 CR): level 1 makes proximity mines sense foes 40% further away. Level 2 also makes your mines ignore you: they arm under your feet and you can walk over them. Their blast still hurts if you are standing close.
+  - **BLAST SHIELDING** (170 / 360 CR): your own explosives hurt you 30% less, then 60% less.
+- **Mines chain.** Any blast that reaches a proximity mine sets it off after its short beep, whether or not it has armed: your charges, rockets, other mines and gas fireballs. A line of mines goes off one after another.
+- Crawlers still don't avoid mines, on purpose.
+
 ## 0.13.0
 **Explosives and the Demolitions counter**
 - **A new DEMO terminal at the outpost** (between the Contract Board and the Supply Locker). Explosives moved here from the Supply Locker, which now only handles gadgets.

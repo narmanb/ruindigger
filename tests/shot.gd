@@ -352,6 +352,9 @@ func _process(_d: float) -> void:
 	if mine and args.has("panel") and frame == 30 and mine.has_method("_upgrade_panel"):
 		Progress.credits = 400
 		mine._open_panel(mine.call("_" + args["panel"] + "_panel"))
+	if mine and args.has("panel") and args.has("panel_end") and frame == 40 and mine.get("panel") != null:
+		for sc in mine.panel.find_children("*", "ScrollContainer", true, false):
+			(sc as ScrollContainer).scroll_vertical = 100000
 	if mine and mine.get("player") != null and mine.player and not args.has("charge"):
 		var ov := {}
 		if args.has("drill_down") and frame > 25:
