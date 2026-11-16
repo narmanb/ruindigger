@@ -1,60 +1,91 @@
 extends Node
-## Registers keyboard, gamepad and (via project settings) touch actions so the
-## game works the same everywhere. Touch input is handled by the on-screen
-## controls, which feed the same action names.
+## Builds the input map in code so keyboard, gamepad and touch share actions.
 
-const KEY_ACTIONS := {
-	"move_left":  [KEY_A, KEY_LEFT],
+signal device_changed(kind: String)
+
+var last_device := "keyboard"  # keyboard | gamepad | touch
+
+const KEYS := {
+	"move_left": [KEY_A, KEY_LEFT],
 	"move_right": [KEY_D, KEY_RIGHT],
-	"move_up":    [KEY_W, KEY_UP],
-	"move_down":  [KEY_S, KEY_DOWN],
-	"jump":       [KEY_SPACE, KEY_K],
-	"drill":      [KEY_J, KEY_L],
-	"charge":     [KEY_B, KEY_I],
-	"interact":   [KEY_E, KEY_ENTER],
-	"pause":      [KEY_ESCAPE, KEY_P],
-	"map":        [KEY_TAB],
-	"debug_toggle": [KEY_F3],
-	"restart":    [KEY_R],
+	"aim_up": [KEY_W, KEY_UP],
+	"aim_down": [KEY_S, KEY_DOWN],
+	"jump": [KEY_SPACE, KEY_Z],
+	"drill": [KEY_J, KEY_X, KEY_SHIFT],
+	"charge": [KEY_K, KEY_C],
+	"interact": [KEY_E, KEY_F],
+	"pause": [KEY_ESCAPE, KEY_P],
+	"map": [KEY_M, KEY_TAB],
+	"inventory": [KEY_I],
+	"ladder": [KEY_L, KEY_Q],
+	"gadget": [KEY_G, KEY_V],
+	"lure": [KEY_T],
+	"shear": [KEY_R],
+	"bolt": [KEY_B],
 }
 
-const JOY_BUTTON_ACTIONS := {
-	"move_left":  [JOY_BUTTON_DPAD_LEFT],
+const PAD_BUTTONS := {
+	"jump": [JOY_BUTTON_A],
+	"interact": [JOY_BUTTON_Y],
+	"ladder": [JOY_BUTTON_X],
+	"gadget": [JOY_BUTTON_LEFT_STICK],
+	"charge": [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_B],
+	"drill": [JOY_BUTTON_RIGHT_SHOULDER],
+	"pause": [JOY_BUTTON_START],
+	"map": [JOY_BUTTON_BACK],
+	"move_left": [JOY_BUTTON_DPAD_LEFT],
 	"move_right": [JOY_BUTTON_DPAD_RIGHT],
-	"move_up":    [JOY_BUTTON_DPAD_UP],
-	"move_down":  [JOY_BUTTON_DPAD_DOWN],
-	"jump":       [JOY_BUTTON_A],
-	"drill":      [JOY_BUTTON_X, JOY_BUTTON_RIGHT_SHOULDER],
-	"charge":     [JOY_BUTTON_B, JOY_BUTTON_LEFT_SHOULDER],
-	"interact":   [JOY_BUTTON_Y],
-	"pause":      [JOY_BUTTON_START],
-	"map":        [JOY_BUTTON_BACK],
+	"aim_up": [JOY_BUTTON_DPAD_UP],
+	"aim_down": [JOY_BUTTON_DPAD_DOWN],
 }
 
-const JOY_AXIS_ACTIONS := {
-	"move_left":  [JOY_AXIS_LEFT_X, -1.0],
-	"move_right": [JOY_AXIS_LEFT_X, 1.0],
-	"move_up":    [JOY_AXIS_LEFT_Y, -1.0],
-	"move_down":  [JOY_AXIS_LEFT_Y, 1.0],
-}
 
 func _ready() -> void:
-	for action_name in KEY_ACTIONS.keys():
-		if not InputMap.has_action(action_name):
-			InputMap.add_action(action_name)
-	for action_name in KEY_ACTIONS:
-		for key in KEY_ACTIONS[action_name]:
-			var ev := InputEventKey.new()
-			ev.physical_keycode = key
-			InputMap.action_add_event(action_name, ev)
-	for action_name in JOY_BUTTON_ACTIONS:
-		for button in JOY_BUTTON_ACTIONS[action_name]:
-			var ev := InputEventJoypadButton.new()
-			ev.button_index = button
-			InputMap.action_add_event(action_name, ev)
-	for action_name in JOY_AXIS_ACTIONS:
-		var spec = JOY_AXIS_ACTIONS[action_name]
-		var ev := InputEventJoypadMotion.new()
-		ev.axis = spec[0]
-		ev.axis_value = spec[1]
-		InputMap.action_add_event(action_name, ev)
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	for action in KEYS.keys():
+		if not InputMap.has_action(action):
+			InputMap.add_action(action, 0.35)
+		for k in KEYS[action]:
+			var e := InputEventKey.new()
+			e.physical_keycode = k
+			InputMap.action_add_event(action, e)
+	for action in PAD_BUTTONS.keys():
+		for b in PAD_BUTTONS[action]:
+			var e := InputEventJoypadButton.new()
+			e.button_index = b
+			e.device = -1
+			InputMap.action_add_event(action, e)
+	_axis("move_left", JOY_AXIS_LEFT_X, -1.0)
+	_axis("move_right", JOY_AXIS_LEFT_X, 1.0)
+	_axis("aim_up", JOY_AXIS_LEFT_Y, -1.0)
+	_axis("aim_down", JOY_AXIS_LEFT_Y, 1.0)
+	_axis("drill", JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	_axis("charge", JOY_AXIS_TRIGGER_LEFT, 1.0)
+	# UI navigation with the gamepad works through ui_* defaults; add shoulder tabs
+	for pair in [["ui_accept", JOY_BUTTON_A], ["ui_cancel", JOY_BUTTON_B]]:
+		var e := InputEventJoypadButton.new()
+		e.button_index = pair[1]
+		InputMap.action_add_event(pair[0], e)
+
+
+func _axis(action: String, axis: int, dir: float) -> void:
+	var e := InputEventJoypadMotion.new()
+	e.axis = axis
+	e.axis_value = dir
+	e.device = -1
+	InputMap.action_add_event(action, e)
+
+
+func _input(event: InputEvent) -> void:
+	var kind := last_device
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		kind = "touch"
+	elif event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.5):
+		kind = "gamepad"
+	elif event is InputEventKey:
+		kind = "keyboard"
+	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION:
+		kind = "keyboard"
+	if kind != last_device:
+		last_device = kind
+		device_changed.emit(kind)

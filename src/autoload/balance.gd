@@ -1,167 +1,650 @@
 extends Node
-## Central balance/tuning resource. Every gameplay number that a designer might
-## want to tweak lives here so tuning never requires touching gameplay scripts.
+## Central tuning sheet. Every gameplay number that a designer might want to
+## tweak lives here (see README "Balance").
 
-# --- Simulation ------------------------------------------------------------
-const CELL := 24                 # world pixels per terrain cell
-const CHUNK := 16                # cells per chunk edge
-const GRAVITY := 900.0
+const CELL := 16
 
-# --- Terrain materials -----------------------------------------------------
-enum Mat { EMPTY = 0, SOIL = 1, BASALT = 2, ALLOY = 3, BEDROCK = 4 }
+# --- Player movement (pixels, seconds) ---
+const RUN_SPEED := 152.0
+const GROUND_ACCEL := 2000.0
+const AIR_ACCEL := 1350.0
+const GROUND_FRICTION := 2200.0
+const GRAVITY := 960.0
+const MAX_FALL := 430.0
+const JUMP_VELOCITY := 318.0        # ~3.3 cells
+const JUMP_CUT := 0.45              # velocity kept when jump released early
+const JET_VELOCITY := 250.0         # air burst (one per airtime)
+const COYOTE_TIME := 0.1
+const JUMP_BUFFER := 0.12
+const WALL_SLIDE_SPEED := 70.0
+const WALL_JUMP_PUSH := 150.0
+const WALL_JUMP_VELOCITY := 285.0
+const WALL_JUMP_LOCK := 0.13
+const LADDER_SPEED := 125.0
+const PLATFORM_DROP_TIME := 0.35
+const PLATFORM_DROP_SPEED := 60.0
+const PLATFORM_DEPTH := 6.0
+const TOUCH_LADDER_AXIS_RATIO := 0.8
+const TOUCH_STICK_VERTICAL_MIN := 0.55
+const TOUCH_STICK_VERTICAL_RATIO := 0.8
+const INVULN_TIME := 1.0
+const FALL_DAMAGE_SPEED := 9999.0   # no fall damage: we want digging down to feel free
 
-## Base hit points per material before the drill-power multiplier applies.
-const MATERIAL_HP := {
-	Mat.SOIL: 1,
-	Mat.BASALT: 4,
-	Mat.ALLOY: 9,
-	Mat.BEDROCK: 0x7FFF,       # indestructible in this slice
+# --- Drill ---
+const DRILL_TICK := 0.085           # seconds between impact ticks
+const DRILL_POWER := [4.2, 5.8, 7.8, 10.5]   # hp per second by drill level
+const DRILL_ENEMY_DPS := 75.0
+const DRILL_HITSTUN := 0.3          # enemies hit by the drill can't attack for this long
+const DRILL_KNOCKBACK := true
+const HEAT_CAPACITY := [100.0, 145.0, 200.0, 270.0]
+const HEAT_PER_SEC := 8.5          # while drilling soft material
+const HEAT_COOL_PER_SEC := [30.0, 36.0, 44.0, 55.0]
+const HEAT_COOL_DELAY := 0.35
+const HEAT_RECOVER_FRACTION := 0.35 # overheated drill unlocks below this
+
+# --- Materials: hp, required drill tier, heat multiplier ---
+# Keys are Cell.* ids (see src/terrain/cell.gd)
+const MATERIAL := {
+	1: {"name": "Sediment", "hp": 1.0, "tier": 0, "heat": 1.0},
+	2: {"name": "Basalt", "hp": 4.0, "tier": 0, "heat": 1.6},
+	3: {"name": "Loose rubble", "hp": 0.55, "tier": 0, "heat": 0.6},
+	4: {"name": "Ruin alloy", "hp": 12.0, "tier": 3, "heat": 2.4},
+	5: {"name": "Bedrock", "hp": 9999.0, "tier": 99, "heat": 0.0},
+	6: {"name": "Gas sac", "hp": 0.8, "tier": 0, "heat": 0.5},
+	7: {"name": "Cracked wall", "hp": 1.6, "tier": 0, "heat": 1.0},
 }
 
-const MATERIAL_DRILL_TIME := {
-	Mat.SOIL: 0.16,            # seconds of drilling per hit point
-	Mat.BASALT: 0.30,
-	Mat.ALLOY: 0.42,
-	Mat.BEDROCK: 0.0,
+# --- Ore & loot ---
+# id -> name, value, colour (hex), units dropped
+const ORE := {
+	1: {"name": "Copper", "value": 6, "color": "ffab5e", "drops": 2},
+	2: {"name": "Cobalt", "value": 15, "color": "5fc0ff", "drops": 2},
+	3: {"name": "Aetherite", "value": 38, "color": "e070ff", "drops": 2},
+	4: {"name": "Fossil", "value": 22, "color": "efe5c4", "drops": 1},
+	5: {"name": "Scrap", "value": 4, "color": "b8c4d4", "drops": 1},
 }
-
-## Which materials each drill tier can damage at all.
-const DRILL_MIN_TIER := {
-	Mat.SOIL: 0,
-	Mat.BASALT: 0,
-	Mat.ALLOY: 1,
-	Mat.BEDROCK: 99,
+const CARGO_CAPACITY := [60, 90, 130, 180]
+# Ore grade: the same ore is worth more the deeper the zone it came from.
+# Indexed by stratum (zone id). A cargo key packs ore id + 16 * grade.
+const ORE_GRADE_MULT := [1.0, 1.3, 2.3, 1.7, 1.7, 3.5]
+const ORE_KEY_STRIDE := 16
+const SWAP_DROP_IGNORE := 1.5      # s a swapped-out unit ignores the magnet
+# --- Orders (short-term goals per dive) ---
+const ORDER_COUNT := 3
+const ORDER_ORE_SHARE := 0.22        # an ore order asks for this share of the map's units
+const ORDER_VALUE_SHARE := 0.1       # a value order asks for this share of the map's ore value
+const ORDER_VALUE_PER_SLOT := 14     # ...capped at this many CR per starting rack slot
+# --- Pressure (the mine wakes up) ---
+# per-zone, indexed by stratum: Dustworks, Spore, Engine, Aqueducts, Hollows, First Civ
+const PRESSURE_RATE := [0.02, 0.06, 0.14, 0.1, 0.1, 0.15]      # per second spent there
+const PRESSURE_NOISE_MULT := [0.4, 0.7, 1.2, 1.0, 1.0, 1.2]
+const PRESSURE_ZONE_RANK := [0, 1, 3, 2, 2, 4]                  # how deep each zone counts
+const PRESSURE_DRILL := 0.008        # per drill impact that hits something
+const PRESSURE_BLAST := 2.5          # per explosion
+const PRESSURE_RETREAT := 0.25       # per second while above your deepest zone
+const PRESSURE_TIERS := [30.0, 60.0, 85.0]
+const PRESSURE_NAMES := ["", "RUMBLING", "UNSTABLE", "COLLAPSING"]
+const PRESSURE_WARN := ["", "The mine is stirring. Events will start.", "The rock is unstable. Events come faster.", "The mine is collapsing. Get out soon!"]
+const PRESSURE_INTERVAL := [42.0, 26.0, 15.0]  # s between events per tier
+const PRESSURE_FIRST_EVENT := 8.0
+const PRESSURE_EVENT_RADIUS := 10
+const PRESSURE_TREMOR_CELLS := [3, 5, 8]
+const PRESSURE_TREMOR_SAFE := 1      # below the top tier, never within this many columns of you
+const PRESSURE_TREMOR_WARN := 1.4    # s of dust before a tremor ceiling falls
+const PRESSURE_SWARM_SIZE := [1, 2, 3]
+const PRESSURE_SWARM_MAX := 5        # crawlers alive from pressure at once
+const PRESSURE_DESCENT_KEEP := 0.5   # share of pressure carried into the deep stage
+# --- Dive modifiers: chosen on the contract board, up to MODIFIER_MAX ---
+# Multipliers stack onto the contract; "bonus" is extra pay on ore credits.
+const MODIFIER_MAX := 2
+const MODIFIERS := [
+	{"id": "flooded", "name": "FLOODED", "desc": "Twice the groundwater.", "water": 2.0, "bonus": 0.2},
+	{"id": "brittle", "name": "BRITTLE", "desc": "The mine wakes 60% faster.", "pressure": 1.6, "bonus": 0.25},
+	{"id": "swarm", "name": "SWARM", "desc": "80% more crawlers.", "crawlers": 1.8, "bonus": 0.3},
+	{"id": "gassy", "name": "GASSY", "desc": "Twice the gas pockets.", "gas": 2.0, "bonus": 0.2},
+	{"id": "blackout", "name": "BLACKOUT", "desc": "Darker caves; lamps matter.", "dark": 0.55, "bonus": 0.3},
+	{"id": "deep_veins", "name": "DEEP VEINS", "desc": "+40% ore, but the mine wakes 30% faster.", "ore": 1.4, "pressure": 1.3, "bonus": 0.0},
+]
+const MODIFIER_KEYS := ["ore", "crawlers", "gas", "water", "pressure"]
+# --- Run relics: rare finds that change the current run (lost when it ends) ---
+const RUN_RELICS := [
+	{"id": "muffled", "name": "Muffled Treads", "desc": "Crawlers hear your drilling at half range.", "color": "9ad0ff"},
+	{"id": "charm", "name": "Prospector's Charm", "desc": "Every ore seam drops one extra unit.", "color": "ffd36b"},
+	{"id": "ember", "name": "Ember Heart", "desc": "Lava and steam burn you at half strength.", "color": "ff7a3a"},
+	{"id": "calm", "name": "Calm Stone", "desc": "The mine wakes 35% slower.", "color": "8affc4"},
+	{"id": "spine", "name": "Iron Spine", "desc": "+40 hull for the rest of the run, repaired now.", "color": "c8c8d8"},
+	{"id": "coil", "name": "Quick Coil", "desc": "Gadgets recharge twice as fast.", "color": "7fe8ff"},
+]
+const RUN_RELICS_MAIN := 2            # per main-mine map
+const RUN_RELICS_DEEP := 1            # per First Civilization map
+const RUN_RELIC_SEP := 30             # cells between relics
+const SPINE_HULL := 40.0
+const CALM_MULT := 0.65
+# --- Gadgets: one active (GADGET button, on a cooldown) + one passive ---
+const GADGETS := {
+	"sonar": {"name": "SONAR", "kind": "active", "cooldown": 22.0, "desc": "Ping: reveals the map nearby and marks ore, gas and loose rock."},
+	"cryo": {"name": "CRYO", "kind": "active", "cooldown": 28.0, "desc": "Throw a canister: crusts lava, clears steam, freezes foes, vents your heat."},
+	"magnet": {"name": "MAGNET", "kind": "passive", "desc": "Ore is pulled in from three times as far."},
+	"plating": {"name": "PLATING", "kind": "passive", "desc": "Falling rock and rubble do half damage."},
+	"coolant": {"name": "COOLANT", "kind": "passive", "desc": "Drilling builds 30% less heat."},
 }
+const GADGET_DEFAULT := {"active": "sonar", "passive": "magnet"}
+const SONAR_RADIUS := 24             # cells revealed and scanned
+const SONAR_SHOW := 7.0              # seconds the marks stay up
+const SONAR_MAX_MARKS := 160
+const CRYO_RADIUS := 3.5             # cells
+const CRYO_STUN := 5.0
+const CRYO_THROW := Vector2(160, -170)
+const MAGNET_MULT := 3.0
+const PLATING_MULT := 0.5
+const COOLANT_MULT := 0.7
+# --- Shear charge: cuts supports, drops what rested on them ---
+const SHEARS_PER_RUN := 2
+const SHEAR_FUSE := 1.6
+const SHEAR_RADIUS := 1.6            # cells cut around the charge
+const SHEAR_ENTITY_DAMAGE := 15.0    # only a nudge: the falling rock does the work
+const SHEAR_REACH := Vector2i(5, 8)  # how far sideways / up ground is checked for support
+const SHEAR_DROP_WARN := 0.5         # s of dust before the cut ground falls
+# --- Anchor bolts: pin rock so collapses cannot take it ---
+const BOLTS_PER_RUN := 4
+const BOLT_RANGE := 4                # cells to the rock you bolt into
+const BOLT_RADIUS := 1.6             # cells held around the bolt
+const BOLT_TIME := 75.0              # s before a bolt works loose
+# --- Breaker: an enemy that gnaws the roof above you ---
+const BREAKER_HP := 70.0
+const BREAKER_RANGE := 9             # cells: how close it must be to start gnawing
+const BREAKER_GNAW := 3.0            # s of gnawing (dust rains above you) before the roof drops
+const BREAKER_COOLDOWN := 8.0
+const BREAKER_DROP_WARN := 0.4
+const BREAKER_GNAW_MULT := 2.0       # damage it takes while it is busy gnawing
+const BREAKER_EVERY := 3             # one in N crawlers in its zones is a breaker
+const BREAKER_ZONES := [2, 3]        # Forgotten Engine, Drowned Aqueducts
+# --- Lure (throwable noise maker; USE with nothing nearby) ---
+const LURES_PER_RUN := 3
+const LURE_TIME := 9.0               # seconds it keeps pinging once it lands
+const LURE_PING := 0.7               # seconds between pings
+const LURE_RADIUS := 18.0            # cells: crawlers this close go to it, even mid-chase
+const LURE_THROW := Vector2(170, -150)
+const STEAM_ENEMY_DAMAGE := 8.0      # per scald tick to an enemy in dense steam
+const ORDER_REWARD := {"ore": 60, "value": 120, "depth": 90, "keepsake": 80, "terrain": 110, "relic": 70}
+const PICKUP_MAGNET_RADIUS := 34.0
+const RELIC_BONUS := 260
+const CARGO_SCROLL_SPEED := 240.0
+const KEEPSAKES := [
+	{"name": "Miner's Token", "value": 35, "color": "ffb347", "desc": "A brass shift token from the first Dustworks crews."},
+	{"name": "Glowspore Sample", "value": 50, "color": "6ff3d0", "desc": "A sealed vial of living spores, still glowing in the dark."},
+	{"name": "Engine Cog", "value": 90, "color": "bc8cff", "desc": "A tiny alloy gear that turns without a visible axle."},
+	{"name": "Aqueduct Seal", "value": 70, "color": "5fc0ff", "desc": "A stamped valve seal from the old drowned waterworks."},
+	{"name": "Crystal Bloom", "value": 80, "color": "ef9aff", "desc": "A rare cluster of crystals shaped like an unfolding flower."},
+	# found only in The First Civilization (one per deep map, in the lower transit level)
+	{"name": "First Light", "value": 250, "color": "ffb070", "desc": "A palm-sized lens of the first civilization. It still holds a warm light, older than any record."},
+]
 
-const MATERIAL_NAME := {
-	Mat.EMPTY: "EMPTY", Mat.SOIL: "SEDIMENT", Mat.BASALT: "BASALT",
-	Mat.ALLOY: "RUIN ALLOY", Mat.BEDROCK: "BEDROCK",
-}
+# --- Hull ---
+const HULL := [100.0, 130.0, 165.0, 210.0]
 
-# --- Player ----------------------------------------------------------------
-const PLAYER_WALK_SPEED := 168.0
-const PLAYER_ACCEL := 1400.0
-const PLAYER_AIR_ACCEL := 900.0
-const PLAYER_FRICTION := 1800.0
-const PLAYER_JUMP_VELOCITY := -330.0
-const PLAYER_MAX_FALL := 620.0
-const PLAYER_COYOTE_TIME := 0.10
-const PLAYER_JUMP_BUFFER := 0.10
-const PLAYER_JUMP_CUT := 0.45      # velocity multiplier when jump released early
-const PLAYER_HIT_INVULN := 0.85
-const PLAYER_BASE_HP := 100
-
-## Downward drill thrust while airborne (a "drill dive").
-const DRILL_DIVE_VELOCITY := 260.0
-
-# --- Drill -----------------------------------------------------------------
-const DRILL_REACH := 1.35          # cells
-const DRILL_TICK := 0.055          # seconds between damage applications
-const DRILL_HEAT_PER_TICK := 0.075
-const DRILL_HEAT_COOL := 0.42      # per second
-const DRILL_OVERHEAT_LOCK := 1.4   # seconds locked out at 100% heat
-const DRILL_ENEMY_DAMAGE := 7
-const DRILL_KNOCKBACK := 130.0
-
-# --- Charges ---------------------------------------------------------------
-const CHARGE_FUSE := 1.25
-const CHARGE_RADIUS := 3.1         # cells
-const CHARGE_TILE_DAMAGE := 6
-const CHARGE_ENEMY_DAMAGE := 46
-const CHARGE_PLAYER_DAMAGE := 18
-const CHARGE_GRACE := 0.45         # player immunity window after detonating
-const CHARGE_MAX := 3
-
-# --- Collapse / instability -------------------------------------------------
-const COLLAPSE_MIN_CLUSTER := 5
-const COLLAPSE_MAX_CLUSTER := 26
-const COLLAPSE_TELEGRAPH := 0.85
-const COLLAPSE_STEP := 0.055
-const COLLAPSE_SAFE_RADIUS := 2    # cells around the lift kept stable
-
-# --- Enemies ----------------------------------------------------------------
-const CRAWLER_HP := 26
-const CRAWLER_SPEED := 52.0
-const CRAWLER_TUNNEL_SPEED := 0.9  # cells per second through soft soil
-const CRAWLER_SIGHT := 260.0
-const CRAWLER_NOISE_HEAR := 300.0
-const CRAWLER_ATTACK_DAMAGE := 12
-const CRAWLER_ATTACK_CD := 1.1
-
-const SENTRY_HP := 34
-const SENTRY_SIGHT := 340.0
-const SENTRY_FIRE_CD := 1.7
-const SENTRY_WARN_TIME := 0.55
-const SENTRY_SHOT_SPEED := 250.0
-const SENTRY_SHOT_DAMAGE := 11
-const SENTRY_BURST := 3
-
-const MAX_ACTIVE_ENEMIES := 14
-
-# --- Hazards ----------------------------------------------------------------
-const GAS_IGNITE_RADIUS := 1.6     # cells
-const GAS_DAMAGE := 26
-const GAS_TELEGRAPH := 0.9
-
-# --- Economy ----------------------------------------------------------------
-## Ore types: id -> {name, value, material, glow}
-const ORE_TYPES := {
-	1: {"name": "COPPER", "value": 6, "tint": Color(0.85, 0.55, 0.30)},
-	2: {"name": "AMBER", "value": 10, "tint": Color(1.0, 0.78, 0.32)},
-	3: {"name": "SPORE CRYSTAL", "value": 16, "tint": Color(0.35, 0.92, 0.86)},
-	4: {"name": "QUARTZ", "value": 22, "tint": Color(0.72, 1.0, 0.98)},
-	5: {"name": "VOID SHARD", "value": 34, "tint": Color(0.70, 0.42, 1.0)},
-	6: {"name": "RELIC DUST", "value": 48, "tint": Color(1.0, 0.86, 0.45)},
-}
-
-const RELIC_VALUE := 120
-const BASE_CARRY := 12
-const ORE_WEIGHT := 1
-
-# --- Upgrades ---------------------------------------------------------------
-## id -> {name, desc, max_level, costs[], effect key}
+# --- Upgrades: cost per next level (index = current level) ---
 const UPGRADES := {
-	"drill": {
-		"name": "DRILL HEAD",
-		"desc": "Faster drilling, higher tier, more damage.",
-		"max_level": 3,
-		"costs": [45, 110, 240],
-	},
-	"suit": {
-		"name": "SUIT CORE",
-		"desc": "More hull integrity and drill heat capacity.",
-		"max_level": 3,
-		"costs": [40, 100, 220],
-	},
-	"cargo": {
-		"name": "CARGO RIG",
-		"desc": "Carry more ore before returning to the lift.",
-		"max_level": 3,
-		"costs": [35, 90, 200],
-	},
-	"charges": {
-		"name": "DEMO POUCH",
-		"desc": "Carry one extra demolition charge.",
-		"max_level": 2,
-		"costs": [60, 150],
-	},
+	"drill": {"name": "DRILL HEAD", "costs": [120, 280, 560],
+		"desc": ["Mk.I tungsten bit", "Mk.II +38% bore speed", "Mk.III +86% bore speed", "Mk.IV cuts ruin alloy"]},
+	"heat": {"name": "HEAT SINK", "costs": [100, 240, 480],
+		"desc": ["Stock radiator", "+45% heat capacity", "+100% capacity, faster cooling", "+170% capacity, cryo vents"]},
+	"cargo": {"name": "CARGO RACK", "costs": [90, 220, 450],
+		"desc": ["60 ore units", "90 ore units", "130 ore units", "180 ore units"]},
+	"hull": {"name": "HULL PLATING", "costs": [110, 260, 520],
+		"desc": ["100 hull", "130 hull", "165 hull", "210 hull"]},
+	"charge_rack": {"name": "CHARGE RACK", "costs": [140, 300, 560],
+		"desc": ["Carry up to 6 charges", "Carry up to 8 charges", "Carry up to 10 charges", "Carry up to 12 charges"]},
+	"sticky": {"name": "STICKY CHARGES", "costs": [240],
+		"desc": ["Charges bounce and roll", "Charges stick to walls, ceilings and foes (toggle at the Supply Locker or in Pause)"]},
+	"scaffold": {"name": "SCAFFOLD HOPPER", "costs": [90, 210, 430],
+		"desc": ["40 ladder energy", "70 ladder energy", "110 ladder energy", "160 ladder energy"]},
+}
+# --- Rubble Ladder (scaffold) ---
+# Broken rock packs into scaffold energy; spending it materialises a ladder
+# from the player's feet up to the first solid cell.
+const SCAFFOLD_CAPACITY := [40, 70, 110, 160]
+const SCAFFOLD_GAIN := {1: 1, 2: 2, 3: 1, 7: 1}   # per broken cell by material (soft, hard, loose, cracked)
+const SCAFFOLD_ORE_BONUS := 1
+const SCAFFOLD_ACTIVATE_COST := 2
+const SCAFFOLD_CELL_COST := 1
+const SCAFFOLD_MAX_LEN := 120
+const SCAFFOLD_BUILD_RATE := 60.0   # cells per second
+# --- Sand piles (SandSim) ---
+const SAND_MAX := 16                 # pixels of sand a cell holds (one full cell)
+const SAND_REPOSE := 8               # px a pile may stand above its neighbour (~27 degrees)
+# "Sand physics" setting: 0 Off (old rubble blocks, no new sand), 1 Low, 2 Normal, 3 High
+const SAND_LEVELS := [{"tick": 0.1, "budget": 0}, {"tick": 0.1, "budget": 80}, {"tick": 0.05, "budget": 160}, {"tick": 0.033, "budget": 320}]
+const SAND_MAX_MOVING := 400         # beyond this many active cells, the rest settles at once
+const SAND_STEP_MAX_US := 1500       # a step slower than this halves the next budget
+const SAND_COLLISION_HZ := 10.0      # collision rebuilds for changed sand, at most
+const SAND_DRILL_EVERY := 3          # one in N sediment cells drilled drops sand
+const SAND_DRILL_AMOUNT := 8
+const SAND_BLAST_EVERY := 4
+const SAND_BLAST_AMOUNT := 8
+const SAND_RUBBLE_AMOUNT := 16       # a fallen ceiling block lands as a full cell of rubble
+const SAND_GRAINS_MAX := 160         # flying dirt grains at once (SandDrops)
+const WATER_TINT := 3                # WaterRenderer.COLORS row used for all water
+const ZONE_ENTRY_ROWS := 3          # rows past a zone border before you count as inside it
+const FOOT_SINK_MAX := 5             # px the sprite may sink onto rough ground
+const CAMERA_LOOK_AHEAD := 0.11     # fraction of the visible width
+const CHARGE_PRICE := 25
+const CHARGES_FREE := 2
+const CHARGES_MAX := 6               # without the Charge Rack upgrade
+const CHARGES_MAX_BY_LEVEL := [6, 8, 10, 12]
+
+# --- Demolition charge ---
+const CHARGE_FUSE := 2.2
+const CHARGE_RADIUS_CELLS := 3.2
+const CHARGE_TILE_DAMAGE := 7.0     # at centre; linear falloff to 45% at edge
+const CHARGE_ENTITY_DAMAGE := 70.0
+const CHARGE_SELF_DAMAGE := 26.0    # max to the player (reduced self-damage)
+const CHARGE_THROW := Vector2(150, -165)
+
+# --- Gas ---
+const GAS_TELEGRAPH := 1.3
+const GAS_CLOUD_TIME := 9.0
+const GAS_CLOUD_RADIUS := 44.0
+const GAS_DPS := 9.0
+const GAS_IGNITE_RADIUS := 78.0
+const GAS_IGNITE_DAMAGE := 55.0
+const GAS_IGNITE_TILE_DAMAGE := 3.5
+
+# --- Collapse ---
+const COLLAPSE_TELEGRAPH := 0.75
+const COLLAPSE_MAX_FALLING := 28
+const COLLAPSE_MAX_CASCADE := 18
+const RUBBLE_PLAYER_DAMAGE := 14.0
+const RUBBLE_ENEMY_DAMAGE := 34.0
+const RUBBLE_SENTRY_DAMAGE := 80.0
+const RUBBLE_STUN := 3.0
+
+# --- Water (cellular, levels 0..WATER_MAX per cell) ---
+const WATER_MAX := 64              # fine resolution so lakes level out flat
+const WATER_TICK := 0.06            # simulation step
+const WATER_BUDGET := 2400          # max cell updates per step
+const WATER_GRAVITY := 0.35         # gravity multiplier while submerged
+const WATER_MAX_FALL := 90.0
+const WATER_SPEED := 0.72           # run speed multiplier while submerged
+const WATER_SWIM := 175.0           # upward stroke on jump while submerged
+const WATER_COOLING := 2.5          # drill cools this much faster in water
+const WATER_CRAWLER_DPS := 7.0      # crawlers hate water
+const WATER_DROP_UNITS := 3         # volume carried by one falling droplet
+const WATER_EMIT_PER_TICK := 24     # max units a free-falling cell sheds per tick
+const WATER_MAX_DROPS := 900        # beyond this, falling water moves cell-to-cell
+const WATER_DROP_GRAVITY := 820.0
+const WATER_DROP_MAX_FALL := 420.0
+
+# --- Moving water: shared momentum and bounded head approximation ---
+const WATER_FLOW_MEMORY := 0.16
+const WATER_FLOW_CELL_CAP := 4096
+const WATER_FLOW_MAX := 300.0
+const WATER_PRESSURE_BUDGET := 512
+const WATER_PRESSURE_REGION := 256
+const WATER_PRESSURE_MIN_FILL := 48
+const WATER_PRESSURE_FREE_HEAD := 1.25  # shallow spills have no pressure jet
+const WATER_JET_HEAD_SPEED := 88.0
+const WATER_JET_MAX_SPEED := 360.0
+const WATER_JET_DISCHARGE := 28
+const WATER_DEPOSIT_BUDGET := 24
+const WATER_DROP_SWEEP := 4.0          # max travel per collision sample (px)
+
+const WATER_PLAYER_DRIFT_GAIN := 0.65
+const WATER_PLAYER_DRIFT_MAX := 120.0
+const WATER_PLAYER_SMOOTH := 7.0
+const WATER_GROUND_RESISTANCE := 0.45
+const WATER_GRIP_RESISTANCE := 0.2
+const WATER_CRAWLER_THRESHOLD := 80.0
+const WATER_CRAWLER_DRAG := 0.4
+
+# --- Bounded drilling debris and meaningful physics props ---
+const DEBRIS_FRAGMENT_CAP := 96
+const DEBRIS_PROP_CAP := 24
+const DEBRIS_GENERATED_CAP := 12
+const DEBRIS_LIFETIME := 90.0
+const DEBRIS_FADE := 5.0
+const DEBRIS_CHANCE := {1: 0.28, 2: 0.46, 3: 0.55, 4: 0.18, 7: 0.38}
+const DEBRIS_LARGE_CHANCE := 0.12
+const DEBRIS_SCATTER := 48.0
+const DEBRIS_HOP := 65.0
+const DEBRIS_LIGHT_DRAG := 240.0
+const DEBRIS_STONE_DRAG := 80.0
+const DEBRIS_WET_GRAVITY := 0.14
+const DEBRIS_BOUNCE := 0.2
+const DEBRIS_FRICTION := 160.0
+const PROP_AIR_DAMP := 0.25
+const PROP_SPIN_DAMP := 2.0
+const PROP_FRICTION := 0.65
+const PROP_BOUNCE := 0.12
+const PROP_MAX_SPEED := 380.0
+const PROP_MAX_SPIN := 8.0
+const PROP_WAKE_ACCEL := 12.0
+const PROP_HIT_SPEED := 100.0
+const PROP_MAX_DAMAGE := 12.0
+const PROP_DAMAGE_SCALE := 0.025
+const PROP_HIT_GRACE := 0.65
+const PROP_BLAST_IMPULSE := 240.0
+const WATER_PROPS := {
+	"crate": {"mass": 0.7, "buoyancy": 1.65, "drag": 4.0, "hp": 2.0, "half": Vector2(6, 6)},
+	"canister": {"mass": 0.9, "buoyancy": 1.35, "drag": 3.0, "hp": 3.0, "half": Vector2(4, 6)},
+	"stone": {"mass": 4.0, "buoyancy": 0.18, "drag": 0.9, "hp": 4.0, "half": Vector2(5, 4)},
+	"scrap": {"mass": 3.0, "buoyancy": 0.08, "drag": 0.7, "hp": 3.0, "half": Vector2(5, 3)},
 }
 
-# --- Derived helpers -------------------------------------------------------
+# --- Sustained exposed-face erosion ---
+const EROSION_TICK := 0.12
+const EROSION_SCAN_BUDGET := 384
+const EROSION_FACE_CAP := 512
+const EROSION_EDIT_BUDGET := 4
+const EROSION_FLOW_THRESHOLD := 32.0
+const EROSION_FLOW_SCALE := 100.0
+const EROSION_MAX_STRENGTH := 2.0
+const EROSION_WARMUP := 1.8
+const EROSION_RECOVERY := 0.25
+const EROSION_DPS := 0.3
+const EROSION_MATERIAL := {1: 1.0, 3: 1.7, 7: 0.55}
+const WATER_FX_TICK := 0.18
+const WATER_FX_MIN_FLOW := 60.0
+const WATER_FX_RADIUS := 360.0
+const WATER_FX_BUDGET := 3
+
+# --- Unsupported basalt ---
+const BOULDER_MAX_CELLS := 36       # bigger basalt masses are treated as bedded in
+const BOULDER_TELEGRAPH := 0.7
+const BOULDER_PLAYER_DAMAGE := 28.0
+const BOULDER_ENEMY_DAMAGE := 90.0
+
+# --- Burrow Crawler ---
+const CRAWLER_HP := 38.0
+const CRAWLER_SPEED_PATROL := 1.6   # cells / s
+const CRAWLER_SPEED_CHASE := 3.4
+const CRAWLER_SIGHT := 9            # cells
+const CRAWLER_HEARING := 8          # drill noise radius in cells
+const CRAWLER_FORGET := 4.0         # s without sight/noise before giving up
+const CRAWLER_DAMAGE := 12.0
+const CRAWLER_WINDUP := 0.4         # visible rear-up before every bite
+const CRAWLER_ATTACK_COOLDOWN := 1.1
+const CRAWLER_REPATH := 0.45
+const CRAWLER_TUNNEL_TIME := 1.6    # s to chew one sediment cell
+const CRAWLER_PATH_RADIUS := 22
+const CRAWLER_CAP := 20
+
+# --- Ruin Sentry ---
+const SENTRY_HP := 55.0
+const SENTRY_RANGE := 11            # cells
+const SENTRY_WARN := 0.9
+const SENTRY_REWARN := 0.5
+const SENTRY_BURST := 3
+const SENTRY_BURST_GAP := 0.18
+const SENTRY_COOLDOWN := 1.5
+const SENTRY_FORGET := 2.0
+const SENTRY_BOLT_SPEED := 150.0
+const SENTRY_BOLT_DAMAGE := 12.0
+const POWER_MODULE_HP := 14.0
+
+# --- World generation ---
+# World shape (0.5): the Dustworks and Spore Veins sit in a central column.
+# Under them a bedrock shelf is open only at its far ends; each end drops into
+# a wing with its own biome, and both wings meet in the Forgotten Engine vault.
+#
+#            +---- core: 0 Dustworks ----+
+#            |         1 Spore Veins     |
+#   +--------+==== bedrock shelf ========+--------+
+#   | 3 Drowned Aqueducts  ||  4 Crystal Hollows  |
+#   +----------- 2 Forgotten Engine (vault) ------+
+const MAP_W := 128
+const MAP_H := 236
+const CORE_X0 := 28                 # central column spans CORE_X0 .. CORE_X1-1
+const CORE_X1 := 100
+const STRATUM_ROWS := [2, 72, 142]  # Dustworks top, Spore Veins top, shelf top
+const SHELF_Y1 := 150               # shelf rows STRATUM_ROWS[2] .. SHELF_Y1-1
+const VAULT_Y0 := 206               # wings span SHELF_Y1 .. VAULT_Y0-1
+const DIVIDER_X0 := 62              # bedrock wall between the wings
+const DIVIDER_X1 := 66
+# zone id == stratum id stored in the grid (tiles, light, music, generation)
+const Z_DUST := 0
+const Z_SPORE := 1
+const Z_ENGINE := 2
+const Z_AQUEDUCT := 3
+const Z_CRYSTAL := 4
+const ZONE_COUNT := 5
+const STRATUM_NAMES := ["DUSTWORKS", "SPORE VEINS", "FORGOTTEN ENGINE", "DROWNED AQUEDUCTS", "CRYSTAL HOLLOWS", "THE FIRST CIVILIZATION"]
+const ZONE_COLORS := [Color("e0a060"), Color("6ff3d0"), Color("b48cff"), Color("5fb4ff"), Color("ff7ad9"), Color("ffb070")]
+# Biome identities (tiles, light, music, backdrop). ZONE_COUNT is the number of
+# zones in the main mine; the sixth identity belongs to the separate deep stage.
+const BIOME_COUNT := 6
+const Z_FIRST := 5
+
+# --- The First Civilization (separate one-way stage under the Engine) --------
+# Its own generated map; nothing here resizes or touches the five-zone mine.
+const DEEP_W := 200
+const DEEP_H := 120
+const DEEP_BAND_PLANT := 40          # row where the thermal plant region begins
+const DEEP_BAND_TRANSIT := 82        # row where the lower transit region begins
+const DEEP_REGION_NAMES := ["ARRIVAL STRUCTURES", "THERMAL PLANT", "LOWER TRANSIT"]
+const DEEP_VAULTS := [6, 8]          # great chambers per map
+const DEEP_VAULT_W := [26, 44]
+const DEEP_VAULT_H := [10, 17]
+const DEEP_MONOLITHS := [7, 11]      # buried blocks of ancient composite
+const DEEP_CAVE_THRESH := 0.46
+const DEEP_HARD_THRESH := 0.05
+const DEEP_ORE_VEINS := 46
+const DEEP_CRAWLERS := 9
+const DEEP_SENTRIES := 3
+const DEEP_WATER_POCKETS := [4, 7]
+const DEEP_PLUG_CHANCE := 0.55       # share of link tunnels left as cracked rock
+const DEEP_DIG_BUDGET := 260.0       # DigCheck seconds, arrival -> Transit Gate
+const DEEP_EXIT_BONUS := 450         # credits for leaving through the Transit Gate
+const DEEP_DESCENT_SECONDS := 2.4    # length of the descent sequence
+# --- Lava, steam and the water/lava reaction (deep stage) ---------------------
+# Lava is a second, much more viscous fluid stored beside water. Where the two
+# touch they are both consumed: the lava crusts into drillable rock and the
+# water flashes to steam. Nothing is created: totals only ever go down.
+const LAVA_MAX := 64                 # units per cell (same scale as water)
+const LAVA_TICK := 0.24              # seconds per lava step (water: 0.06)
+const LAVA_REACT_TICK := 0.06        # contact reactions run as often as water moves
+const LAVA_BUDGET := 700             # active cells processed per step
+const LAVA_FALL := 16                # units a cell can drop per step
+const LAVA_SIDE := 5                 # units a cell can push sideways per step
+const LAVA_SPREAD_MIN := 10          # level difference needed before it creeps sideways
+const LAVA_REACT_UNITS := 16         # water boiled per contact per step
+const LAVA_SOLIDIFY_AT := 64         # water a lava cell boils before it crusts over (one full cell of water)
+const CRUST_MAX_SPAN := 7            # a crust run this wide or less, wedged between rock, holds as a bridge
+const CRUST_CANTILEVER := 3          # a crust run this wide or less, attached to rock on one side, holds
+const CRUST_SINK_BUDGET := 80        # crust cells that may sink per lava step
+const LAVA_ROCK_MIN := 40           # less lava than this hardens as slag; a full cell of slag in one spot becomes rock
+const LAVA_SINK_MIN := 24           # lava this thick sinks through, and spreads under, water
+const LAVA_SWAP_WATER := 8          # water a cell needs before lava will trade places with it
+const LAVA_BURN_MIN := 6             # lava level that burns
+const LAVA_BURN_DAMAGE := 9.0
+const LAVA_BURN_INTERVAL := 0.45     # seconds between burns (never instant death)
+const LAVA_ENEMY_DAMAGE := 30.0
+const LAVA_SLOW := 0.55              # horizontal speed kept while wading in lava
+const LAVA_WARN_CELLS := 3           # heat warning distance
+const STEAM_TICK := 0.1
+const STEAM_PER_UNIT := 0.16         # steam density made per unit of water boiled
+const STEAM_DECAY := 0.006           # flat density lost per step
+const STEAM_KEEP := 0.975            # share of density kept per step (proportional decay)
+const STEAM_MIN := 0.04
+const STEAM_MAX_CELLS := 700         # hard cap on live steam cells
+const STEAM_MAX_DENSITY := 3.0
+const STEAM_VENT_SCAN := 16          # cells steam looks along a ceiling for a way up
+const STEAM_SCALD := 1.1             # density that starts to hurt
+const STEAM_DAMAGE := 3.0
+const STEAM_INTERVAL := 0.7
+const STEAM_LIFT := 55.0             # upward shove from dense steam (px/s)
+const DEEP_LAVA_POCKETS := [6, 10]
+const DEEP_LAVA_PITS := 0.8          # chance a lower vault has a lava pit in its floor
+const DEEP_QUENCH_PAIRS := [3, 5]    # water pocket sealed above a lava pocket
+const DEEP_SLUICE_PAIRS := [2, 4]    # lava pocket sealed above a water pool (watch it pour down)
+# --- Thermal plant: the power that wakes the Transit Gate ---------------------
+const PLANT_W := 36                  # hall interior (see FirstCivGenerator._thermal_plant)
+const PLANT_H := 12
+const PLANT_HEAT_NEED := 384         # lava units in the heat basin (6 cells)
+const PLANT_COOL_NEED := 384         # water units in the coolant basin (6 cells)
+const PLANT_CHECK := 0.25            # seconds between engine state checks
+const PLANT_SPINUP := 2.0            # seconds both inputs must hold before power flows
+const DESCENT_ROOM := Vector2i(11, 7)   # Ancient Descent Platform room in the Engine vault
+const DESCENT_ROOM_SMALL := Vector2i(9, 6)   # used when the vault is crowded
+const DESCENT_APPROACH := 14            # cells of approach corridor carved from its door
+const DESCENT_TRIES := 2500             # placement attempts per room size (cheap rejection sampling)
+const ZONE_RECTS := [
+	Rect2i(28, 2, 72, 70),      # Dustworks
+	Rect2i(28, 72, 72, 70),     # Spore Veins
+	Rect2i(2, 206, 124, 24),    # Forgotten Engine vault
+	Rect2i(2, 150, 60, 56),     # Drowned Aqueducts (left wing)
+	Rect2i(66, 150, 60, 56),    # Crystal Hollows (right wing)
+]
+const METERS_PER_CELL := 2.0
+
+# --- generation v2 -----------------------------------------------------------
+# chamber archetype weights per stratum (LayoutPlanner); used archetypes are
+# down-weighted x3 so a mine rarely repeats one shape
+const GEN_LADDER_MIN_RUN := 3
+const GEN_LANDING_MAX_RUN := 3
+const GEN_LANDING_WIDTH := 2
+const GEN_ARCH_WEIGHTS := {
+	0: [["works", 3], ["hall", 3], ["terraces", 2], ["fissure", 1]],
+	1: [["terraces", 3], ["hall", 2], ["fissure", 2]],
+	2: [["ruin", 1]],
+	3: [["terraces", 3], ["hall", 4]],                    # aqueducts: wide, wet, level
+	4: [["fissure", 3], ["hall", 2], ["terraces", 1]],   # crystal: tall cracks and vaults
+}
+# per-zone generation budgets, indexed by zone id
+#                       dust spore engine aqueduct crystal
+const GEN_CHAMBERS :=     [3,   4,    3,     3,       3]
+const GEN_CAVE_THRESH :=  [0.4, 0.36, 0.56,  0.5,     0.44]
+const GEN_HARD_THRESH :=  [0.28, 0.12, -0.02, 0.2,    0.0]
+const GEN_LOOSE :=        [14,  10,   5,     5,       26]
+const GEN_BOULDERS :=     [5,   4,    2,     1,       5]
+const GEN_POCKETS :=      [[1, 2], [2, 3], [0, 1], [3, 5], [0, 1]]
+const GEN_ORE_VEINS :=    [24,  21,   10,    13,      16]
+const GEN_GAS :=          [2,   7,    2,     1,       3]
+const GEN_CRAWLERS :=     [3,   5,    2,     3,       3]
+const GEN_GEODES :=       [0,   [1, 2], [0, 1], [0, 1], [3, 5]]
+const GEN_AQUEDUCT_CHANNELS := [2, 3]
+# primary ore per zone for fault veins (Cell.ORE_* ids: 1 copper, 2 cobalt, 3 aetherite, 4 fossil)
+const GEN_ZONE_ORE :=     [1,   2,    3,     2,       3]
+const GEN_CATHEDRAL_CHANCE := 0.55
+# base odds of each optional landmark (contracts adjust them in MineGenerator)
+const GEN_LANDMARK_ODDS := {"survey_post": 0.6, "hanging_gallery": 0.7, "flooded_machinery": 0.65, "cistern": 0.45, "vent_cluster": 0.3, "floodgate": 0.55}
+const GEN_MIN_LANDMARKS := 2
+# a basin's flood may reach this many cells beyond the body before it counts as leaking
+const GEN_BASIN_LEAK_SLACK := 12
+# --- dig-first routes (below the Dustworks the player cuts their own way) ---
+# how a vertical route section is built, by stratum: [ladder, ledges, open, plug]
+#   ladder - old 2-wide shaft with a full ladder (authored, tutorial zone)
+#   ledges - open shaft with plank scaffolds one jump apart
+#   open   - bare drop: jump down, come back with a Rubble Ladder or by digging
+#   plug   - cracked rock left in place: drill down, ladder back up your own bore
+const GEN_SHAFT_STYLE := {
+	0: [1.0, 0.0, 0.0, 0.0],
+	1: [0.05, 0.2, 0.25, 0.5],
+	2: [0.0, 0.15, 0.25, 0.6],
+	3: [0.0, 0.2, 0.2, 0.6],
+	4: [0.0, 0.1, 0.35, 0.55],
+}
+const GEN_CORRIDOR_PLUG_CHANCE := 0.9   # per plug opportunity below the Dustworks
+const GEN_CORRIDOR_PLUG_LEN := [3, 7]
+const GEN_CORRIDOR_PLUG_SPACING := 9   # corridor cells per plug opportunity
+# fairness budget (DigCheck seconds with the Mk.I drill, no ladder energy)
+const FAIR_DIG_BUDGET_DOWN := 150.0
+const FAIR_DIG_BUDGET_UP := 200.0     # way out, using Rubble Ladders
+
+const CONTRACTS := [
+	{"id": "survey", "name": "STANDARD SURVEY", "desc": "Recover the relic. Balanced seams and threats.",
+		"ore": 1.0, "crawlers": 1.0, "gas": 1.0, "bonus": 1.0},
+	{"id": "rich", "name": "RICH SEAMS", "desc": "+40% ore, but the burrows are restless.",
+		"ore": 1.4, "crawlers": 1.5, "gas": 1.0, "bonus": 1.1},
+	{"id": "gas", "name": "GAS FIELD", "desc": "Volatile pockets everywhere. Bring charges.",
+		"ore": 1.15, "crawlers": 0.8, "gas": 2.2, "bonus": 1.25},
+	{"id": "quiet", "name": "QUIET DIG", "desc": "Few crawlers, thinner veins, smaller bonus.",
+		"ore": 0.8, "crawlers": 0.45, "gas": 0.8, "bonus": 0.75},
+]
+
+
 func drill_power(level: int) -> float:
-	return 1.0 + 0.55 * level
+	return DRILL_POWER[clampi(level, 0, DRILL_POWER.size() - 1)]
 
-func drill_tier(level: int) -> int:
-	return 1 if level >= 1 else 0
-
-func player_max_hp(level: int) -> int:
-	return PLAYER_BASE_HP + 25 * level
 
 func heat_capacity(level: int) -> float:
-	return 1.0 + 0.22 * level
+	return HEAT_CAPACITY[clampi(level, 0, HEAT_CAPACITY.size() - 1)]
 
-func carry_capacity(level: int) -> int:
-	return BASE_CARRY + 6 * level
 
-func charge_capacity(level: int) -> int:
-	return CHARGE_MAX + level
+func heat_cooling(level: int) -> float:
+	return HEAT_COOL_PER_SEC[clampi(level, 0, HEAT_COOL_PER_SEC.size() - 1)]
+
+
+func scaffold_capacity(level: int) -> int:
+	return SCAFFOLD_CAPACITY[clampi(level, 0, SCAFFOLD_CAPACITY.size() - 1)]
+
+
+func charges_max(level: int) -> int:
+	return CHARGES_MAX_BY_LEVEL[clampi(level, 0, CHARGES_MAX_BY_LEVEL.size() - 1)]
+
+
+func cargo_capacity(level: int) -> int:
+	return CARGO_CAPACITY[clampi(level, 0, CARGO_CAPACITY.size() - 1)]
+
+
+func hull(level: int) -> float:
+	return HULL[clampi(level, 0, HULL.size() - 1)]
+
+
+func modifier(id: String) -> Dictionary:
+	for m: Dictionary in MODIFIERS:
+		if m["id"] == id:
+			return m
+	return {}
+
+
+func ore_color(id: int) -> Color:
+	var base := id % ORE_KEY_STRIDE
+	if ORE.has(base):
+		return Color(ORE[base]["color"])
+	return Color.WHITE
+
+
+## Cargo key for an ore picked up in a zone. Grade 0 keys equal the plain ore
+## id, so old cargo dictionaries and tests keep working.
+func ore_key(ore: int, zone: int) -> int:
+	return ore + ORE_KEY_STRIDE * clampi(zone, 0, ORE_GRADE_MULT.size() - 1)
+
+
+func ore_base(key: int) -> int:
+	return key % ORE_KEY_STRIDE
+
+
+func ore_grade(key: int) -> int:
+	return clampi(key / ORE_KEY_STRIDE, 0, ORE_GRADE_MULT.size() - 1)
+
+
+func ore_value(key: int) -> int:
+	var base := ore_base(key)
+	if not ORE.has(base):
+		return 0
+	return int(round(float(ORE[base]["value"]) * float(ORE_GRADE_MULT[ore_grade(key)])))
+
+
+func ore_label(key: int) -> String:
+	var base := ore_base(key)
+	var n: String = ORE[base]["name"] if ORE.has(base) else "?"
+	var m: float = ORE_GRADE_MULT[ore_grade(key)]
+	return n if is_equal_approx(m, 1.0) else "%s x%s" % [n, String.num(m, 1)]
+
+
+## Zone at a cell, or -1 for the solid bedrock outside every zone.
+func zone_of(x: int, y: int) -> int:
+	for z in ZONE_COUNT:
+		if (ZONE_RECTS[z] as Rect2i).has_point(Vector2i(x, y)):
+			return z
+	return -1
+
+
+## Legacy helper (rows only): prefer TerrainGrid.get_stratum / zone_of.
+func stratum_of_row(row: int) -> int:
+	if row >= VAULT_Y0:
+		return Z_ENGINE
+	if row >= STRATUM_ROWS[1]:
+		return Z_SPORE
+	return Z_DUST

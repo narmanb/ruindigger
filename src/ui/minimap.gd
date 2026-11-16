@@ -1,88 +1,123 @@
+class_name Minimap
 extends Control
-## Legible minimap. Draws only explored cells (fog of war), solid vs open, ore
-## glints, the player, the lift and the relic. `compact` scales it down for the
-## in-game corner; the pause screen uses the same control at full size.
+## Fog-of-war minimap built from the grid's explored flags. One pixel per cell,
+## updated incrementally (only newly explored or edited cells are rewritten).
 
-var mine
-var compact: bool = false
-var scale_px: float = 2.0
-var _tex: ImageTexture
-var _img: Image
-var _dirty: bool = true
-var _accum: float = 0.0
+var mine: Node
+var grid: TerrainGrid
+var img: Image
+var tex: ImageTexture
+var _dirty := false
+var _upload_t := 0.0
+var view_cells := Vector2i(52, 26)
+var scale_px := 2.0
+var full := false   # full-map mode (pause screen)
 
-func _ready() -> void:
+
+func setup(m: Node) -> void:
+	mine = m
+	grid = m.grid
+	img = Image.create(grid.w, grid.h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	tex = ImageTexture.create_from_image(img)
+	grid.cell_changed.connect(_on_changed)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-func _ensure_image() -> void:
-	if _img != null or mine == null or mine.grid == null:
-		return
-	var g: TerrainGrid = mine.grid
-	_img = Image.create(g.w, g.h, false, Image.FORMAT_RGBA8)
-	_img.fill(Color(0, 0, 0, 0))
-	_tex = ImageTexture.create_from_image(_img)
+
+static func cell_color(g: TerrainGrid, x: int, y: int) -> Color:
+	var m := g.get_mat(x, y)
+	var s := g.get_stratum(x, y)
+	var o := g.get_ore(x, y)
+	if o != 0 and Cell.is_solid(m):
+		return Balance.ore_color(o)
+	if not Cell.is_solid(m) and g.get_lava(x, y) >= Balance.LAVA_MAX / 4:
+		return Color(1.0, 0.42, 0.1, 0.95)
+	if not Cell.is_solid(m) and g.get_water(x, y) >= Balance.WATER_MAX / 3:
+		return Color(0.2, 0.5, 0.9, 0.95)
+	match m:
+		Cell.AIR:
+			return Color(0.05, 0.04, 0.07, 0.85)
+		Cell.LADDER:
+			return Color(0.85, 0.7, 0.3, 0.9)
+		Cell.PLATFORM:
+			return Color(0.6, 0.45, 0.3, 0.9)
+		Cell.SOFT, Cell.CRACKED:
+			return [Color("7d4c25"), Color("1f5a50"), Color("4a3c56"), Color("2c4a66"), Color("5a2d5c"), Color("2a2730")][s]
+		Cell.HARD:
+			return [Color("8a8078"), Color("4c6378"), Color("5b4a70"), Color("5d7f9c"), Color("9a5fb0"), Color("4a4a58")][s]
+		Cell.LOOSE:
+			return Color("c9a86e")
+		Cell.ALLOY:
+			return Color("9b7cff")
+		Cell.GAS:
+			return Color("b6e03a")
+		Cell.BEDROCK:
+			return Color("1a1724")
+	return Color.MAGENTA
+
+
+func _on_changed(x: int, y: int, _o: int, _n: int) -> void:
+	if grid.has_flag(x, y, Cell.F_EXPLORED):
+		img.set_pixel(x, y, cell_color(grid, x, y))
+		_dirty = true
+
 
 func _process(delta: float) -> void:
-	_accum += delta
-	if _accum < 0.25:
+	if grid == null:
 		return
-	_accum = 0.0
-	_ensure_image()
-	if _img == null:
-		return
-	_redraw_image()
+	for c in grid.take_explored():
+		img.set_pixel(c.x, c.y, cell_color(grid, c.x, c.y))
+		_dirty = true
+	_upload_t -= delta
+	if _dirty and _upload_t <= 0.0:
+		_upload_t = 0.2
+		_dirty = false
+		tex.update(img)
 	queue_redraw()
 
-func _redraw_image() -> void:
-	var g: TerrainGrid = mine.grid
-	var revealed := {}
-	for y in g.h:
-		for x in g.w:
-			if not g.is_explored(x, y):
-				continue
-			var mat: int = g.get_material(x, y)
-			var col: Color
-			if mat == Balance.Mat.EMPTY:
-				col = Color(0.10, 0.11, 0.15, 1.0)
-			elif mat == Balance.Mat.BEDROCK:
-				col = Color(0.24, 0.20, 0.28, 1.0)
-			elif mat == Balance.Mat.ALLOY:
-				col = Color(0.42, 0.36, 0.52, 1.0)
-			else:
-				col = Color(0.34, 0.28, 0.20, 1.0)
-			if g.get_ore(x, y) > 0:
-				col = Color(0.95, 0.78, 0.35, 1.0)
-			if g.gas.has(g.idx(x, y)):
-				col = Color(0.45, 0.75, 0.45, 1.0)
-			_img.set_pixel(x, y, col)
-	_tex.update(_img)
 
 func _draw() -> void:
-	_ensure_image()
-	if _tex == null or mine == null:
+	if mine == null or mine.player == null or tex == null:
 		return
-	var g: TerrainGrid = mine.grid
-	var box: Rect2 = Rect2(Vector2.ZERO, size)
-	draw_rect(box, Color(0.04, 0.05, 0.08, 0.78), true)
-	draw_rect(box, Color(0.35, 0.45, 0.55, 0.6), false, 1.0)
-	var inner: Rect2 = Rect2(Vector2(4, 4), size - Vector2(8, 8))
-	# Fit the whole map inside the box.
-	var sx: float = inner.size.x / float(g.w)
-	var sy: float = inner.size.y / float(g.h)
-	var s: float = minf(sx, sy)
-	var draw_size: Vector2 = Vector2(g.w * s, g.h * s)
-	var origin: Vector2 = inner.position + (inner.size - draw_size) * 0.5
-	draw_texture_rect(_tex, Rect2(origin, draw_size), false)
+	var pc: Vector2 = mine.player.global_position / Balance.CELL
+	var area := size
+	var sc := scale_px
+	var origin := Vector2.ZERO
+	var src: Rect2
+	if full:
+		sc = minf(area.x / grid.w, area.y / grid.h)
+		var w := grid.w * sc
+		var h := grid.h * sc
+		origin = Vector2((area.x - w) * 0.5, (area.y - h) * 0.5)
+		src = Rect2(0, 0, grid.w, grid.h)
+	else:
+		var vc := Vector2(area.x / sc, area.y / sc)
+		var tl := (pc - vc * 0.5).clamp(Vector2.ZERO, Vector2(grid.w, grid.h) - vc)
+		src = Rect2(tl, vc)
+	draw_rect(Rect2(Vector2.ZERO, area), Color(0.02, 0.015, 0.03, 0.85))
+	draw_texture_rect_region(tex, Rect2(origin, src.size * sc), src)
+	var t := Time.get_ticks_msec() / 1000.0
+	# markers
+	for l in mine.lifts:
+		var lc: Vector2 = l.global_position / Balance.CELL
+		if grid.has_flag(int(lc.x), int(lc.y) - 1, Cell.F_EXPLORED) or l.id == "surface":
+			_marker(origin + (lc - src.position) * sc, Color(0.3, 1.0, 0.4) if l.active else Color(1.0, 0.5, 0.2), 3.0, area)
+	if mine.relic and not mine.relic.taken:
+		var rc: Vector2 = mine.relic.global_position / Balance.CELL
+		if grid.has_flag(int(rc.x), int(rc.y), Cell.F_EXPLORED):
+			_marker(origin + (rc - src.position) * sc, Color(0.4, 1.0, 1.0), 3.0, area)
+	for special in [mine.descent, mine.gate, mine.engine]:
+		if special:
+			var sc2: Vector2 = special.global_position / Balance.CELL
+			if grid.has_flag(int(sc2.x), int(sc2.y) - 1, Cell.F_EXPLORED):
+				_marker(origin + (sc2 - src.position) * sc, Balance.ZONE_COLORS[Balance.Z_FIRST], 3.0, area)
+	if int(t * 3.0) % 2 == 0 or full:
+		_marker(origin + (pc - src.position) * sc, Color(1.0, 0.75, 0.3), 2.5, area)
+	draw_rect(Rect2(Vector2.ZERO, area), Color(0.35, 0.28, 0.5), false, 1.0)
 
-	# Markers
-	var lift_c: Vector2i = g.lift_cell
-	var p: Vector2 = origin + Vector2((lift_c.x + 0.5) * s, (lift_c.y + 0.5) * s)
-	draw_circle(p, 3.5, Color(1.0, 0.78, 0.35))
-	if g.is_explored(g.relic_cell.x, g.relic_cell.y) or GameState.relic_taken:
-		var rp: Vector2 = origin + Vector2((g.relic_cell.x + 0.5) * s, (g.relic_cell.y + 0.5) * s)
-		draw_circle(rp, 3.5, Color(0.72, 0.45, 1.0))
-	if mine.player and is_instance_valid(mine.player):
-		var pc: Vector2i = g.world_to_cell(mine.player.global_position)
-		var pp: Vector2 = origin + Vector2((pc.x + 0.5) * s, (pc.y + 0.5) * s)
-		draw_circle(pp, 3.0, Color(1, 1, 1))
-		draw_circle(pp, 1.6, Color(1.0, 0.5, 0.2))
+
+func _marker(p: Vector2, c: Color, r: float, area: Vector2) -> void:
+	if p.x < 0 or p.y < 0 or p.x > area.x or p.y > area.y:
+		return
+	draw_rect(Rect2(p - Vector2(r, r) * 0.5 - Vector2.ONE, Vector2(r, r) + Vector2(2, 2)), Color(0, 0, 0, 0.8))
+	draw_rect(Rect2(p - Vector2(r, r) * 0.5, Vector2(r, r)), c)

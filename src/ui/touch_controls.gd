@@ -1,226 +1,582 @@
+class_name TouchControls
 extends Control
-## On-screen touch controls for Android landscape.
+## Multi-touch on-screen controls. Every finger is tracked by its index and
+## owned by exactly one control, so MOVE + JUMP + DRILL can all be held at
+## once without any button swallowing another finger.
 ##
-## Design constraints from the brief:
-##   * left side  : movement zone (drag anywhere to steer, plus a visible stick)
-##   * right side : large JUMP, DRILL (hold) and CHARGE buttons
-##   * multi-touch : holding MOVE + JUMP + DRILL at once must work
-##   * never swallow input: each finger is tracked by index, and every touch
-##     that is not inside a control is forwarded as a movement drag.
-##
-## Buttons feed the same InputMap actions the keyboard/gamepad use, so gameplay
-## code never needs to know which device is active.
+## Left: movement control, chosen in Settings (x = move, y = aim up/down):
+##   fixed stick   - stays at its resting spot
+##   floating stick - appears under the finger anywhere in the left zone
+##   d-pad         - 8-way pad at the resting spot
+## Right: a 2x2 block of octagonal buttons (LADDER DRILL / CHARGE JUMP), a
+## context USE button beside it (only when something is in reach), and a
+## retractable gadget toolbar above the block (the active gadget and LURE).
+## The toolbar's tab slides it off the right edge and back; its state is
+## saved. When tucked away only the tab takes touches.
+## `edit_mode` turns the controls into draggable handles (layout editor).
+## The look comes from HudSkin, shared with the rest of the HUD.
 
-const ACTIONS := ["move_left", "move_right", "move_up", "move_down",
-		"jump", "drill", "charge", "interact"]
+const MODE_FIXED := 0
+const MODE_FLOATING := 1
+const MODE_DPAD := 2
 
-var player: Player
-var mine
+const BAR_SLIDE := 0.2           # seconds for the toolbar to slide
+const BAR_BTN := Vector2(44, 26) # one toolbar button, base px
+const BAR_H := 34.0
+const TAB := Vector2(14, 26)
+const GAP := 5.0
 
-# Active touch tracking: touch_index -> control key
-var _touches: Dictionary = {}
-var _move_touch: int = -1
-var _move_origin: Vector2 = Vector2.ZERO
-var _move_delta: Vector2 = Vector2.ZERO
-var _held: Dictionary = {}
+var mine: Node
+var stick_center := Vector2.ZERO
+var stick_pos := Vector2.ZERO
+var stick_finger := -1
+var stick_radius := 34.0
+var buttons: Array = []       # {name, action, off, hw, hh, r, finger, icon, accent}
+var interact_label := ""
+var edit_mode := false
+var _vec := Vector2.ZERO
+var _drag_name := ""          # edit mode: control being dragged
+var _drag_finger := -1
+var _drag_grab := Vector2.ZERO
+# gadget toolbar: bar_t 1 = fully open, 0 = tucked away behind its tab
+var bar_open := true
+var bar_t := 1.0
+var bar_buttons: Array = [
+	{"name": "GADGET", "action": "gadget", "finger": -1},
+	{"name": "LURE", "action": "lure", "finger": -1, "count": "lures", "per_run": "LURES_PER_RUN"},
+	{"name": "SHEAR", "action": "shear", "finger": -1, "count": "shears", "per_run": "SHEARS_PER_RUN"},
+	{"name": "BOLT", "action": "bolt", "finger": -1, "count": "bolts", "per_run": "BOLTS_PER_RUN"},
+]
+var _tab_finger := -1
+var show_bar := true          # the outpost has no gadgets: it turns the toolbar off
 
-var _buttons: Dictionary = {}
-var _stick_center: Vector2 = Vector2.ZERO
-var _stick_radius: float = 90.0
-var _scale: float = 1.0
-var _opacity: float = 0.55
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_PASS
-	_apply_settings()
-	layout_controls()
-	SaveManager.settings # settings are read each frame for live updates
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	buttons = default_buttons()
+	bar_open = bool(Settings.get_value("gadget_bar_open"))
+	bar_t = 1.0 if bar_open else 0.0
+	Settings.changed.connect(func() -> void:
+		bar_open = bool(Settings.get_value("gadget_bar_open"))
+		_update_visible()
+		queue_redraw())
+	InputSetup.device_changed.connect(func(_k: String) -> void: _update_visible())
+	_update_visible()
 
-func _apply_settings() -> void:
-	_scale = clampf(float(SaveManager.settings.get("button_scale", 1.0)), 0.7, 1.6)
-	_opacity = clampf(float(SaveManager.settings.get("button_opacity", 0.55)), 0.2, 1.0)
 
-func layout_controls() -> void:
-	for c in get_children():
-		c.queue_free()
-	_buttons.clear()
+## The right-hand block (centres offset from the safe rect's bottom-right):
+##   LADDER  DRILL
+##   CHARGE  JUMP      plus USE to the left, only when something is in reach.
+## hw/hh are the octagon's half extents; r (= hh) is kept for older callers.
+static func default_buttons() -> Array:
+	return [
+		{"name": "DRILL", "action": "drill", "off": Vector2(-41, -86), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "drill", "accent": HudSkin.ORANGE},
+		{"name": "JUMP", "action": "jump", "off": Vector2(-41, -32), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "jump", "accent": HudSkin.CYAN},
+		{"name": "CHARGE", "action": "charge", "off": Vector2(-112, -32), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "charge", "accent": HudSkin.ORANGE},
+		{"name": "LADDER", "action": "ladder", "off": Vector2(-112, -86), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "ladder", "accent": HudSkin.ORANGE},
+		{"name": "USE", "action": "interact", "off": Vector2(-180, -59), "hw": 31.0, "hh": 20.0, "r": 20.0, "finger": -1, "icon": "use", "accent": HudSkin.TEAL},
+	]
+
+
+func _update_visible() -> void:
+	if edit_mode:
+		visible = true
+		return
+	var mode: int = Settings.get_value("touch_mode")
+	if mode == 1:
+		visible = true
+	elif mode == 2:
+		visible = false
+	else:
+		visible = DisplayServer.is_touchscreen_available() and InputSetup.last_device != "gamepad" and InputSetup.last_device != "keyboard" \
+			or InputSetup.last_device == "touch"
+	if not visible:
+		_release_all()
+
+
+func _safe_rect() -> Rect2:
 	var vp := get_viewport_rect().size
-	var left_handed := bool(SaveManager.settings.get("left_handed", false))
-	var margin := 28.0
-	var r := 46.0 * _scale
+	var safe := DisplayServer.get_display_safe_area()
+	var win := DisplayServer.window_get_size()
+	if win.x <= 0 or safe.size.x <= 0:
+		return Rect2(Vector2.ZERO, vp)
+	var k := vp.x / float(win.x)
+	# the OS reports the safe area in screen space; never trust it past the viewport
+	var r := Rect2(Vector2(safe.position) * k, Vector2(safe.size) * k).intersection(Rect2(Vector2.ZERO, vp))
+	return r if r.size.x > 100.0 and r.size.y > 100.0 else Rect2(Vector2.ZERO, vp)
 
-	# Movement stick (drawn) occupies the left (or right) side; the whole side is
-	# a drag zone so the player never has to hit a tiny target.
-	_stick_radius = 92.0 * _scale
-	_stick_center = Vector2(vp.x * 0.16, vp.y - _stick_radius - 30.0)
-	if left_handed:
-		_stick_center = Vector2(vp.x - vp.x * 0.16, vp.y - _stick_radius - 30.0)
 
-	# Action buttons cluster on the opposite side to the stick.
-	var bx := vp.x - margin - r if not left_handed else margin + r
-	var by := vp.y - margin - r
-	_add_button("jump", Vector2(bx - r * 0.2, by - r * 1.1), r, "JUMP", Color(0.35, 0.7, 1.0))
-	_add_button("drill", Vector2(bx - r * 2.4, by - r * 0.5), r * 1.25, "DRILL", Color(1.0, 0.7, 0.3))
-	_add_button("charge", Vector2(bx - r * 0.1, by + r * 1.0), r * 0.9, "BOMB", Color(1.0, 0.42, 0.35))
-	_add_button("interact", Vector2(bx - r * 2.2, by + r * 1.1), r * 0.85, "USE", Color(0.55, 1.0, 0.7))
+## Pure layout maths (also used by tests): where a button sits for a given
+## safe rect, scale and user offset.
+static func button_pos(b: Dictionary, sr: Rect2, scale: float, user_off: Vector2) -> Vector2:
+	var p: Vector2 = sr.end + (b["off"] as Vector2) * scale + user_off
+	var ext := Vector2(float(b.get("hw", b["r"])), float(b.get("hh", b["r"]))) * scale
+	return p.clamp(sr.position + ext, sr.end - ext)
+
+
+## The octagon's bounding box (layout maths and tests).
+static func button_rect(b: Dictionary, sr: Rect2, scale: float, user_off: Vector2) -> Rect2:
+	var ext := Vector2(float(b.get("hw", b["r"])), float(b.get("hh", b["r"]))) * scale
+	return Rect2(button_pos(b, sr, scale, user_off) - ext, ext * 2.0)
+
+
+## Gadget toolbar geometry for a slide amount t (1 open, 0 tucked away):
+## {tab, panel, buttons: [rect, rect]}. It sits right-aligned above the
+## block's top row and slides off the right edge, leaving only its tab.
+static func bar_layout(sr: Rect2, scale: float, top_y: float, right_x: float, t: float) -> Dictionary:
+	var s := scale
+	var bw := BAR_BTN.x * s
+	var nb := 4
+	var pw := (BAR_BTN.x * nb + 2.0 * (nb - 1) + 8.0) * s
+	var ph := BAR_H * s
+	var tw := TAB.x * s
+	var th := TAB.y * s
+	var y := roundf(top_y - GAP * s - ph)
+	var open_px := roundf(right_x - pw)
+	var closed_px := sr.end.x + 2.0
+	var px := roundf(lerpf(closed_px, open_px, clampf(t, 0.0, 1.0)))
+	var tab_x := minf(px - tw + 2.0 * s, sr.end.x - tw)
+	var panel := Rect2(px, y, pw, ph)
+	var tab := Rect2(roundf(tab_x), roundf(y + (ph - th) * 0.5), tw, th)
+	var btns: Array = []
+	var bx := px + 4.0 * s
+	for k in nb:
+		btns.append(Rect2(roundf(bx), roundf(y + (ph - BAR_BTN.y * s) * 0.5), bw, BAR_BTN.y * s))
+		bx += bw + 2.0 * s
+	return {"tab": tab, "panel": panel, "buttons": btns}
+
+
+func _btn_pos(b: Dictionary) -> Vector2:
+	return button_pos(b, _safe_rect(), float(Settings.get_value("touch_scale")), Settings.layout_offset(b["action"]))
+
+
+func _btn_rect(b: Dictionary) -> Rect2:
+	return button_rect(b, _safe_rect(), float(Settings.get_value("touch_scale")), Settings.layout_offset(b["action"]))
+
+
+func _btn_r(b: Dictionary) -> float:
+	return float(b["r"]) * float(Settings.get_value("touch_scale"))
+
+
+func _hit(b: Dictionary, p: Vector2) -> bool:
+	return _btn_rect(b).grow(4.0 * float(Settings.get_value("touch_scale"))).has_point(p)
+
+
+func _bar() -> Dictionary:
+	var top := INF
+	var right := -INF
+	for b in buttons:
+		if b["action"] in ["drill", "ladder", "jump", "charge"]:
+			var r := _btn_rect(b)
+			top = minf(top, r.position.y)
+			right = maxf(right, r.end.x)
+	return bar_layout(_safe_rect(), float(Settings.get_value("touch_scale")), top, right, bar_t)
+
+
+func toggle_bar() -> void:
+	bar_open = not bar_open
+	Settings.set_value("gadget_bar_open", bar_open)
+	Audio.play("ui_click", -6.0)
+	for bb in bar_buttons:
+		if bb["finger"] != -1:
+			Input.action_release(bb["action"])
+			bb["finger"] = -1
 	queue_redraw()
 
-func _add_button(key: String, pos: Vector2, radius: float, label: String, color: Color) -> void:
-	var b := TouchButton.new()
-	b.key = key
-	b.label = label
-	b.radius = radius
-	b.color = color
-	b.opacity = _opacity
-	b.position = pos - Vector2(radius, radius)
-	b.custom_minimum_size = Vector2(radius * 2, radius * 2)
-	b.size = Vector2(radius * 2, radius * 2)
-	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	b.pressed_cb = func(k, down): _set_action(k, down)
-	add_child(b)
-	_buttons[key] = b
 
-func _set_action(key: String, down: bool) -> void:
-	if down:
-		_held[key] = true
-		Input.action_press(key)
-	else:
-		_held.erase(key)
-		Input.action_release(key)
+func move_mode() -> int:
+	return int(Settings.get_value("move_control"))
 
-func _clear_all() -> void:
-	for k in _held.keys():
-		Input.action_release(k)
-	_held.clear()
-	Input.action_release("move_left")
-	Input.action_release("move_right")
-	Input.action_release("move_up")
-	Input.action_release("move_down")
 
-# ---------------------------------------------------------------------------
-# Touch handling
-# ---------------------------------------------------------------------------
+func move_radius() -> float:
+	return stick_radius * float(Settings.get_value("stick_size")) * (1.25 if move_mode() == MODE_DPAD else 1.0)
+
+
+func _rest_pos() -> Vector2:
+	return move_rest_pos(_safe_rect(), move_radius(), Settings.layout_offset("move"))
+
+
+static func move_rest_pos(sr: Rect2, radius: float, user_off: Vector2) -> Vector2:
+	var p := Vector2(sr.position.x + 36.0 + radius, sr.end.y - 28.0 - radius) + user_off
+	return p.clamp(sr.position + Vector2(radius, radius), sr.end - Vector2(radius, radius))
+
+
+## The area where a floating stick may spawn: the left side, below the status panel.
+func float_zone() -> Rect2:
+	var vp := get_viewport_rect().size
+	return Rect2(0, 138, vp.x * 0.45, vp.y - 138)
+
+
+func _button_visible(b: Dictionary) -> bool:
+	return edit_mode or b["action"] != "interact" or interact_label != ""
+
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventScreenTouch:
-		_handle_touch(event)
-	elif event is InputEventScreenDrag:
-		_handle_drag(event)
-	elif event is InputEventMouseButton and OS.has_feature("editor"):
-		# Desktop convenience: emulate the stick with the mouse in the editor.
-		pass
-
-func _handle_touch(ev: InputEventScreenTouch) -> void:
-	if ev.pressed:
-		# Buttons first.
-		for key in _buttons:
-			var b: TouchButton = _buttons[key]
-			if b.hit(ev.position):
-				_touches[ev.index] = key
-				b.down = true
-				b.queue_redraw()
-				_set_action(key, true)
-				return
-		# Otherwise this finger drives movement.
-		if _move_touch == -1 and _in_move_zone(ev.position):
-			_move_touch = ev.index
-			_move_origin = ev.position
-			_move_delta = Vector2.ZERO
-			queue_redraw()
-	else:
-		if _touches.has(ev.index):
-			var key: String = _touches[ev.index]
-			_touches.erase(ev.index)
-			var b: TouchButton = _buttons.get(key)
-			if b:
-				b.down = false
-				b.queue_redraw()
-			_set_action(key, false)
-		if ev.index == _move_touch:
-			_move_touch = -1
-			_move_delta = Vector2.ZERO
-			Input.action_release("move_left")
-			Input.action_release("move_right")
-			Input.action_release("move_up")
-			Input.action_release("move_down")
-			queue_redraw()
-
-func _handle_drag(ev: InputEventScreenDrag) -> void:
-	if ev.index != _move_touch:
+	if not visible:
 		return
-	_move_delta = ev.position - _move_origin
-	_apply_stick(_move_delta)
+	if edit_mode:
+		_edit_input(event)
+		return
+	if get_tree().paused:
+		return
+	if event is InputEventScreenTouch:
+		var p := _to_local(event.position)
+		if event.pressed:
+			# the toolbar tab, then the toolbar itself (only once fully open)
+			var bar := _bar()
+			if show_bar and _tab_finger == -1 and (bar["tab"] as Rect2).grow(3.0).has_point(p):
+				_tab_finger = event.index
+				toggle_bar()
+				get_viewport().set_input_as_handled()
+				return
+			if show_bar and bar_t >= 1.0:
+				for k in bar_buttons.size():
+					var bb: Dictionary = bar_buttons[k]
+					if bb["finger"] == -1 and (bar["buttons"][k] as Rect2).grow(2.0).has_point(p):
+						bb["finger"] = event.index
+						Input.action_press(bb["action"])
+						queue_redraw()
+						get_viewport().set_input_as_handled()
+						return
+			# the main buttons
+			for b in buttons:
+				if b["finger"] == -1 and _button_visible(b) and _hit(b, p):
+					b["finger"] = event.index
+					Input.action_press(b["action"])
+					queue_redraw()
+					get_viewport().set_input_as_handled()
+					return
+			if stick_finger == -1 and _move_grab(p):
+				stick_finger = event.index
+				stick_center = p if move_mode() == MODE_FLOATING else _rest_pos()
+				stick_pos = p
+				_apply_stick()
+				get_viewport().set_input_as_handled()
+		else:
+			if event.index == stick_finger:
+				stick_finger = -1
+				_vec = Vector2.ZERO
+				_apply_stick()
+			for b in buttons + bar_buttons:
+				if b["finger"] == event.index:
+					b["finger"] = -1
+					Input.action_release(b["action"])
+			if event.index == _tab_finger:
+				_tab_finger = -1
+			queue_redraw()
+	elif event is InputEventScreenDrag:
+		if event.index == stick_finger:
+			stick_pos = _to_local(event.position)
+			var r := move_radius()
+			var d := stick_pos - stick_center
+			if move_mode() == MODE_FLOATING and d.length() > r * 1.6:
+				# drag the base along so the stick never "runs out"
+				stick_center = stick_pos - d.normalized() * r * 1.6
+			_apply_stick()
+			get_viewport().set_input_as_handled()
+
+
+## Does a new touch at p take hold of the movement control?
+func _move_grab(p: Vector2) -> bool:
+	match move_mode():
+		MODE_FLOATING:
+			return float_zone().has_point(p)
+		_:
+			return p.distance_to(_rest_pos()) < move_radius() * 1.7
+	return false
+
+
+func _to_local(p: Vector2) -> Vector2:
+	return get_global_transform_with_canvas().affine_inverse() * p
+
+
+## Movement vector for a finger offset d (pure; tests call it directly).
+static func move_vector(mode: int, d: Vector2, radius: float, deadzone: float, vertical_assist: bool = false) -> Vector2:
+	if mode == MODE_DPAD:
+		if d.length() < radius * 0.22:
+			return Vector2.ZERO
+		var a := snappedf(d.angle(), PI / 4.0)
+		var v := Vector2.RIGHT.rotated(a)
+		return Vector2(signf(v.x) if absf(v.x) > 0.3 else 0.0, signf(v.y) if absf(v.y) > 0.3 else 0.0)
+	var out := (d / radius).limit_length(1.0)
+	if absf(out.x) <= deadzone:
+		out.x = 0.0
+	if vertical_assist and absf(out.y) > Balance.TOUCH_STICK_VERTICAL_MIN and absf(out.x) < absf(out.y) * Balance.TOUCH_STICK_VERTICAL_RATIO:
+		out.x = 0.0
+	return out
+
+
+func _apply_stick() -> void:
+	if stick_finger != -1:
+		_vec = move_vector(move_mode(), stick_pos - stick_center, move_radius(), float(Settings.get_value("stick_deadzone")), bool(Settings.get_value("touch_stick_vertical_assist")))
+	var x := _vec.x
+	var y := _vec.y
+	_set_axis("move_left", "move_right", x)
+	if move_mode() == MODE_DPAD:
+		_set_axis("aim_up", "aim_down", y)
+	else:
+		# aim needs a clear vertical push so walking isn't mistaken for aiming
+		_set_axis("aim_up", "aim_down", y if absf(y) > 0.55 and absf(y) > absf(x) * 0.8 else 0.0)
 	queue_redraw()
 
-func _apply_stick(d: Vector2) -> void:
-	var dead := 10.0
-	var nx := d.x / _stick_radius
-	var ny := d.y / _stick_radius
-	Input.action_release("move_left")
-	Input.action_release("move_right")
-	Input.action_release("move_up")
-	Input.action_release("move_down")
-	if absf(d.x) > dead:
-		Input.action_press("move_right" if nx > 0.0 else "move_left", minf(1.0, absf(nx)))
-	if absf(d.y) > dead * 1.6:
-		Input.action_press("move_down" if ny > 0.0 else "move_up", minf(1.0, absf(ny)))
 
-func _in_move_zone(pos: Vector2) -> bool:
-	var vp := get_viewport_rect().size
-	var left_handed := bool(SaveManager.settings.get("left_handed", false))
-	if left_handed:
-		return pos.x > vp.x * 0.5
-	return pos.x < vp.x * 0.5
+func _set_axis(neg: String, pos: String, v: float) -> void:
+	if v < 0.0:
+		Input.action_press(neg, -v)
+		Input.action_release(pos)
+	elif v > 0.0:
+		Input.action_press(pos, v)
+		Input.action_release(neg)
+	else:
+		Input.action_release(neg)
+		Input.action_release(pos)
 
-# ---------------------------------------------------------------------------
-# Painting the stick + labels
-# ---------------------------------------------------------------------------
 
+func _release_all() -> void:
+	stick_finger = -1
+	_vec = Vector2.ZERO
+	for a in ["move_left", "move_right", "aim_up", "aim_down"]:
+		Input.action_release(a)
+	for b in buttons + bar_buttons:
+		if b["finger"] != -1:
+			Input.action_release(b["action"])
+		b["finger"] = -1
+	_tab_finger = -1
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
+		_release_all()
+
+
+func _process(delta: float) -> void:
+	if mine and mine.player:
+		var it: Dictionary = mine.nearest_interactable(mine.player)
+		var lbl: String = it.get("label", "")
+		if lbl != interact_label:
+			interact_label = lbl
+			queue_redraw()
+	var want := 1.0 if bar_open else 0.0
+	if bar_t != want:
+		bar_t = move_toward(bar_t, want, delta / BAR_SLIDE)
+		queue_redraw()
+	elif visible and Engine.get_process_frames() % 6 == 0:
+		queue_redraw()      # cooldown and lure counts on the toolbar
+
+
+# --- layout editor ----------------------------------------------------------
+func _edit_input(event: InputEvent) -> void:
+	var pressed := false
+	var released := false
+	var idx := 0
+	var p := Vector2.ZERO
+	var moved := false
+	if event is InputEventScreenTouch:
+		idx = event.index
+		p = _to_local(event.position)
+		pressed = event.pressed
+		released = not event.pressed
+	elif event is InputEventScreenDrag:
+		idx = event.index
+		p = _to_local(event.position)
+		moved = true
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		p = _to_local(event.position)
+		pressed = event.pressed
+		released = not event.pressed
+	elif event is InputEventMouseMotion and _drag_name != "":
+		p = _to_local(event.position)
+		moved = true
+	else:
+		return
+	if pressed and _drag_name == "":
+		var name := _control_at(p)
+		if name != "":
+			_drag_name = name
+			_drag_finger = idx
+			_drag_grab = p - _control_pos(name)
+			get_viewport().set_input_as_handled()
+	elif moved and _drag_name != "" and idx == _drag_finger:
+		var want := p - _drag_grab
+		var cur := _control_pos(_drag_name)
+		Settings.set_layout_offset(_drag_name, Settings.layout_offset(_drag_name) + (want - cur))
+		get_viewport().set_input_as_handled()
+	elif released and idx == _drag_finger:
+		_drag_name = ""
+
+
+func _control_pos(name: String) -> Vector2:
+	if name == "move":
+		return _rest_pos()
+	for b in buttons:
+		if b["action"] == name:
+			return _btn_pos(b)
+	return Vector2.ZERO
+
+
+func _control_at(p: Vector2) -> String:
+	for b in buttons:
+		if _hit(b, p):
+			return b["action"]
+	if p.distance_to(_rest_pos()) < move_radius() * 1.3:
+		return "move"
+	return ""
+
+
+# --- drawing ----------------------------------------------------------------
 func _draw() -> void:
-	var col := Color(1, 1, 1, _opacity)
-	# stick base
-	draw_circle(_stick_center, _stick_radius * 0.55, Color(0.12, 0.14, 0.2, _opacity * 0.5))
-	draw_arc(_stick_center, _stick_radius * 0.55, 0, TAU, 40, col * Color(1, 1, 1, 0.5), 2.0)
-	var knob := _stick_center + _move_delta.limit_length(_stick_radius * 0.5)
-	draw_circle(knob, _stick_radius * 0.24, Color(0.85, 0.9, 1.0, _opacity * 0.9))
-	draw_arc(knob, _stick_radius * 0.24, 0, TAU, 28, Color(1, 1, 1, _opacity), 2.0)
+	var op: float = Settings.get_value("touch_opacity")
+	if edit_mode:
+		op = 1.0
+	# the metal skin reads best a little more solid than the old outlines
+	op = clampf(op * 1.25, 0.0, 1.0)
+	var sc := float(Settings.get_value("touch_scale"))
+	var r := move_radius()
+	var mode := move_mode()
+	var held := stick_finger != -1
+	var base := stick_center if held and mode == MODE_FLOATING else _rest_pos()
+	# a resting floating stick is only a faint ghost: it shows where to touch
+	var ghost := 0.45 if (mode == MODE_FLOATING and not held and not edit_mode) else 1.0
+	if mode == MODE_DPAD:
+		_draw_dpad(base, r, op)
+	else:
+		_draw_stick(base, r, op * ghost)
+	for b in buttons:
+		if not _button_visible(b):
+			continue
+		var label: String = b["name"]
+		if b["action"] == "interact" and interact_label != "":
+			label = interact_label
+		var dim := 1.0
+		if b["action"] == "ladder" and mine and mine.player and not edit_mode and not mine.player.can_build_ladder():
+			dim = 0.45
+		if b["action"] == "charge" and not edit_mode and Game.run.has("charges") and int(Game.run["charges"]) <= 0:
+			dim = 0.45
+		var bheld: bool = b["finger"] != -1 or (edit_mode and _drag_name == b["action"])
+		var hw := float(b.get("hw", b["r"])) * sc
+		var hh := float(b.get("hh", b["r"])) * sc
+		_draw_button(_btn_pos(b), hw, hh, b["accent"], b["icon"], label, bheld, dim, op)
+		if b["action"] == "charge" and Game.run.has("charges"):
+			_badge(_btn_pos(b) + Vector2(hw - 10.0, -hh + 8.0), str(Game.run["charges"]), op)
+	if show_bar:
+		_draw_bar(op, sc)
 
-func _process(_delta: float) -> void:
-	var s := clampf(float(SaveManager.settings.get("button_scale", 1.0)), 0.7, 1.6)
-	var o := clampf(float(SaveManager.settings.get("button_opacity", 0.55)), 0.2, 1.0)
-	if absf(s - _scale) > 0.001 or absf(o - _opacity) > 0.001:
-		_apply_settings()
-		layout_controls()
+
+func _draw_button(c: Vector2, hw: float, hh: float, accent: Color, icon: String, label: String, pressed: bool, dim: float, op: float) -> void:
+	var push := Vector2(0, 1) if pressed else Vector2.ZERO
+	HudSkin.button(self, c, hw, hh, accent, pressed, dim, op)
+	var fs := clampi(int(round(hh * 0.4)), 8, 14)
+	HudSkin.icon(self, icon, c + Vector2(0, -hh * 0.26) + push, hh * 0.86, op * dim)
+	HudSkin.label(self, c + Vector2(0, hh * 0.6) + push, label, fs if label.length() <= 6 else maxi(8, fs - 1), Color(HudSkin.TEXT, op * dim), true)
 
 
-## A single round touch button. Implemented as a Node2D-like Control that
-## tests hits itself so we can track raw screen touches by index.
-class TouchButton extends Control:
-	var key: String = ""
-	var label: String = ""
-	var radius: float = 46.0
-	var color: Color = Color(0.5, 0.7, 1.0)
-	var opacity: float = 0.55
-	var down: bool = false
-	var pressed_cb: Callable
+func _badge(c: Vector2, txt: String, op: float) -> void:
+	var r := Rect2((c - Vector2(6, 6)).round(), Vector2(12, 12))
+	draw_colored_polygon(HudSkin.chamfer(r, 3.0), Color(HudSkin.OUTLINE, op))
+	draw_colored_polygon(HudSkin.chamfer(r.grow(-1.0), 2.0), Color(HudSkin.ORANGE_DK, op))
+	HudSkin.label(self, c + Vector2(0, 4), txt, 8, Color(HudSkin.TEXT, op), true)
 
-	func hit(p: Vector2) -> bool:
-		return p.distance_to(global_position + Vector2(radius, radius)) <= radius * 1.15
 
-	func _draw() -> void:
-		var c := Vector2(radius, radius)
-		var a := opacity
-		if down:
-			a = minf(1.0, opacity + 0.35)
-		draw_circle(c, radius, Color(color.r * 0.25, color.g * 0.25, color.b * 0.3, a * 0.75))
-		draw_arc(c, radius, 0, TAU, 44, Color(color.r, color.g, color.b, a), 3.0)
-		draw_arc(c, radius - 4.0, 0, TAU, 44, Color(1, 1, 1, a * 0.25), 1.0)
-		if down:
-			draw_circle(c, radius * 0.82, Color(color.r, color.g, color.b, a * 0.35))
-		var f := UiTheme.font()
-		if f:
-			var fs := 15
-			var tw := f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-			draw_string(f, c + Vector2(-tw * 0.5, 5), label,
-					HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, minf(1.0, a + 0.3)))
+func _draw_stick(base: Vector2, r: float, a: float) -> void:
+	# a metal ring with four orange arrow notches and a dark rubber knob
+	draw_circle(base, r + 4.0, Color(HudSkin.OUTLINE, 0.9 * a))
+	draw_circle(base, r + 3.0, Color(HudSkin.METAL, 0.95 * a))
+	draw_arc(base, r + 2.5, PI * 1.0, PI * 1.5, 12, Color(HudSkin.METAL_HI, a), 1.0)
+	draw_arc(base, r + 2.5, 0.0, PI * 0.5, 12, Color(HudSkin.METAL_LO, a), 1.0)
+	draw_circle(base, r, Color(0.05, 0.045, 0.08, 0.78 * a))
+	draw_arc(base, r, 0, TAU, 32, Color(HudSkin.ORANGE_DK, 0.9 * a), 1.0)
+	for k in 4:
+		var ang := k * PI * 0.5
+		var d := Vector2.RIGHT.rotated(ang)
+		var side := Vector2(-d.y, d.x)
+		var tip := base + d * (r - 4.0)
+		draw_colored_polygon(PackedVector2Array([tip, tip - d * 5.0 + side * 4.0, tip - d * 5.0 - side * 4.0]), Color(HudSkin.ORANGE, a))
+		# orange brackets on the rim between the arrows
+		draw_arc(base, r + 3.0, ang + 0.6, ang + 0.97, 4, Color(HudSkin.ORANGE, 0.85 * a), 2.0)
+	var knob := base + _vec * r * 0.8
+	var kr := r * 0.42
+	draw_circle(knob + Vector2(0, 2), kr, Color(0, 0, 0, 0.45 * a))
+	draw_circle(knob, kr, Color(HudSkin.METAL_LO.lightened(0.15), a))
+	draw_circle(knob, kr - 2.0, Color(HudSkin.METAL.darkened(0.1), a))
+	draw_arc(knob, kr - 1.0, PI * 1.05, PI * 1.7, 10, Color(HudSkin.METAL_HI, a), 1.0)
+	draw_arc(knob, kr, 0, TAU, 24, Color(HudSkin.OUTLINE, a), 1.0)
+
+
+func _draw_bar(op: float, sc: float) -> void:
+	var bar := _bar()
+	var tab: Rect2 = bar["tab"]
+	var panel: Rect2 = bar["panel"]
+	if panel.position.x < get_viewport_rect().size.x:
+		HudSkin.frame(self, panel, HudSkin.ORANGE, true, 5.0 * sc)
+		var gid := String(Game.run.get("loadout", {}).get("active", "sonar"))
+		var cd := float(Game.run.get("gadget_cd", 0.0))
+		for k in bar_buttons.size():
+			var bb: Dictionary = bar_buttons[k]
+			var rect: Rect2 = bar["buttons"][k]
+			var held: bool = bb["finger"] != -1
+			var icon: String = gid if k == 0 else String(bb["name"]).to_lower()
+			var label := String(Balance.GADGETS.get(gid, {"name": "GADGET"})["name"]) if k == 0 else String(bb["name"])
+			var count := int(Game.run.get(bb.get("count", ""), 0)) if bb.has("count") else 0
+			var dim := 1.0
+			if (k == 0 and cd > 0.0) or (bb.has("count") and count <= 0):
+				dim = 0.45
+			if held:
+				draw_rect(rect.grow(-1.0), Color(1, 1, 1, 0.1 * op))
+			var c := rect.get_center()
+			HudSkin.icon(self, icon, c + Vector2(0, -rect.size.y * 0.18), rect.size.y * 0.5, op * dim)
+			HudSkin.label(self, c + Vector2(0, rect.size.y * 0.44), label, clampi(int(8 * sc), 8, 12), Color(HudSkin.TEXT, op * dim), true)
+			if k == 0 and cd > 0.0:
+				HudSkin.label(self, c + Vector2(rect.size.x * 0.32, -rect.size.y * 0.08), "%d" % ceili(cd), 8, Color(HudSkin.YELLOW, op), true)
+			if bb.has("count"):
+				# what is left, as small pips beside the icon
+				var n := maxi(count, int(Balance.get(bb["per_run"])))
+				var ps := maxf(2.0, roundf(2.0 * sc))
+				var px0 := c.x + rect.size.x * 0.28
+				for i in n:
+					var pr := Rect2(roundf(px0 + (i / 4) * (ps + 1.0)), roundf(c.y - rect.size.y * 0.38 + (i % 4) * (ps + 1.0)), ps, ps)
+					if i < count:
+						draw_rect(pr, Color(HudSkin.CYAN, op))
+					else:
+						draw_rect(pr, Color(HudSkin.MUTED, op), false, 1.0)
+			if k < bar_buttons.size() - 1:
+				draw_rect(Rect2(roundf(rect.end.x), rect.position.y + 3.0, maxf(1.0, roundf(sc)), rect.size.y - 6.0), Color(HudSkin.METAL, op))
+	# the tab: a small metal block whose arrow points where the bar will go
+	HudSkin.frame(self, tab, HudSkin.ORANGE, false, 3.0)
+	HudSkin.arrow(self, tab.get_center(), tab.size.y * 0.42, 1 if bar_open else -1, Color(HudSkin.ORANGE, op))
+
+
+func _draw_dpad(c: Vector2, r: float, op: float) -> void:
+	var arm := r * 0.36
+	var bg := Color(HudSkin.INTERIOR, 0.8 * op)
+	var pts := PackedVector2Array([
+		c + Vector2(-arm, -r), c + Vector2(arm, -r), c + Vector2(arm, -arm), c + Vector2(r, -arm),
+		c + Vector2(r, arm), c + Vector2(arm, arm), c + Vector2(arm, r), c + Vector2(-arm, r),
+		c + Vector2(-arm, arm), c + Vector2(-r, arm), c + Vector2(-r, -arm), c + Vector2(-arm, -arm)])
+	var outer := PackedVector2Array()
+	for p in pts:
+		outer.append(c + (p - c) * 1.08)
+	draw_colored_polygon(outer, Color(HudSkin.METAL, 0.95 * op))
+	draw_colored_polygon(pts, bg)
+	var closed := pts.duplicate()
+	closed.append(pts[0])
+	draw_polyline(closed, Color(HudSkin.ORANGE_DK, op), 1.0)
+	for d in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+		var on: bool = _vec != Vector2.ZERO and _vec.dot(d) > 0.3
+		var tip: Vector2 = c + d * (r - 6.0)
+		var side: Vector2 = Vector2(-d.y, d.x) * arm * 0.55
+		var back: Vector2 = c + d * (r - 6.0 - arm * 0.8)
+		draw_colored_polygon(PackedVector2Array([tip, back + side, back - side]), Color(HudSkin.ORANGE.lightened(0.3 if on else 0.0), (0.95 if on else 0.6) * op))
+
+
+func occupied_rects() -> Array[Rect2]:
+	## Screen areas covered by controls (used by tests to check overlaps).
+	var out: Array[Rect2] = []
+	for b in buttons:
+		out.append(_btn_rect(b))
+	if show_bar:
+		var bar := _bar()
+		out.append(bar["tab"])
+		if bar_t > 0.0:
+			out.append(bar["panel"])
+	return out

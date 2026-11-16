@@ -1,89 +1,150 @@
 extends CanvasLayer
-## In-run pause overlay: full map, resume, restart and abandon.
+## Pause: resume, full map, settings, abandon. Shows the seed for bug reports.
 
-var mine
-var _panel: PanelContainer
-var _map: Control
-var _map_open: bool = true
+var mine: Node
+var root: Control
+var panel: PanelContainer
+var map_view: Minimap
+var resume_btn: Button
+var is_open := false
+
 
 func _ready() -> void:
 	layer = 20
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	visible = false
+	root = Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.theme = UIKit.theme()
+	root.visible = false
+	add_child(root)
+	var dim := ColorRect.new()
+	dim.color = Color(0.02, 0.01, 0.03, 0.75)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(dim)
+	var hb := HBoxContainer.new()
+	hb.set_anchors_preset(Control.PRESET_CENTER)
+	hb.add_theme_constant_override("separation", 10)
+	hb.anchor_left = 0.5
+	hb.anchor_top = 0.5
+	hb.anchor_right = 0.5
+	hb.anchor_bottom = 0.5
+	hb.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	hb.grow_vertical = Control.GROW_DIRECTION_BOTH
+	root.add_child(hb)
+	panel = PanelContainer.new()
+	hb.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	panel.add_child(v)
+	v.add_child(UIKit.header("PAUSED " + str(ProjectSettings.get_setting("application/config/version"))))
+	v.add_child(UIKit.Scanline.new())
+	resume_btn = UIKit.button("RESUME", close)
+	v.add_child(resume_btn)
+	v.add_child(UIKit.button("CARGO MANIFEST", func() -> void: mine.hud.cargo_screen.open()))
+	if Progress.level("sticky") > 0:
+		var sb := UIKit.button("STICKY CHARGES: %s" % ("ON" if Game.run.get("sticky", false) else "OFF"), func() -> void: pass)
+		sb.pressed.connect(func() -> void:
+			Progress.sticky_on = not bool(Game.run.get("sticky", false))
+			Game.run["sticky"] = Progress.sticky_on
+			Progress.save_progress()
+			sb.text = "STICKY CHARGES: %s" % ("ON" if Progress.sticky_on else "OFF")
+			Audio.play("ui_confirm"))
+		v.add_child(sb)
+	v.add_child(UIKit.button("SETTINGS", _settings))
+	v.add_child(UIKit.button("ABANDON RUN", _abandon))
+	var c: Dictionary = Game.run.get("contract", {})
+	v.add_child(UIKit.label("Contract: %s" % c.get("name", "?"), 9, UIKit.MUTED))
+	v.add_child(UIKit.label("Seed: %d" % int(Game.run.get("seed", 0)), 9, UIKit.MUTED))
+	v.add_child(UIKit.label("Unbanked cargo is lost if\nyou abandon or die.", 9, UIKit.MUTED))
+	var mp := PanelContainer.new()
+	hb.add_child(mp)
+	var mv := VBoxContainer.new()
+	mp.add_child(mv)
+	mv.add_child(UIKit.header("SURVEY MAP"))
+	map_view = Minimap.new()
+	map_view.full = true
+	map_view.custom_minimum_size = Vector2(110, 250)
+	mv.add_child(map_view)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if mine.descent_prompt and mine.descent_prompt.is_open:
+		return   # the one-way warning owns input while it is up
+	if mine.hud.cargo_screen.is_open:
+		if event.is_action_pressed("pause") or event.is_action_pressed("inventory") or event.is_action_pressed("ui_cancel"):
+			mine.hud.cargo_screen.close()
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("inventory") and not mine.ending:
+		if not is_open or panel.get_parent().visible:
+			mine.hud.cargo_screen.open()
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("pause") and mine.hud.map_screen.is_open:
+		mine.hud.map_screen.close()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("pause"):
+		if is_open:
+			close()
+		elif not mine.ending:
+			open()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("map") and not is_open and not mine.ending:
+		if mine.hud.map_screen.is_open:
+			mine.hud.map_screen.close()
+		else:
+			mine.hud.open_map()
+		get_viewport().set_input_as_handled()
+	elif is_open and event.is_action_pressed("ui_cancel"):
+		close()
+		get_viewport().set_input_as_handled()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
+		if mine and not mine.ending and not is_open and is_inside_tree() and not mine.hud.map_screen.is_open and not mine.hud.cargo_screen.is_open:
+			open()
+
 
 func open() -> void:
-	visible = true
+	if is_open:
+		return
+	is_open = true
+	if map_view.mine == null:
+		# share the HUD minimap texture instead of building a second one
+		map_view.mine = mine
+		map_view.grid = mine.grid
+		map_view.img = mine.hud.minimap.img
+		map_view.tex = mine.hud.minimap.tex
+		map_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		map_view.set_process(false)
+	map_view.queue_redraw()
+	root.visible = true
 	get_tree().paused = true
-	_build()
+	if mine.player:
+		mine.player.stop_sounds()
 	Audio.play("ui_click")
+	resume_btn.grab_focus()
+
 
 func close() -> void:
-	visible = false
+	is_open = false
+	root.visible = false
 	get_tree().paused = false
-	if _panel and is_instance_valid(_panel):
-		_panel.queue_free()
-		_panel = null
-		_map = null
+	for a in ["drill", "jump", "charge", "interact"]:
+		Input.action_release(a)
 
-func _build() -> void:
-	if _panel and is_instance_valid(_panel):
-		return
-	var dim := ColorRect.new()
-	dim.color = Color(0.02, 0.02, 0.04, 0.72)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(dim)
-	_panel = UiTheme.make_panel(1)
-	_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_panel.position = Vector2(-330, -240)
-	_panel.custom_minimum_size = Vector2(660, 480)
-	add_child(_panel)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 10)
-	_panel.add_child(v)
-	v.add_child(UiTheme.heading("PAUSED", 28))
 
-	var map_holder := Control.new()
-	map_holder.custom_minimum_size = Vector2(620, 260)
-	v.add_child(map_holder)
-	_map = Control.new()
-	_map.set_script(load("res://src/ui/minimap.gd"))
-	_map.set("mine", mine)
-	_map.set("compact", false)
-	_map.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	map_holder.add_child(_map)
+func _settings() -> void:
+	var layout := panel.get_parent() as Control   # pause panel + survey map
+	layout.visible = false
+	var sp := SettingsPanel.new()
+	root.add_child(sp)
+	sp.closed.connect(func() -> void:
+		layout.visible = true
+		resume_btn.grab_focus())
 
-	v.add_child(UiTheme.make_label("Seed: %d      Depth: %d m      Credits in cargo: %d" % [
-		GameState.seed_value,
-		mine.grid.world_to_cell(mine.player.global_position).y * 2,
-		GameState.cargo_value()], 14, Color(0.7, 0.76, 0.84)))
-	v.add_child(UiTheme.make_label("Relic: %s" % ("SECURED" if GameState.relic_taken else "NOT FOUND"),
-		14, Color(0.72, 0.5, 1.0)))
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	v.add_child(row)
-	var resume := UiTheme.make_button("RESUME", 160)
-	resume.pressed.connect(func():
-		Audio.play("ui_click")
-		close()
-	)
-	row.add_child(resume)
-	var restart := UiTheme.make_button("RESTART RUN", 180)
-	restart.pressed.connect(func():
-		Audio.play("ui_click")
-		get_tree().paused = false
-		GameState.start_run()
-		get_tree().reload_current_scene()
-	)
-	row.add_child(restart)
-	var abandon := UiTheme.make_button("ABANDON TO OUTPOST", 240)
-	abandon.pressed.connect(func():
-		Audio.play("ui_click")
-		get_tree().paused = false
-		GameState.end_run(false, "abandoned")
-		get_tree().change_scene_to_file("res://src/ui/outpost.tscn")
-	)
-	row.add_child(abandon)
-	resume.grab_focus()
+func _abandon() -> void:
+	close()
+	mine.abandon()

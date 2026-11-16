@@ -1,103 +1,126 @@
 extends Control
-## Title screen. Plain Node scene entry point: everything is built in code so
-## the project needs no hand-authored .tscn files to run.
+## Title: animated dusk skyline, logo, start/settings/quit.
 
-var _bg: TextureRect
-var _menu: VBoxContainer
-var _settings_panel: PanelContainer
-var _credits_label: Label
-var _t: float = 0.0
+var menu: VBoxContainer
+var t := 0.0
+var sky: TextureRect
+var far: TextureRect
+var mid: TextureRect
+var embers: Array = []
+
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	_build_bg()
-	_build_title()
-	_build_menu()
-	_build_footer()
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	theme = UIKit.theme()
+	Audio.music("amb_outpost")
+	sky = _layer("outpost_sky.png", 0)
+	far = _layer("outpost_far.png", 120)
+	mid = _layer("outpost_mid.png", 220)
+	var shade := ColorRect.new()
+	shade.color = Color(0.03, 0.02, 0.05, 0.35)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(shade)
+	for i in 40:
+		embers.append(Vector3(randf() * 800.0, randf() * 360.0, randf_range(8.0, 30.0)))
+	var logo := Logo.new()
+	logo.anchor_left = 0.5
+	logo.anchor_right = 0.5
+	logo.offset_left = -220
+	logo.offset_right = 220
+	logo.offset_top = 34
+	logo.offset_bottom = 120
+	add_child(logo)
+	menu = VBoxContainer.new()
+	menu.add_theme_constant_override("separation", 6)
+	menu.anchor_left = 0.5
+	menu.anchor_right = 0.5
+	menu.anchor_top = 1.0
+	menu.anchor_bottom = 1.0
+	menu.offset_left = -80
+	menu.offset_right = 80
+	menu.offset_top = -170
+	menu.offset_bottom = -40
+	add_child(menu)
+	var start := UIKit.button("START", func() -> void: Game.goto("outpost"), 160)
+	menu.add_child(start)
+	menu.add_child(UIKit.button("SETTINGS", _settings, 160))
+	if OS.get_name() not in ["Android", "iOS", "Web"]:
+		menu.add_child(UIKit.button("QUIT", func() -> void: get_tree().quit(), 160))
+	var st := Progress.stats
+	var info := UIKit.label("Credits %d   Runs %d   Extractions %d   Relics %d   Best depth %dm" % [Progress.credits, st.get("runs", 0), st.get("extractions", 0), st.get("relics", 0), st.get("best_depth", 0)], 9, UIKit.MUTED)
+	info.anchor_left = 0.0
+	info.anchor_right = 1.0
+	info.anchor_top = 1.0
+	info.anchor_bottom = 1.0
+	info.offset_top = -20
+	info.offset_bottom = -6
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(info)
+	var ver := UIKit.label("v" + str(ProjectSettings.get_setting("application/config/version")), 8, UIKit.MUTED)
+	ver.position = Vector2(6, 4)
+	add_child(ver)
+	await get_tree().process_frame
+	start.grab_focus()
 
-func _build_bg() -> void:
-	var tr := TextureRect.new()
-	tr.texture = load("res://assets/bg/bg_dustworks_far.png")
-	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	tr.modulate = Color(0.75, 0.75, 0.85)
-	add_child(tr)
-	var vig := ColorRect.new()
-	vig.color = Color(0.02, 0.02, 0.04, 0.45)
-	vig.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(vig)
 
-func _build_title() -> void:
-	var box := VBoxContainer.new()
-	box.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	box.position = Vector2(0, 90)
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_theme_constant_override("separation", 2)
-	add_child(box)
-	var t := UiTheme.heading("RUIN DIGGER", 58)
-	box.add_child(t)
-	var sub := UiTheme.make_label("BREAK THE GROUND. WAKE WHAT LIES BELOW. GET OUT RICHER.",
-			15, Color(0.75, 0.82, 0.9))
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(sub)
+func _layer(n: String, y: float) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = load("res://assets/gen/" + n)
+	r.stretch_mode = TextureRect.STRETCH_TILE
+	r.anchor_right = 1.0
+	r.offset_top = y
+	r.offset_right = 640
+	r.offset_bottom = y + r.texture.get_height()
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(r)
+	return r
 
-func _build_menu() -> void:
-	_menu = VBoxContainer.new()
-	_menu.set_anchors_preset(Control.PRESET_CENTER)
-	_menu.position = Vector2(0, 40)
-	_menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_menu.add_theme_constant_override("separation", 12)
-	_menu.alignment = BoxContainer.ALIGNMENT_CENTER
-	add_child(_menu)
 
-	_credits_label = UiTheme.make_label("", 16, Color(1.0, 0.78, 0.36))
-	_credits_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_menu.add_child(_credits_label)
+func _process(d: float) -> void:
+	t += d
+	far.position.x = -fmod(t * 4.0, 640.0)
+	mid.position.x = -fmod(t * 9.0, 640.0)
+	queue_redraw()
 
-	var btn_dig := _add_button("ENTER THE MINE", _on_play)
-	btn_dig.theme = UiTheme.theme()
-	var btn_out := _add_button("OUTPOST / UPGRADES", _on_outpost)
-	var btn_set := _add_button("SETTINGS", _on_settings)
-	var btn_quit := _add_button("QUIT", _on_quit)
-	_update_credits()
-	if btn_dig:
-		btn_dig.grab_focus()
 
-func _add_button(text: String, cb: Callable) -> Button:
-	var b := UiTheme.make_button(text, 320)
-	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	b.pressed.connect(func():
-		Audio.play("ui_click")
-		cb.call()
-	)
-	_menu.add_child(b)
-	return b
+func _draw() -> void:
+	for e in embers:
+		var x := fmod(e.x + t * e.z, size.x + 20.0)
+		var y := fmod(e.y - t * e.z * 0.6 + 400.0, 380.0)
+		var a := 0.4 + 0.4 * sin(t * 3.0 + e.x)
+		draw_rect(Rect2(x, y, 1, 1), Color(1.0, 0.7, 0.35, a))
 
-func _build_footer() -> void:
-	var l := UiTheme.make_label("v0.1.0  |  Godot 4.6  |  original procedural art", 11,
-			Color(0.5, 0.56, 0.64))
-	l.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	l.position = Vector2(16, -28)
-	add_child(l)
 
-func _update_credits() -> void:
-	_credits_label.text = "CREDITS  %d        BEST DEPTH  %d m        RUNS  %d" % [
-		SaveManager.credits, SaveManager.best_depth * 2, SaveManager.runs_completed]
+func _settings() -> void:
+	menu.visible = false
+	var sp := SettingsPanel.new()
+	add_child(sp)
+	sp.closed.connect(func() -> void:
+		menu.visible = true
+		menu.get_child(0).grab_focus())
 
-func _on_play() -> void:
-	GameState.start_run()
-	get_tree().change_scene_to_file("res://src/world/mine.tscn")
 
-func _on_outpost() -> void:
-	get_tree().change_scene_to_file("res://src/ui/outpost.tscn")
+class Logo extends Control:
+	var t := 0.0
 
-func _on_settings() -> void:
-	get_tree().change_scene_to_file("res://src/ui/settings.tscn")
+	func _process(d: float) -> void:
+		t += d
+		queue_redraw()
 
-func _on_quit() -> void:
-	SaveManager.save()
-	get_tree().quit()
-
-func _process(delta: float) -> void:
-	_t += delta
+	func _draw() -> void:
+		var f := UIKit.font_head()
+		var title := "RUIN DIGGER"
+		var fs := 44
+		var w := f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var x := (size.x - w) * 0.5
+		for o in [Vector2(3, 3), Vector2(2, 2)]:
+			draw_string(f, Vector2(x, 52) + o, title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.12, 0.04, 0.02))
+		draw_string(f, Vector2(x, 52), title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("f5a23a"))
+		# glint sweeping across the logo
+		var gx := fmod(t * 120.0, w + 200.0) - 100.0
+		var hi := clampf(1.0 - absf(gx - w * 0.5) / (w * 0.5), 0.0, 1.0)
+		draw_string(f, Vector2(x, 52), title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.92, 0.7, 0.25 * hi))
+		var tag := "Break the ground. Wake what lies below. Get out richer."
+		var tw := UIKit.font_body().get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+		draw_string(UIKit.font_body(), Vector2((size.x - tw) * 0.5, 76), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("e9ddc8"))
+		draw_rect(Rect2((size.x - 200) * 0.5, 82, 200, 1), Color(1.0, 0.7, 0.3, 0.5))

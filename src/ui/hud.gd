@@ -1,220 +1,478 @@
-extends Control
-## Industrial diagnostic HUD: health, drill heat, cargo, charges, depth, lift
-## direction and the top-of-screen minimap.
+extends CanvasLayer
+## Industrial diagnostic HUD: hull/heat/cargo/charges, minimap, depth,
+## objective compass, toasts, banners, context prompts and touch controls.
 
-var mine
-var player: Player
+var mine: Node
+var root: Control
+var diag: Diag
+var minimap: Minimap
+var depth_panel: DepthPanel
+var orders_panel: OrdersPanel
+var panels: Control
+var toast_label: Label
+var banner_label: Label
+var hint_label: Label
+var prompt_label: Label
+var touch: TouchControls
+var pause_btn: Button
+var cargo_btn: Button
+var fps_label: Label
+var ladder_label: Label
+var _toast_t := 0.0
+var _banner_t := 0.0
+var _hint_t := 0.0
+var _cargo_pulse := 0.0
+var _scaf_pulse := 0.0
+var map_screen: Node
+var cargo_screen: CargoScreen
 
-var _hp_bar: ProgressBar
-var _heat_bar: ProgressBar
-var _cargo_bar: ProgressBar
-var _charge_label: Label
-var _depth_label: Label
-var _ore_label: Label
-var _lift_arrow: Label
-var _objective: Label
-var _toast: Label
-var _toast_t: float = 0.0
-var _minimap: Control
-var _flash: ColorRect
-var _font: FontFile
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_font = load("res://assets/font/font.fnt") if ResourceLoader.exists("res://assets/font/font.fnt") else null
-	_build()
-	player = mine.player
-	if player:
-		player.health_changed.connect(_on_health)
-		player.heat_changed.connect(_on_heat)
-		player.charges_changed.connect(_on_charges)
-		_on_health(player.hp, player.max_hp)
-		_on_heat(player.heat, player.heat_capacity, false)
-		_on_charges(player.charges, player.max_charges)
+	layer = 10
+	root = Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.theme = UIKit.theme()
+	add_child(root)
+	# the panels sit inside the display's safe area (cutouts, rounded corners)
+	panels = Control.new()
+	panels.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(panels)
+	diag = Diag.new()
+	diag.hud = self
+	diag.position = Vector2(6, 6)
+	diag.size = Vector2(196, 128)
+	panels.add_child(diag)
+	# the CARGO row of the status panel opens the manifest (also Pause, or I)
+	cargo_btn = Button.new()
+	cargo_btn.position = Vector2(6, 35)
+	cargo_btn.size = Vector2(196, 16)
+	cargo_btn.flat = true
+	cargo_btn.focus_mode = Control.FOCUS_NONE
+	cargo_btn.tooltip_text = "Cargo manifest (I)"
+	for st in ["normal", "hover", "pressed", "focus", "disabled", "hover_pressed"]:
+		cargo_btn.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	cargo_btn.pressed.connect(open_cargo)
+	panels.add_child(cargo_btn)
+	cargo_screen = CargoScreen.new()
+	cargo_screen.mine = mine
+	add_child(cargo_screen)
+	var mframe := FrameDecor.new()
+	mframe.anchor_left = 0.5
+	mframe.anchor_right = 0.5
+	mframe.offset_left = -64
+	mframe.offset_right = 64
+	mframe.offset_top = 4
+	mframe.offset_bottom = 62
+	panels.add_child(mframe)
+	minimap = Minimap.new()
+	minimap.setup(mine)
+	minimap.anchor_left = 0.5
+	minimap.anchor_right = 0.5
+	minimap.offset_left = -59
+	minimap.offset_right = 59
+	minimap.offset_top = 9
+	minimap.offset_bottom = 55
+	panels.add_child(minimap)
+	# tap the minimap to open the full survey map
+	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
+	minimap.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			open_map())
+	map_screen = load("res://src/ui/map_screen.gd").new()
+	map_screen.mine = mine
+	add_child(map_screen)
+	depth_panel = DepthPanel.new()
+	depth_panel.hud = self
+	depth_panel.anchor_left = 1.0
+	depth_panel.anchor_right = 1.0
+	depth_panel.offset_left = -190
+	depth_panel.offset_right = -38
+	depth_panel.offset_top = 4
+	depth_panel.offset_bottom = 54
+	panels.add_child(depth_panel)
+	orders_panel = OrdersPanel.new()
+	orders_panel.hud = self
+	orders_panel.anchor_left = 1.0
+	orders_panel.anchor_right = 1.0
+	orders_panel.offset_left = -212
+	orders_panel.offset_right = -4
+	orders_panel.offset_top = 58
+	orders_panel.offset_bottom = 106
+	orders_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panels.add_child(orders_panel)
+	pause_btn = _skin_button("", "pause", func() -> void: mine.pause_menu.open())
+	pause_btn.offset_left = -34
+	pause_btn.offset_right = -4
+	pause_btn.offset_top = 4
+	pause_btn.offset_bottom = 34
+	panels.add_child(pause_btn)
+	toast_label = _center_label(13, UIKit.TEXT, 66)
+	banner_label = _center_label(24, UIKit.AMBER, 130, true)
+	hint_label = _center_label(11, UIKit.TEAL, 0)
+	hint_label.anchor_top = 1.0
+	hint_label.anchor_bottom = 1.0
+	hint_label.offset_top = -40
+	hint_label.offset_bottom = -24
+	prompt_label = _center_label(12, UIKit.AMBER, 0, true)
+	prompt_label.anchor_top = 1.0
+	prompt_label.anchor_bottom = 1.0
+	prompt_label.offset_top = -22
+	prompt_label.offset_bottom = -6
+	fps_label = UIKit.label("", 9, UIKit.MUTED)
+	fps_label.position = Vector2(8, 136)
+	panels.add_child(fps_label)
+	ladder_label = UIKit.label("LADDER ATTACHED", 10, UIKit.TEAL, true)
+	ladder_label.position = Vector2(8, 152)
+	ladder_label.add_theme_stylebox_override("normal", UIKit.panel_box(UIKit.TEAL))
+	ladder_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ladder_label.visible = false
+	panels.add_child(ladder_label)
+	_apply_safe_area()
+	get_viewport().size_changed.connect(_apply_safe_area)
+	touch = TouchControls.new()
+	touch.mine = mine
+	root.add_child(touch)
 
-func _theme() -> Theme:
-	var t := Theme.new()
-	if _font:
-		t.default_font = _font
-		t.default_font_size = 14
-	return t
 
-func _build() -> void:
-	var th := _theme()
-	# --- Top bar -----------------------------------------------------------
-	var top := PanelContainer.new()
-	top.theme = th
-	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	top.custom_minimum_size = Vector2(0, 74)
-	top.offset_bottom = 74
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.05, 0.06, 0.09, 0.72)
-	style.border_color = Color(0.35, 0.45, 0.55, 0.5)
-	style.border_width_bottom = 2
-	top.add_theme_stylebox_override("panel", style)
-	add_child(top)
+## Keep the panels clear of display cutouts: inset by the OS safe area.
+func _apply_safe_area() -> void:
+	var vp := get_viewport().get_visible_rect().size
+	var safe := DisplayServer.get_display_safe_area()
+	var win := DisplayServer.window_get_size()
+	var l := 0.0
+	var r := 0.0
+	var t := 0.0
+	if win.x > 0 and safe.size.x > 0:
+		var k := vp.x / float(win.x)
+		l = clampf(safe.position.x * k, 0.0, 60.0)
+		r = clampf((win.x - safe.end.x) * k, 0.0, 60.0)
+		t = clampf(safe.position.y * k, 0.0, 30.0)
+	panels.offset_left = l
+	panels.offset_right = -r
+	panels.offset_top = t
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 18)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(row)
 
-	_hp_bar = _make_bar("HULL", Color(0.86, 0.28, 0.26), 180.0)
-	row.add_child(_hp_bar.get_parent())
-	_heat_bar = _make_bar("DRILL", Color(1.0, 0.66, 0.24), 180.0)
-	row.add_child(_heat_bar.get_parent())
-	_cargo_bar = _make_bar("CARGO", Color(0.66, 0.44, 1.0), 180.0)
-	row.add_child(_cargo_bar.get_parent())
+## A HUD button drawn with the metal skin (icon + optional label).
+func _skin_button(text: String, icon: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.anchor_left = 1.0
+	b.anchor_right = 1.0
+	b.flat = true
+	for st in ["normal", "hover", "pressed", "focus", "disabled", "hover_pressed"]:
+		b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	b.pressed.connect(cb)
+	var face := SkinFace.new()
+	face.btn = b
+	face.text = text
+	face.icon_kind = icon
+	face.set_anchors_preset(Control.PRESET_FULL_RECT)
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(face)
+	return b
 
-	var info := VBoxContainer.new()
-	info.add_theme_constant_override("separation", 2)
-	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(info)
-	_depth_label = _make_label("DEPTH 000 m")
-	_ore_label = _make_label("ORE 0 / 0")
-	_charge_label = _make_label("CHARGES 3 / 3")
-	info.add_child(_depth_label)
-	info.add_child(_ore_label)
-	info.add_child(_charge_label)
 
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(spacer)
-
-	_lift_arrow = _make_label("LIFT  --")
-	row.add_child(_lift_arrow)
-
-	# --- Objective banner --------------------------------------------------
-	_objective = _make_label("")
-	_objective.add_theme_color_override("font_color", Color(1.0, 0.78, 0.36))
-	_objective.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_objective.position = Vector2(0, 84)
-	_objective.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_objective.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	add_child(_objective)
-
-	# --- Toast -------------------------------------------------------------
-	_toast = _make_label("")
-	_toast.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
-	_toast.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_toast.position = Vector2(0, -120)
-	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_toast.modulate = Color(1, 1, 1, 0)
-	add_child(_toast)
-
-	# --- Minimap (top-right, above the bar) -------------------------------
-	_minimap = Control.new()
-	_minimap.set_script(load("res://src/ui/minimap.gd"))
-	_minimap.set("mine", mine)
-	_minimap.set("compact", true)
-	_minimap.custom_minimum_size = Vector2(210, 150)
-	_minimap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_minimap.position = Vector2(-222, 82)
-	_minimap.size = Vector2(210, 150)
-	_minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_minimap)
-
-	# --- Damage / pickup flash --------------------------------------------
-	_flash = ColorRect.new()
-	_flash.color = Color(1, 0.2, 0.2, 0)
-	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_flash)
-
-func _make_label(text: String) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.theme = _theme()
-	l.add_theme_font_size_override("font_size", 14)
+func _center_label(size: int, col: Color, top: float, head: bool = false) -> Label:
+	var l := UIKit.label("", size, col, head)
+	l.anchor_left = 0.0
+	l.anchor_right = 1.0
+	l.offset_top = top
+	l.offset_bottom = top + size + 8
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.modulate.a = 0.0
+	root.add_child(l)
 	return l
 
-func _make_bar(title: String, color: Color, width: float) -> ProgressBar:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 1)
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var l := _make_label(title)
-	l.add_theme_font_size_override("font_size", 11)
-	box.add_child(l)
-	var bar := ProgressBar.new()
-	bar.custom_minimum_size = Vector2(width, 12)
-	bar.max_value = 100.0
-	bar.value = 100.0
-	bar.show_percentage = false
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = color
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(0.10, 0.11, 0.15, 0.9)
-	bg.border_color = Color(0.3, 0.36, 0.44, 0.7)
-	bg.set_border_width_all(1)
-	bar.add_theme_stylebox_override("fill", fill)
-	bar.add_theme_stylebox_override("background", bg)
-	box.add_child(bar)
-	return bar
 
-func _on_health(hp: int, max_hp: int) -> void:
-	_hp_bar.max_value = max_hp
-	_hp_bar.value = hp
-	if hp < max_hp * 0.34:
-		_hp_bar.modulate = Color(1.0, 0.6, 0.6)
+func toast(text: String) -> void:
+	toast_label.text = text
+	_toast_t = 2.6
 
-func _on_heat(heat: float, capacity: float, overheated: bool) -> void:
-	_heat_bar.max_value = capacity
-	_heat_bar.value = heat
-	_heat_bar.modulate = Color(1.4, 0.5, 0.4) if overheated else Color.WHITE
 
-func _on_charges(count: int, capacity: int) -> void:
-	_charge_label.text = "CHARGES %d / %d" % [count, capacity]
+func banner(text: String) -> void:
+	banner_label.text = text
+	_banner_t = 2.2
 
-func flash_cargo(ok: bool) -> void:
-	_show_toast("CARGO FULL - RETURN TO LIFT" if not ok else "ORE COLLECTED")
-	if not ok:
-		_flash.color = Color(1, 0.5, 0.2, 0.18)
 
-func _show_toast(text: String) -> void:
-	_toast.text = text
-	_toast_t = 1.8
+func hint(text: String) -> void:
+	hint_label.text = text
+	_hint_t = 6.0
+
+
+func pulse_cargo() -> void:
+	_cargo_pulse = 1.0
+
+
+func pulse_scaffold() -> void:
+	_scaf_pulse = 1.0
+
+
+func open_map() -> void:
+	if mine.ending or get_tree().paused:
+		return
+	map_screen.open()
+
+
+func open_cargo() -> void:
+	if not mine.ending and not get_tree().paused:
+		cargo_screen.open()
+
 
 func _process(delta: float) -> void:
-	if player == null or not is_instance_valid(player):
-		return
-	var cargo_units := GameState.cargo_units
-	var cap := Balance.carry_capacity(SaveManager.upgrade_level("cargo"))
-	_cargo_bar.max_value = cap
-	_cargo_bar.value = cargo_units
-	_ore_label.text = "ORE %d / %d" % [cargo_units, cap]
-	_depth_label.text = "DEPTH %03d m" % (player.grid.world_to_cell(player.global_position).y * 2)
-
-	# Lift direction: a simple signed arrow with distance in cells.
-	var lift_world := player.grid.cell_to_world(player.grid.lift_cell)
-	var d := lift_world - player.global_position
-	var dist := int(d.length() / Balance.CELL)
-	var dir := ""
-	if absf(d.x) > Balance.CELL:
-		dir += ("E" if d.x > 0 else "W")
-	if absf(d.y) > Balance.CELL:
-		dir += ("S" if d.y > 0 else "N")
-	_lift_arrow.text = "LIFT %s %d m" % [dir, dist * 2]
-	if dist < 3:
-		_lift_arrow.add_theme_color_override("font_color", Color(0.5, 1.0, 0.6))
-		if GameState.has_banked_cargo():
-			_lift_arrow.text += "  [E] EXTRACT"
+	_toast_t -= delta
+	_banner_t -= delta
+	_hint_t -= delta
+	_cargo_pulse = maxf(0.0, _cargo_pulse - delta * 3.0)
+	_scaf_pulse = maxf(0.0, _scaf_pulse - delta * 2.0)
+	toast_label.modulate.a = clampf(_toast_t * 2.0, 0.0, 1.0)
+	banner_label.modulate.a = clampf(_banner_t * 1.5, 0.0, 1.0)
+	hint_label.modulate.a = clampf(_hint_t, 0.0, 1.0)
+	var it: Dictionary = mine.nearest_interactable(mine.player) if mine.player else {}
+	if not it.is_empty() and not touch.visible:
+		var key := "Y" if InputSetup.last_device == "gamepad" else "E"
+		prompt_label.text = "[%s] %s" % [key, it["label"]]
+		prompt_label.modulate.a = 0.75 + 0.25 * sin(Time.get_ticks_msec() / 150.0)
 	else:
-		_lift_arrow.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
+		prompt_label.modulate.a = 0.0
+	fps_label.visible = Settings.get_value("show_fps")
+	if fps_label.visible:
+		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+		var sd: SandSim = mine.get("sand")
+		if sd and not sd.active.is_empty():
+			fps_label.text += "  SAND %d (%.1f ms)" % [sd.active.size(), sd.last_us / 1000.0]
+	ladder_label.visible = mine.player != null and mine.player.on_ladder and not mine.player.dead and not mine.ending
+	diag.queue_redraw()
+	depth_panel.queue_redraw()
+	orders_panel.queue_redraw()
+	if pause_btn.get_child_count() > 0:
+		pause_btn.get_child(0).queue_redraw()
 
-	if GameState.relic_taken:
-		_objective.text = "RELIC SECURED - RETURN TO THE LIFT"
-	else:
-		_objective.text = "DESCEND - FIND THE RELIC"
 
-	if _toast_t > 0.0:
-		_toast_t -= delta
-		_toast.modulate.a = clampf(_toast_t, 0.0, 1.0)
-	else:
-		_toast.modulate.a = maxf(0.0, _toast.modulate.a - delta * 2.0)
-	_flash.color.a = maxf(0.0, _flash.color.a - delta * 1.4)
+## The dive's orders, top right under the cargo button.
+class OrdersPanel extends Control:
+	var hud: Node
+
+	func _draw() -> void:
+		var orders: Array = Game.run.get("orders", [])
+		if orders.is_empty():
+			return
+		var h := 10.0 + orders.size() * 13.0
+		HudSkin.frame(self, Rect2(0, 0, size.x, h), HudSkin.ORANGE, false, 5.0)
+		for i in orders.size():
+			var o: Dictionary = orders[i]
+			var met := Orders.satisfied(o, Game.run)
+			var y := 15.0 + i * 13.0
+			var col: Color = HudSkin.YELLOW if met else HudSkin.TEXT
+			draw_rect(Rect2(9, y - 7, 7, 7), col, false, 1.0)
+			if met:
+				draw_rect(Rect2(11, y - 5, 3, 3), col)
+			HudSkin.label(self, Vector2(21, y), String(o["text"]).to_upper(), 8, col)
+			var pt := Orders.progress_text(o, Game.run)
+			var f := UIKit.font_head()
+			var w := f.get_string_size(pt, HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x
+			HudSkin.label(self, Vector2(size.x - 9 - w, y), pt, 8, HudSkin.YELLOW if met else HudSkin.TEXT)
+
+
+## Draws a metal frame behind something else (the minimap).
+class FrameDecor extends Control:
+	var accent := HudSkin.ORANGE
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		HudSkin.frame(self, Rect2(Vector2.ZERO, size), accent, true, 6.0)
+
+
+## The face of a skinned HUD button: frame, icon, label, pressed state.
+class SkinFace extends Control:
+	var btn: Button
+	var text := ""
+	var icon_kind := ""
+
+	func _draw() -> void:
+		var pressed := btn != null and btn.is_pressed()
+		var r := Rect2(Vector2.ZERO, size)
+		HudSkin.frame(self, r, HudSkin.ORANGE, false, 5.0)
+		if pressed:
+			draw_rect(r.grow(-4.0), Color(1, 1, 1, 0.08))
+		var push := Vector2(0, 1) if pressed else Vector2.ZERO
+		if text == "":
+			HudSkin.icon(self, icon_kind, r.get_center() + push, size.y * 0.5)
+			return
+		HudSkin.icon(self, icon_kind, Vector2(17, size.y * 0.5) + push, size.y * 0.55)
+		HudSkin.label(self, Vector2(size.x * 0.5 + 9, size.y * 0.5 + 5) + push, text, 11, HudSkin.TEXT, true)
+
+
+class Diag extends Control:
+	var hud: Node
+	const ROW := 14.0
+	const Y0 := 18.0
+	const BX := 52.0
+	const BW := 100.0
+
+	func _draw() -> void:
+		var pl: Player = hud.mine.player
+		if pl == null:
+			return
+		HudSkin.frame(self, Rect2(Vector2.ZERO, size))
+		var t := Time.get_ticks_msec() / 1000.0
+		var flash_ok := not Settings.reduced_flashing()
+		_row(0, "HULL", pl.hp / pl.max_hp, HudSkin.RED, "%d" % int(ceil(pl.hp)), pl.hp / pl.max_hp < 0.3 and int(t * 4) % 2 == 0 and flash_ok)
+		var hcol := HudSkin.ORANGE.lerp(HudSkin.RED, pl.heat / pl.heat_cap)
+		if pl.overheated:
+			hcol = Color(1, 1, 1) if int(t * 6) % 2 == 0 and flash_ok else HudSkin.RED
+		_row(1, "HEAT", pl.heat / pl.heat_cap, hcol, "VENT" if pl.overheated else "%d%%" % int(pl.heat / pl.heat_cap * 100.0), false)
+		var cap: int = hud.mine.cargo_cap()
+		var n: int = Game.cargo_count()
+		var ccol := HudSkin.GREEN.lerp(Color(1, 1, 1), hud._cargo_pulse)
+		if n >= cap:
+			ccol = HudSkin.ORANGE
+		_row(2, "CARGO", float(n) / cap, ccol, "%d/%d" % [n, cap], false)
+		# a small tab: this row opens the cargo manifest
+		var ty := Y0 + 2.0 * ROW - 4.0
+		var pressed: bool = hud.cargo_btn != null and hud.cargo_btn.is_pressed()
+		draw_colored_polygon(PackedVector2Array([Vector2(size.x - 9, ty - 3), Vector2(size.x - 5, ty), Vector2(size.x - 9, ty + 3)]), HudSkin.YELLOW if pressed else HudSkin.ORANGE)
+		# charges as red pips, lures beside them
+		var y := Y0 + 3.0 * ROW
+		HudSkin.label(self, Vector2(10, y), "CHRG", 9, HudSkin.MUTED)
+		var ch: int = Game.run.get("charges", 0)
+		for i in maxi(ch, 3):
+			var r := Rect2(BX + i * 10, y - 8, 8, 9)
+			if i < ch:
+				draw_rect(r, HudSkin.RED)
+				draw_rect(Rect2(r.position, Vector2(8, 2)), HudSkin.RED.lightened(0.45))
+			else:
+				draw_rect(r, HudSkin.MUTED, false, 1.0)
+		# lures: cyan pips, like the charges
+		var lures := int(Game.run.get("lures", 0))
+		var lx := BX + maxi(ch, 3) * 10 + 10
+		HudSkin.label(self, Vector2(lx, y), "LURE", 9, HudSkin.MUTED)
+		lx += 34
+		for i in maxi(lures, Balance.LURES_PER_RUN):
+			var lr := Rect2(lx + i * 10, y - 8, 8, 9)
+			if i < lures:
+				draw_rect(lr, HudSkin.CYAN.darkened(0.15))
+				draw_rect(Rect2(lr.position, Vector2(8, 2)), HudSkin.CYAN.lightened(0.4))
+			else:
+				draw_rect(lr, HudSkin.MUTED, false, 1.0)
+		var scap: int = hud.mine.scaffold_cap()
+		var sn: int = Game.run.get("scaffold", 0)
+		var scol := HudSkin.YELLOW.lerp(HudSkin.RED, hud._scaf_pulse)
+		_row(4, "SCAF", float(sn) / scap, scol, "%d" % sn, hud._scaf_pulse > 0.5 and int(t * 8) % 2 == 0)
+		var pv: float = float(Game.run.get("pressure", 0.0))
+		var pt := 0
+		for k in Balance.PRESSURE_TIERS.size():
+			if pv >= Balance.PRESSURE_TIERS[k]:
+				pt = k + 1
+		var pcol: Color = [HudSkin.GREEN, HudSkin.YELLOW, HudSkin.ORANGE, HudSkin.RED][pt]
+		_row(5, "PRES", pv / 100.0, pcol, ["CALM", "STIR", "UNST", "COLL"][pt], pt == 3 and int(t * 3) % 2 == 0 and flash_ok)
+		# gadgets: "SONAR . READY . MAGNET"
+		var lo: Dictionary = Game.run.get("loadout", {})
+		var gid := String(lo.get("active", ""))
+		y = Y0 + 6.0 * ROW
+		HudSkin.label(self, Vector2(10, y), "GADG", 9, HudSkin.MUTED)
+		if gid != "":
+			var cd := float(Game.run.get("gadget_cd", 0.0))
+			var f := UIKit.font_head()
+			var x := BX
+			var gname := String(Balance.GADGETS[gid]["name"])
+			HudSkin.label(self, Vector2(x, y), gname, 9, HudSkin.CYAN)
+			x += f.get_string_size(gname, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x + 4.0
+			draw_rect(Rect2(x, y - 4, 2, 2), HudSkin.CYAN)
+			x += 6.0
+			var st := "READY" if cd <= 0.0 else "%dS" % ceili(cd)
+			HudSkin.label(self, Vector2(x, y), st, 9, HudSkin.YELLOW if cd <= 0.0 else HudSkin.MUTED)
+			x += f.get_string_size(st, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x + 4.0
+			var pid := String(lo.get("passive", ""))
+			if pid != "":
+				draw_circle(Vector2(x + 1, y - 3), 1.5, HudSkin.YELLOW)
+				HudSkin.label(self, Vector2(x + 6, y), String(Balance.GADGETS[pid]["name"]), 9, HudSkin.YELLOW)
+		# kit: shear charges and anchor bolts, as pips
+		y = Y0 + 7.0 * ROW
+		HudSkin.label(self, Vector2(10, y), "KIT", 9, HudSkin.MUTED)
+		var kx := BX
+		for kit in [["SHEAR", "shears", Balance.SHEARS_PER_RUN, Color("8fd0ff")], ["BOLT", "bolts", Balance.BOLTS_PER_RUN, HudSkin.TEAL]]:
+			HudSkin.label(self, Vector2(kx, y), kit[0], 9, HudSkin.MUTED)
+			kx += 6.0 + UIKit.font_head().get_string_size(kit[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x
+			var have := int(Game.run.get(kit[1], 0))
+			for i in maxi(have, int(kit[2])):
+				var kr := Rect2(kx + i * 7, y - 8, 5, 9)
+				if i < have:
+					draw_rect(kr, (kit[3] as Color).darkened(0.1))
+					draw_rect(Rect2(kr.position, Vector2(5, 2)), (kit[3] as Color).lightened(0.4))
+				else:
+					draw_rect(kr, HudSkin.MUTED, false, 1.0)
+			kx += maxi(have, int(kit[2])) * 7 + 8
+		if Game.run.get("relic", false):
+			var rp := Vector2(size.x - 14, Y0 + 3.0 * ROW - 4.0)
+			draw_colored_polygon(PackedVector2Array([rp + Vector2(0, -6), rp + Vector2(5, 0), rp + Vector2(0, 6), rp + Vector2(-5, 0)]), Color(0.4, 1.0, 1.0, 0.8 + 0.2 * sin(t * 5.0)))
+
+	func _row(i: int, name: String, frac: float, col: Color, txt: String, blink: bool) -> void:
+		var y := Y0 + i * ROW
+		HudSkin.label(self, Vector2(10, y), name, 9, HudSkin.MUTED)
+		HudSkin.meter(self, Rect2(BX, y - 8, BW, 9), frac, col, 12, blink)
+		HudSkin.label(self, Vector2(BX + BW + 6, y), txt, 9, HudSkin.TEXT)
+
+
+class DepthPanel extends Control:
+	var hud: Node
+
+	func _draw() -> void:
+		var mine: Node = hud.mine
+		var pl: Player = mine.player
+		if pl == null:
+			return
+		HudSkin.frame(self, Rect2(Vector2.ZERO, size))
+		var depth := int(maxf(0.0, pl.global_position.y / Balance.CELL - 9.0 + mine.depth_offset) * Balance.METERS_PER_CELL)
+		HudSkin.label(self, Vector2(10, 16), "DEPTH", 9, HudSkin.MUTED)
+		HudSkin.label(self, Vector2(56, 17), "%d M" % depth, 13, HudSkin.ORANGE)
+		var s: int = maxi(0, int(mine.get("presented_zone")) if mine.get("presented_zone") != null and int(mine.get("presented_zone")) >= 0 else mine.grid.get_stratum(int(pl.global_position.x / Balance.CELL), int(pl.global_position.y / Balance.CELL)))
+		var zc: Color = Balance.ZONE_COLORS[s]
+		# a small zone gem before the name
+		var gp := Vector2(13, 26)
+		draw_colored_polygon(PackedVector2Array([gp + Vector2(0, -4), gp + Vector2(3, 0), gp + Vector2(0, 4), gp + Vector2(-3, 0)]), zc)
+		HudSkin.label(self, Vector2(20, 30), Balance.STRATUM_NAMES[s], 9, zc.lightened(0.15))
+		# objective compass
+		var target: Vector2
+		var label := ""
+		var col := UIKit.TEAL
+		if mine.gate and mine.engine and not mine.gate.powered:
+			# no power yet: the way out runs through the Thermal Plant
+			target = mine.engine.global_position
+			label = "PLANT"
+			col = Color(1.0, 0.6, 0.25)
+		elif mine.gate:
+			# the deep stage has one way out
+			target = mine.gate.global_position
+			label = "GATE"
+			col = Balance.ZONE_COLORS[Balance.Z_FIRST]
+		elif not Game.run.get("relic", false) and mine.relic:
+			target = mine.relic.global_position
+			label = "RELIC"
+			col = Color(0.4, 1.0, 1.0)
+		else:
+			var best: Node2D = null
+			var bd := INF
+			for l in mine.lifts:
+				if not l.active and not String(l.id).begins_with("relay"):
+					continue
+				var d: float = l.global_position.distance_to(pl.global_position)
+				if d < bd:
+					bd = d
+					best = l
+			if best == null:
+				return
+			target = best.global_position
+			label = "LIFT" if best.active else "RELAY?"
+			col = Color(0.4, 1.0, 0.5) if best.active else Color(1.0, 0.6, 0.3)
+		var to := target - pl.global_position
+		var dist := int(to.length() / Balance.CELL * Balance.METERS_PER_CELL)
+		var c := Vector2(16, 39)
+		var dir := to.normalized()
+		var tip := c + dir * 6.0
+		draw_colored_polygon(PackedVector2Array([tip, c + dir.rotated(2.5) * 5.0, c + dir.rotated(-2.5) * 5.0]), col)
+		HudSkin.label(self, Vector2(28, 43), "%s %dM" % [label, dist], 9, col)

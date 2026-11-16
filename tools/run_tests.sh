@@ -1,51 +1,36 @@
 #!/usr/bin/env bash
-# Runs every RUIN DIGGER test suite headlessly and reports a combined result.
-#
-#   ./tools/run_tests.sh            # run all suites
-#   GODOT=/path/to/godot ./tools/run_tests.sh
-#
-# Each suite is a scene; Godot is asked to quit with a non-zero code on failure,
-# and a timeout guards against a hung suite.
-
+# Runs every automated suite headless. Non-zero exit on any failure,
+# script error, or hang. Honours GODOT=/path/to/godot and TEST_TIMEOUT.
 set -u
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GODOT="${GODOT:-godot}"
 TIMEOUT="${TEST_TIMEOUT:-600}"
+cd "$(dirname "$0")/.."
+LOG_DIR="${LOG_DIR:-build/test-logs}"
+mkdir -p "$LOG_DIR"
 
-SUITES=(
-	"src/tests/test_runner.tscn"
-	"src/tests/sweep.tscn"
-	"src/tests/objective.tscn"
-	"src/tests/playthrough.tscn"
-	"src/tests/scenes.tscn"
-)
-
-if ! command -v "$GODOT" >/dev/null 2>&1; then
-	echo "godot not found; set GODOT=/path/to/godot" >&2
-	exit 127
+echo "== import"
+timeout "$TIMEOUT" "$GODOT" --headless --import > "$LOG_DIR/import.log" 2>&1
+if grep -E "SCRIPT ERROR|Parse Error" "$LOG_DIR/import.log"; then
+  echo "import reported script errors"; exit 1
 fi
 
-cd "$ROOT" || exit 1
-
-failed=0
-passed=0
-for suite in "${SUITES[@]}"; do
-	echo "----------------------------------------------------------------"
-	echo ">>> $suite"
-	echo "----------------------------------------------------------------"
-	if timeout "$TIMEOUT" "$GODOT" --headless --quit-after 20000 "res://$suite"; then
-		passed=$((passed + 1))
-	else
-		code=$?
-		if [ "$code" -eq 124 ]; then
-			echo "!!! TIMEOUT after ${TIMEOUT}s"
-		fi
-		failed=$((failed + 1))
-	fi
+status=0
+for suite in terrain physics save ui gen game lava deep fun; do
+  log="$LOG_DIR/$suite.log"
+  timeout "$TIMEOUT" "$GODOT" --headless res://tests/test_runner.tscn -- suite="$suite" seeds="${SEEDS:-60}" > "$log" 2>&1
+  code=$?
+  grep -E "^== |FAIL|RESULT" "$log"
+  if [ $code -eq 124 ]; then
+    echo "!! suite $suite timed out"; status=1
+  elif [ $code -ne 0 ]; then
+    echo "!! suite $suite exited $code"; status=1
+  fi
+  if grep -E "SCRIPT ERROR|Parse Error" "$log"; then
+    echo "!! suite $suite logged script errors"; status=1
+  fi
+  if ! grep -q "RESULT:" "$log"; then
+    echo "!! suite $suite produced no result line"; status=1
+  fi
 done
-
-echo "================================================================"
-echo "suites: $passed passed, $failed failed"
-echo "================================================================"
-[ "$failed" -eq 0 ]
+[ $status -eq 0 ] && echo "ALL SUITES PASSED" || echo "TESTS FAILED"
+exit $status

@@ -1,105 +1,151 @@
 extends Node
-## Pooled SFX playback with per-bus volume from settings. Sounds are the
-## procedurally synthesised WAVs in assets/audio.
+## Sound manager: pooled one-shots (flat + positional), named loops and music.
 
-const SFX := {
-	"dig_soft": "res://assets/audio/dig_soft.wav",
-	"dig_rock": "res://assets/audio/dig_rock.wav",
-	"dig_alloy": "res://assets/audio/dig_alloy.wav",
-	"explosion": "res://assets/audio/explosion.wav",
-	"gas_hiss": "res://assets/audio/gas_hiss.wav",
-	"rattle": "res://assets/audio/rattle.wav",
-	"ore_chime": "res://assets/audio/ore_chime.wav",
-	"hurt": "res://assets/audio/hurt.wav",
-	"jump": "res://assets/audio/jump.wav",
-	"land": "res://assets/audio/land.wav",
-	"alarm": "res://assets/audio/alarm.wav",
-	"laser": "res://assets/audio/laser.wav",
-	"enemy_death": "res://assets/audio/enemy_death.wav",
-	"ui_click": "res://assets/audio/ui_click.wav",
-	"purchase": "res://assets/audio/purchase.wav",
-	"extract_win": "res://assets/audio/extract_win.wav",
-}
-
-const VOICES := 16
+const SFX_DIR := "res://assets/sfx/"
+const LOOPS := ["drill_soft", "drill_hard", "drill_metal", "drill_idle", "gas_hiss", "lift_hum",
+	"amb_dust", "amb_spore", "amb_engine", "amb_outpost"]
 
 var _streams: Dictionary = {}
-var _players: Array[AudioStreamPlayer] = []
-var _next: int = 0
-var _drill_player: AudioStreamPlayer
+var _flat: Array[AudioStreamPlayer] = []
+var _pos: Array[AudioStreamPlayer2D] = []
+var _flat_i := 0
+var _pos_i := 0
+var _loops: Dictionary = {}       # name -> AudioStreamPlayer
+var _music_a: AudioStreamPlayer
+var _music_b: AudioStreamPlayer
+var _music_name := ""
+var _music_tween: Tween
+var _last_play: Dictionary = {}   # rate limit identical sounds
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	for key in SFX:
-		if ResourceLoader.exists(SFX[key]):
-			_streams[key] = load(SFX[key])
-	for i in VOICES:
+	_setup_buses()
+	for i in 14:
 		var p := AudioStreamPlayer.new()
-		p.bus = "Master"
+		p.bus = "SFX"
 		add_child(p)
-		_players.append(p)
-	_drill_player = AudioStreamPlayer.new()
-	_drill_player.bus = "Master"
-	_drill_player.stream = _streams.get("drill_loop") if _streams.has("drill_loop") else null
-	add_child(_drill_player)
-	if _drill_player.stream:
-		_drill_player.stream.loop = true
-	apply_settings()
+		_flat.append(p)
+	for i in 18:
+		var q := AudioStreamPlayer2D.new()
+		q.bus = "SFX"
+		q.max_distance = 520.0
+		q.attenuation = 1.6
+		add_child(q)
+		_pos.append(q)
+	_music_a = AudioStreamPlayer.new()
+	_music_b = AudioStreamPlayer.new()
+	for m in [_music_a, _music_b]:
+		m.bus = "Music"
+		m.volume_db = -80.0
+		add_child(m)
 
-func apply_settings() -> void:
-	var m := float(SaveManager.settings.get("master_volume", 0.8))
-	var s := float(SaveManager.settings.get("sfx_volume", 0.9))
-	var db := linear_to_db(max(0.0001, m * s))
-	for p in _players:
-		p.volume_db = db
-	if _drill_player:
-		_drill_player.volume_db = db - 4.0
 
-func play(key: String, pitch_variation: float = 0.0, volume_db: float = 0.0) -> void:
-	if not _streams.has(key):
+func _setup_buses() -> void:
+	for b in ["SFX", "Music"]:
+		if AudioServer.get_bus_index(b) == -1:
+			AudioServer.add_bus()
+			var idx := AudioServer.bus_count - 1
+			AudioServer.set_bus_name(idx, b)
+			AudioServer.set_bus_send(idx, "Master")
+	var sfx := AudioServer.get_bus_index("SFX")
+	if AudioServer.get_bus_effect_count(sfx) == 0:
+		var rv := AudioEffectReverb.new()
+		rv.room_size = 0.55
+		rv.damping = 0.6
+		rv.wet = 0.12
+		rv.dry = 1.0
+		AudioServer.add_bus_effect(sfx, rv)
+	if Engine.has_singleton("Settings") or get_node_or_null("/root/Settings"):
+		get_node("/root/Settings").apply()
+
+
+func stream(sfx_name: String) -> AudioStream:
+	if _streams.has(sfx_name):
+		return _streams[sfx_name]
+	var path := SFX_DIR + sfx_name + ".wav"
+	var s: AudioStream = null
+	if ResourceLoader.exists(path):
+		s = load(path)
+		if s is AudioStreamWAV and sfx_name in LOOPS:
+			var w := s as AudioStreamWAV
+			w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			w.loop_begin = 0
+			w.loop_end = int(w.get_length() * w.mix_rate)
+	_streams[sfx_name] = s
+	return s
+
+
+func _rate_ok(sfx_name: String, min_gap: float) -> bool:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - float(_last_play.get(sfx_name, -10.0)) < min_gap:
+		return false
+	_last_play[sfx_name] = now
+	return true
+
+
+func play(sfx_name: String, volume_db: float = 0.0, pitch_var: float = 0.06, min_gap: float = 0.03) -> void:
+	var s := stream(sfx_name)
+	if s == null or not _rate_ok(sfx_name, min_gap):
 		return
-	var p := _players[_next]
-	_next = (_next + 1) % _players.size()
-	p.stream = _streams[key]
-	p.pitch_scale = 1.0 + randf_range(-pitch_variation, pitch_variation)
-	p.volume_db = volume_db + linear_to_db(max(0.0001,
-		float(SaveManager.settings.get("master_volume", 0.8)) *
-		float(SaveManager.settings.get("sfx_volume", 0.9))))
+	var p := _flat[_flat_i]
+	_flat_i = (_flat_i + 1) % _flat.size()
+	p.stream = s
+	p.volume_db = volume_db
+	p.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
 	p.play()
 
-func play_at(key: String, world_pos: Vector2, listener: Vector2, max_dist: float = 900.0,
-		pitch_variation: float = 0.0) -> void:
-	if not _streams.has(key):
-		return
-	var d := world_pos.distance_to(listener)
-	if d > max_dist:
-		return
-	var atten := lerpf(0.0, -24.0, clampf(d / max_dist, 0.0, 1.0))
-	play(key, pitch_variation, atten)
 
-func drill(on: bool, material: int = 1) -> void:
-	if _drill_player == null or _drill_player.stream == null:
+func play_at(sfx_name: String, pos: Vector2, volume_db: float = 0.0, pitch_var: float = 0.08, min_gap: float = 0.03) -> void:
+	var s := stream(sfx_name)
+	if s == null or not _rate_ok(sfx_name + str(int(pos.x / 64)) + str(int(pos.y / 64)), min_gap):
 		return
-	if on and not _drill_player.playing:
-		_drill_player.play()
-	elif not on and _drill_player.playing:
-		_drill_player.stop()
+	var p := _pos[_pos_i]
+	_pos_i = (_pos_i + 1) % _pos.size()
+	p.stream = s
+	p.global_position = pos
+	p.volume_db = volume_db
+	p.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
+	p.play()
+
+
+func loop(loop_name: String, on: bool, volume_db: float = 0.0, pitch: float = 1.0) -> void:
+	var p: AudioStreamPlayer = _loops.get(loop_name)
 	if on:
-		match material:
-			Balance.Mat.BASALT:
-				_drill_player.pitch_scale = 0.86
-			Balance.Mat.ALLOY:
-				_drill_player.pitch_scale = 0.72
-			_:
-				_drill_player.pitch_scale = 1.05
+		if p == null:
+			p = AudioStreamPlayer.new()
+			p.bus = "SFX"
+			p.stream = stream(loop_name)
+			add_child(p)
+			_loops[loop_name] = p
+		p.volume_db = volume_db
+		p.pitch_scale = pitch
+		if not p.playing:
+			p.play()
+	elif p and p.playing:
+		p.stop()
 
-func dig_hit(material: int) -> void:
-	match material:
-		Balance.Mat.SOIL:
-			play("dig_soft", 0.14)
-		Balance.Mat.BASALT:
-			play("dig_rock", 0.1)
-		Balance.Mat.ALLOY:
-			play("dig_alloy", 0.08)
-		_:
-			play("dig_rock", 0.1)
+
+func stop_all_loops() -> void:
+	for k in _loops.keys():
+		_loops[k].stop()
+
+
+func music(track: String, fade: float = 1.5) -> void:
+	if track == _music_name:
+		return
+	if _music_tween and _music_tween.is_valid():
+		_music_tween.kill()
+	_music_name = track
+	var old := _music_a
+	_music_a = _music_b
+	_music_b = old
+	var tw := create_tween().set_parallel(true)
+	_music_tween = tw
+	tw.tween_property(_music_b, "volume_db", -80.0, fade)
+	if track != "":
+		_music_a.stream = stream(track)
+		_music_a.volume_db = -40.0
+		_music_a.play()
+		tw.tween_property(_music_a, "volume_db", -4.0, fade)
+	tw.chain().tween_callback(_music_b.stop)

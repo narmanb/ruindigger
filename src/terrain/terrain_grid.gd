@@ -1,555 +1,383 @@
 class_name TerrainGrid
-extends Node
-## Authoritative, serialisable terrain model for one mine.
-##
-## The grid owns all mutable world state (material, accumulated damage, ore
-## payload, fog-of-war). Visuals (TileMapLayer) and collision (per-chunk
-## StaticBody2D) are *derived* from it and only rebuilt for the chunks that
-## actually changed. Nothing else in the game mutates terrain.
+extends RefCounted
+## Authoritative terrain model. Rendering, collision, navigation and the minimap
+## all derive from this grid; nothing else stores mutable terrain state.
 
-signal cell_changed(cx: int, cy: int, material: int)
-signal chunk_dirty(cx: int, cy: int)
-signal ore_mined(ore_id: int, cell: Vector2i)
+signal cell_changed(x: int, y: int, old_mat: int, new_mat: int)
+signal cell_damaged(x: int, y: int, hp_frac: float)
+signal water_changed(x: int, y: int)
 
-const N := 1
-const E := 2
-const S := 4
-const W := 8
+const CHUNK := 16
+const SHADE_REACH := 3   # interior shading looks this many cells deep
 
-const DIRS4: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+var w: int
+var h: int
+var mat: PackedByteArray
+var hp: PackedFloat32Array
+var ore: PackedByteArray
+var flags: PackedByteArray
+var stratum: PackedByteArray
+var water: PackedByteArray         # 0..WATER_MAX in open cells
+var lava: PackedByteArray          # 0..LAVA_MAX in open cells (deep stage only)
+var sand: PackedByteArray          # 0..SAND_MAX px of loose sand in open cells (SandSim)
+var _sand_col_dirty: Dictionary = {}   # chunk -> true (collision for sand changed)
+var chunks_w: int
+var chunks_h: int
+var _dirty: Dictionary = {}        # Vector2i chunk -> true
+var _explore_dirty: Array[Vector2i] = []
+var _water_dirty: Dictionary = {}  # chunk -> true (water presentation only)
+var edits: int = 0                 # count of cell changes (for tests/telemetry)
 
-var w: int = 0
-var h: int = 0
-var tile_size: int = Balance.CELL
-var chunk: int = Balance.CHUNK
 
-var material := PackedByteArray()
-var damage := PackedByteArray()      # accumulated hit points removed
-var ore := PackedByteArray()         # 0 = none, else Balance.ORE_TYPES id
-var explored := PackedByteArray()    # fog of war
-var gas := {}                        # cell index -> gas amount (int)
-var variant := PackedByteArray()     # baked per-cell tile variant choice
-
-var strata: PackedStringArray = PackedStringArray()   # stratum name per row band
-var protected_cells: Dictionary = {}                   # cells never collapse / never mined
-var spawn_cell := Vector2i.ZERO
-var lift_cell := Vector2i.ZERO
-var relic_cell := Vector2i.ZERO
-
-var _chunks_x: int = 0
-var _chunks_y: int = 0
-var _chunk_bodies: Dictionary = {}     # chunk key -> StaticBody2D
-var _chunk_layer: Node2D
-var _collision_layer: int = 1
-
-var _dirty: Dictionary = {}
-
-func setup(grid_w: int, grid_h: int) -> void:
-	w = grid_w
-	h = grid_h
-	var n: int = w * h
-	material.resize(n)
-	damage.resize(n)
+func _init(width: int = 8, height: int = 8) -> void:
+	w = width
+	h = height
+	var n := w * h
+	mat = PackedByteArray()
+	mat.resize(n)
+	hp = PackedFloat32Array()
+	hp.resize(n)
+	ore = PackedByteArray()
 	ore.resize(n)
-	explored.resize(n)
-	variant.resize(n)
-	for i in n:
-		material[i] = Balance.Mat.EMPTY
-		damage[i] = 0
-		ore[i] = 0
-		explored[i] = 0
-		variant[i] = i & 1
-	gas.clear()
-	protected_cells.clear()
-	_chunks_x = int(ceil(float(w) / chunk))
-	_chunks_y = int(ceil(float(h) / chunk))
+	flags = PackedByteArray()
+	flags.resize(n)
+	stratum = PackedByteArray()
+	stratum.resize(n)
+	water = PackedByteArray()
+	water.resize(n)
+	lava = PackedByteArray()
+	lava.resize(n)
+	sand = PackedByteArray()
+	sand.resize(n)
+	chunks_w = ceili(float(w) / CHUNK)
+	chunks_h = ceili(float(h) / CHUNK)
 
-func idx(x: int, y: int) -> int:
-	return y * w + x
 
 func in_bounds(x: int, y: int) -> bool:
 	return x >= 0 and y >= 0 and x < w and y < h
 
-func get_material(x: int, y: int) -> int:
-	if not in_bounds(x, y):
-		return Balance.Mat.BEDROCK   # outside the map is solid
-	return material[idx(x, y)]
 
-func is_solid(x: int, y: int) -> bool:
-	return get_material(x, y) != Balance.Mat.EMPTY
+func idx(x: int, y: int) -> int:
+	return y * w + x
 
-func set_material(x: int, y: int, mat: int) -> void:
-	if not in_bounds(x, y):
-		return
-	var i := idx(x, y)
-	if material[i] == mat:
-		return
-	material[i] = mat
-	damage[i] = 0
-	if mat == Balance.Mat.EMPTY:
-		ore[i] = 0
-	mark_dirty(x, y)
-	cell_changed.emit(x, y, mat)
 
-func get_damage(x: int, y: int) -> int:
+func get_mat(x: int, y: int) -> int:
 	if not in_bounds(x, y):
-		return 0
-	return damage[idx(x, y)]
+		return Cell.BEDROCK
+	return mat[y * w + x]
+
 
 func get_ore(x: int, y: int) -> int:
 	if not in_bounds(x, y):
 		return 0
-	return ore[idx(x, y)]
+	return ore[y * w + x]
 
-func set_ore(x: int, y: int, id: int) -> void:
+
+func get_flags(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return Cell.F_PROTECTED
+	return flags[y * w + x]
+
+
+func has_flag(x: int, y: int, f: int) -> bool:
+	return (get_flags(x, y) & f) != 0
+
+
+func set_flag(x: int, y: int, f: int, on: bool = true) -> void:
 	if not in_bounds(x, y):
 		return
-	ore[idx(x, y)] = id
+	var i := y * w + x
+	flags[i] = (flags[i] | f) if on else (flags[i] & ~f)
 
-func is_explored(x: int, y: int) -> bool:
+
+func get_stratum(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return Balance.stratum_of_row(y)
+	return stratum[y * w + x]
+
+
+func is_solid(x: int, y: int) -> bool:
+	return Cell.is_solid(get_mat(x, y))
+
+
+func hp_frac(x: int, y: int) -> float:
+	if not in_bounds(x, y):
+		return 1.0
+	var m := get_mat(x, y)
+	return clampf(hp[y * w + x] / Cell.max_hp(m), 0.0, 1.0)
+
+
+## Raw write used by the generator (no signals, no dirty tracking).
+func put(x: int, y: int, m: int, ore_id: int = 0) -> void:
+	if not in_bounds(x, y):
+		return
+	var i := y * w + x
+	mat[i] = m
+	ore[i] = ore_id
+	hp[i] = Cell.max_hp(m)
+
+
+func get_water(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return 0
+	return water[y * w + x]
+
+
+func set_water(x: int, y: int, v: int) -> void:
+	if not in_bounds(x, y):
+		return
+	var i := y * w + x
+	if water[i] == v:
+		return
+	water[i] = clampi(v, 0, 255)
+	_water_dirty[Vector2i(x / CHUNK, y / CHUNK)] = true
+
+
+func get_lava(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return 0
+	return lava[y * w + x]
+
+
+func set_lava(x: int, y: int, v: int) -> void:
+	if in_bounds(x, y):
+		lava[y * w + x] = clampi(v, 0, 255)
+
+
+func get_sand(x: int, y: int) -> int:
+	if not in_bounds(x, y):
+		return 0
+	return sand[y * w + x]
+
+
+func set_sand(x: int, y: int, v: int) -> void:
+	if not in_bounds(x, y):
+		return
+	var i := y * w + x
+	var nv := clampi(v, 0, Balance.SAND_MAX)
+	if sand[i] == nv:
+		return
+	sand[i] = nv
+	# the cell and its neighbours' slopes (two cells either side) are drawn
+	# from these heights: dirty the one or two chunks that covers
+	var cy := y / CHUNK
+	for cx in range(maxi(0, x - 2) / CHUNK, mini(w - 1, x + 2) / CHUNK + 1):
+		var k := Vector2i(cx, cy)
+		_dirty[k] = true
+		_sand_col_dirty[k] = true
+
+
+func take_sand_col_dirty() -> Array:
+	var k := _sand_col_dirty.keys()
+	_sand_col_dirty.clear()
+	return k
+
+
+func take_water_dirty() -> Array:
+	var k := _water_dirty.keys()
+	_water_dirty.clear()
+	return k
+
+
+## Re-insert a solid cell with its ore and hp intact (falling boulders).
+func place(x: int, y: int, m: int, ore_id: int, hp_v: float) -> void:
+	if not in_bounds(x, y):
+		return
+	set_mat(x, y, m)
+	var i := y * w + x
+	ore[i] = ore_id
+	hp[i] = hp_v
+	flags[i] &= ~Cell.F_DUG
+
+
+## Runtime write: updates hp, dirty chunks and notifies listeners.
+func set_mat(x: int, y: int, m: int, mark_dug: bool = false) -> void:
+	if not in_bounds(x, y):
+		return
+	var i := y * w + x
+	var old := int(mat[i])
+	if old == m:
+		return
+	mat[i] = m
+	hp[i] = Cell.max_hp(m)
+	if Cell.is_solid(m):
+		ore[i] = 0 if (flags[i] & Cell.F_CLAIMED) else ore[i]
+	elif mark_dug and Cell.is_solid(old):
+		flags[i] |= Cell.F_DUG
+	edits += 1
+	_mark_dirty_around(x, y)
+	cell_changed.emit(x, y, old, m)
+
+
+## Apply drill/blast damage. Returns {broken, blocked, ore, mat}.
+func damage(x: int, y: int, amount: float, drill_tier: int = 0, ignore_tier: bool = false) -> Dictionary:
+	var res := {"broken": false, "blocked": false, "ore": 0, "mat": get_mat(x, y), "hp_frac": 1.0}
+	if not in_bounds(x, y):
+		res["blocked"] = true
+		return res
+	var m := get_mat(x, y)
+	if not Cell.is_destructible(m) or has_flag(x, y, Cell.F_PROTECTED):
+		res["blocked"] = true
+		return res
+	if not ignore_tier and Cell.tier(m) > drill_tier:
+		res["blocked"] = true
+		return res
+	var i := y * w + x
+	hp[i] -= amount
+	if hp[i] <= 0.0:
+		var o := int(ore[i])
+		if o != 0 and (flags[i] & Cell.F_CLAIMED) == 0:
+			res["ore"] = o
+			flags[i] |= Cell.F_CLAIMED
+		ore[i] = 0
+		res["broken"] = true
+		set_mat(x, y, Cell.AIR, true)
+		res["hp_frac"] = 0.0
+	else:
+		res["hp_frac"] = hp[i] / Cell.max_hp(m)
+		_mark_chunk_dirty(x, y)
+		cell_damaged.emit(x, y, res["hp_frac"])
+	return res
+
+
+func _mark_chunk_dirty(x: int, y: int) -> void:
+	_dirty[Vector2i(x / CHUNK, y / CHUNK)] = true
+
+
+func _mark_dirty_around(x: int, y: int) -> void:
+	# Interior shading and edge masks of neighbours change, so dirty every chunk
+	# touched by the SHADE_REACH neighbourhood (usually just one chunk).
+	var r := SHADE_REACH
+	var c0 := Vector2i(maxi(0, x - r) / CHUNK, maxi(0, y - r) / CHUNK)
+	var c1 := Vector2i(mini(w - 1, x + r) / CHUNK, mini(h - 1, y + r) / CHUNK)
+	for cy in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			_dirty[Vector2i(cx, cy)] = true
+
+
+func take_dirty() -> Array:
+	var keys := _dirty.keys()
+	_dirty.clear()
+	return keys
+
+
+func peek_dirty() -> Array:
+	return _dirty.keys()
+
+
+func mark_all_dirty() -> void:
+	for cy in chunks_h:
+		for cx in chunks_w:
+			_dirty[Vector2i(cx, cy)] = true
+
+
+func explore(x: int, y: int) -> bool:
 	if not in_bounds(x, y):
 		return false
-	return explored[idx(x, y)] != 0
-
-func mark_explored(x: int, y: int, radius: int = 0) -> void:
-	for dy in range(-radius, radius + 1):
-		for dx in range(-radius, radius + 1):
-			if dx * dx + dy * dy > radius * radius + radius:
-				continue
-			var nx := x + dx
-			var ny := y + dy
-			if in_bounds(nx, ny):
-				explored[idx(nx, ny)] = 1
-
-func is_protected(x: int, y: int) -> bool:
-	return protected_cells.has(idx(x, y))
-
-func protect(x: int, y: int, radius: int = 0) -> void:
-	for dy in range(-radius, radius + 1):
-		for dx in range(-radius, radius + 1):
-			var nx := x + dx
-			var ny := y + dy
-			if in_bounds(nx, ny):
-				protected_cells[idx(nx, ny)] = true
-
-# ---------------------------------------------------------------------------
-# Damage / mining
-# ---------------------------------------------------------------------------
-
-## Returns true when the tile breaks on this call. `power` is drill strength.
-func apply_damage(x: int, y: int, amount: int, miner_tier: int = 99) -> bool:
-	if not in_bounds(x, y):
+	var i := y * w + x
+	if flags[i] & Cell.F_EXPLORED:
 		return false
-	var i := idx(x, y)
-	var mat: int = material[i]
-	if mat == Balance.Mat.EMPTY:
-		return false
-	if is_protected(x, y):
-		return false
-	if Balance.DRILL_MIN_TIER.get(mat, 99) > miner_tier:
-		return false
-	var hp: int = Balance.MATERIAL_HP.get(mat, 1)
-	damage[i] = min(hp, damage[i] + amount)
-	if damage[i] >= hp:
-		_break(x, y)
-		return true
-	mark_dirty(x, y)
-	cell_changed.emit(x, y, mat)
-	return false
+	flags[i] |= Cell.F_EXPLORED
+	_explore_dirty.append(Vector2i(x, y))
+	return true
 
-func can_mine(x: int, y: int, miner_tier: int) -> bool:
-	if not in_bounds(x, y):
-		return false
-	var mat := material[idx(x, y)]
-	if mat == Balance.Mat.EMPTY or is_protected(x, y):
-		return false
-	return Balance.DRILL_MIN_TIER.get(mat, 99) <= miner_tier
 
-func _break(x: int, y: int) -> void:
-	var i := idx(x, y)
-	var ore_id: int = ore[i]
-	material[i] = Balance.Mat.EMPTY
-	damage[i] = 0
-	ore[i] = 0
-	gas.erase(i)
-	mark_dirty(x, y)
-	if ore_id != 0:
-		ore_mined.emit(ore_id, Vector2i(x, y))
-	cell_changed.emit(x, y, Balance.Mat.EMPTY)
+func take_explored() -> Array[Vector2i]:
+	var a := _explore_dirty
+	_explore_dirty = []
+	return a
 
-## Damage a radius (explosions, collapses). Returns the list of cells broken.
-func damage_radius(cx: int, cy: int, radius_cells: float, amount: int,
-		miner_tier: int = 99, skip_protected: bool = true) -> Array:
-	var broken: Array = []
-	var r: int = int(ceil(radius_cells))
-	for dy in range(-r, r + 1):
-		for dx in range(-r, r + 1):
-			var d := sqrt(float(dx * dx + dy * dy))
-			if d > radius_cells:
-				continue
-			var nx := cx + dx
-			var ny := cy + dy
-			if not in_bounds(nx, ny):
-				continue
-			if skip_protected and is_protected(nx, ny):
-				continue
-			var falloff := 1.0 - (d / maxf(0.001, radius_cells)) * 0.5
-			var amt := int(round(amount * falloff))
-			if amt <= 0:
-				continue
-			if apply_damage(nx, ny, amt, miner_tier):
-				broken.append(Vector2i(nx, ny))
-	return broken
 
-## The neighbour exposure mask used to pick the correct baked tile.
-func mask_at(x: int, y: int) -> int:
+## Edge mask: bit set when that side borders open space (N=1,E=2,S=4,W=8).
+func edge_mask(x: int, y: int) -> int:
 	var m := 0
-	if get_material(x, y - 1) == Balance.Mat.EMPTY:
-		m |= N
-	if get_material(x + 1, y) == Balance.Mat.EMPTY:
-		m |= E
-	if get_material(x, y + 1) == Balance.Mat.EMPTY:
-		m |= S
-	if get_material(x - 1, y) == Balance.Mat.EMPTY:
-		m |= W
+	if not is_solid(x, y - 1):
+		m |= 1
+	if not is_solid(x + 1, y):
+		m |= 2
+	if not is_solid(x, y + 1):
+		m |= 4
+	if not is_solid(x - 1, y):
+		m |= 8
 	return m
 
-# ---------------------------------------------------------------------------
-# Chunk bookkeeping
-# ---------------------------------------------------------------------------
 
-func mark_dirty(x: int, y: int) -> void:
-	var cx: int = x / chunk
-	var cy: int = y / chunk
-	_dirty[Vector2i(cx, cy)] = true
-	# Adjacent chunks need a refresh too: an edge change alters the neighbour's
-	# exposure mask, and their collision runs may now connect.
-	for oy in [-1, 0, 1]:
-		for ox in [-1, 0, 1]:
-			var nx: int = x + ox * chunk
-			var ny: int = y + oy * chunk
-			if in_bounds(nx, ny):
-				_dirty[Vector2i(nx / chunk, ny / chunk)] = true
+## Distance (0..SHADE_REACH) from a solid cell to the nearest open cell.
+func depth_from_open(x: int, y: int) -> int:
+	for r in range(1, SHADE_REACH + 1):
+		for d in range(-r, r + 1):
+			if not is_solid(x + d, y - r) or not is_solid(x + d, y + r) \
+					or not is_solid(x - r, y + d) or not is_solid(x + r, y + d):
+				return r - 1
+	return SHADE_REACH
 
-func flush_dirty(limit: int = 8) -> Array:
-	var out: Array = []
-	var keys: Array = _dirty.keys()
-	var n: int = mini(limit, keys.size())
-	for i in n:
-		out.append(keys[i])
-		_dirty.erase(keys[i])
-	return out
-
-func take_all_dirty() -> Array:
-	var out := _dirty.keys()
-	_dirty.clear()
-	return out
-
-# ---------------------------------------------------------------------------
-# Collision derivation
-# ---------------------------------------------------------------------------
-
-func build_collision(parent: Node2D) -> void:
-	_chunk_layer = parent
-	for cy in _chunks_y:
-		for cx in _chunks_x:
-			rebuild_chunk_collision(cx, cy)
-
-func rebuild_chunk_collision(cx: int, cy: int) -> void:
-	var key: Vector2i = Vector2i(cx, cy)
-	var body: StaticBody2D = _chunk_bodies.get(key)
-	if body == null:
-		body = StaticBody2D.new()
-		body.collision_layer = _collision_layer
-		body.collision_mask = 0
-		body.position = Vector2(cx * chunk * tile_size, cy * chunk * tile_size)
-		_chunk_layer.add_child(body)
-		_chunk_bodies[key] = body
-	for c in body.get_children():
-		c.queue_free()
-	_emit_runs(body, cx, cy)
-
-func _emit_runs(body: StaticBody2D, cx: int, cy: int) -> void:
-	var x0: int = cx * chunk
-	var y0: int = cy * chunk
-	var x1: int = mini(x0 + chunk, w)
-	var y1: int = mini(y0 + chunk, h)
-	for y in range(y0, y1):
-		var run_start: int = -1
-		for x in range(x0, x1 + 1):
-			var solid: bool = x < x1 and material[idx(x, y)] != Balance.Mat.EMPTY
-			if solid and run_start < 0:
-				run_start = x
-			elif not solid and run_start >= 0:
-				_add_run_shape(body, run_start, y, x - run_start)
-				run_start = -1
-
-func _add_run_shape(body: StaticBody2D, x: int, y: int, length: int) -> void:
-	var shape := CollisionShape2D.new()
-	var rect := RectangleShape2D.new()
-	rect.size = Vector2(length * tile_size, tile_size)
-	shape.shape = rect
-	# Shapes are positioned relative to the chunk body, which already sits at the
-	# chunk's world origin. Forgetting the subtraction here silently shifts all
-	# collision away from the visible tiles.
-	var origin: Vector2 = body.position
-	shape.position = Vector2(x * tile_size + length * tile_size * 0.5 - origin.x,
-			y * tile_size + tile_size * 0.5 - origin.y)
-	body.add_child(shape)
-
-# ---------------------------------------------------------------------------
-# Queries used by AI, generation and the minimap
-# ---------------------------------------------------------------------------
 
 func world_to_cell(p: Vector2) -> Vector2i:
-	return Vector2i(int(floor(p.x / tile_size)), int(floor(p.y / tile_size)))
+	return Vector2i(floori(p.x / Balance.CELL), floori(p.y / Balance.CELL))
 
-func cell_to_world(c: Vector2i) -> Vector2:
-	return Vector2(c.x * tile_size + tile_size * 0.5, c.y * tile_size + tile_size * 0.5)
 
-func cell_top_left(c: Vector2i) -> Vector2:
-	return Vector2(c.x * tile_size, c.y * tile_size)
+func cell_center(c: Vector2i) -> Vector2:
+	return Vector2((c.x + 0.5) * Balance.CELL, (c.y + 0.5) * Balance.CELL)
 
-func stratum_at(y: int) -> String:
-	var band: int = int(float(y) / maxf(1.0, float(h)) * maxf(1.0, float(strata.size())))
-	return strata[clampi(band, 0, strata.size() - 1)] if strata.size() > 0 else "dustworks"
 
-## Breadth-first reachability over *currently open* cells. Used by generation
-## validation and the anti-softlock checker.
-func count_material(mat: int) -> int:
-	var c := 0
-	for i in material.size():
-		if material[i] == mat:
-			c += 1
-	return c
+func solid_at(p: Vector2) -> bool:
+	var c := world_to_cell(p)
+	return is_solid(c.x, c.y)
 
-# ---------------------------------------------------------------------------
-# Flood fill / pathfinding
-#
-# These are on the hot path during generation (called once per candidate map
-# and repeatedly by the softlock checkers), so they use flat packed arrays and
-# integer indices rather than Dictionary-of-Vector2i, which is dramatically
-# faster in GDScript.
-# ---------------------------------------------------------------------------
 
-## Returns a PackedByteArray where 1 marks a cell reachable from `from` through
-## currently-open terrain. Also returns the reachable count via `count_out`.
-func reach_mask(from: Vector2i, max_nodes: int = 200000) -> PackedByteArray:
-	var mask := PackedByteArray()
-	mask.resize(w * h)
-	mask.fill(0)
-	if not in_bounds(from.x, from.y) or is_solid(from.x, from.y):
-		return mask
-	var queue := PackedInt32Array()
-	queue.resize(1024)
-	var head := 0
-	var tail := 0
-	var start := idx(from.x, from.y)
-	queue[tail] = start
-	tail += 1
-	mask[start] = 1
-	var visited := 1
-	while head < tail and visited < max_nodes:
-		var cur: int = queue[head]
-		head += 1
-		var cx: int = cur % w
-		var cy: int = cur / w
-		if cx > 0 and _try_visit(mask, queue, tail, cur - 1, cx - 1, cy):
-			tail += 1
-			visited += 1
-		if cx < w - 1 and _try_visit(mask, queue, tail, cur + 1, cx + 1, cy):
-			tail += 1
-			visited += 1
-		if cy > 0 and _try_visit(mask, queue, tail, cur - w, cx, cy - 1):
-			tail += 1
-			visited += 1
-		if cy < h - 1 and _try_visit(mask, queue, tail, cur + w, cx, cy + 1):
-			tail += 1
-			visited += 1
-		if tail + 4 >= queue.size():
-			queue.resize(queue.size() * 2)
-	return mask
-
-func _try_visit(mask: PackedByteArray, queue: PackedInt32Array, tail: int,
-		nidx: int, nx: int, ny: int) -> bool:
-	if mask[nidx] != 0:
-		return false
-	if material[nidx] != Balance.Mat.EMPTY:
-		return false
-	mask[nidx] = 1
-	queue[tail] = nidx
-	return true
-
-## Like reach_mask, but movement is allowed through any cell the drill can
-## eventually remove (soil / basalt / alloy). This is the true "can the player
-## ever get there" flood, used to prove every placed reward is obtainable.
-func reach_mask_diggable(from: Vector2i, max_nodes: int = 400000) -> PackedByteArray:
-	var mask := PackedByteArray()
-	mask.resize(w * h)
-	mask.fill(0)
-	if not in_bounds(from.x, from.y):
-		return mask
-	var queue := PackedInt32Array()
-	queue.resize(1024)
-	var head := 0
-	var tail := 0
-	var start := idx(from.x, from.y)
-	queue[tail] = start
-	tail += 1
-	mask[start] = 1
-	var visited := 1
-	while head < tail and visited < max_nodes:
-		if tail + 4 >= queue.size():
-			queue.resize(queue.size() * 2)
-		var cur: int = queue[head]
-		head += 1
-		var cx: int = cur % w
-		var cy: int = cur / w
-		if cx > 0 and _try_visit_diggable(mask, queue, tail, cur - 1):
-			tail += 1
-			visited += 1
-		if cx < w - 1 and _try_visit_diggable(mask, queue, tail, cur + 1):
-			tail += 1
-			visited += 1
-		if cy > 0 and _try_visit_diggable(mask, queue, tail, cur - w):
-			tail += 1
-			visited += 1
-		if cy < h - 1 and _try_visit_diggable(mask, queue, tail, cur + w):
-			tail += 1
-			visited += 1
-	return mask
-
-func _try_visit_diggable(mask: PackedByteArray, queue: PackedInt32Array, tail: int,
-		nidx: int) -> bool:
-	if mask[nidx] != 0:
-		return false
-	if material[nidx] == Balance.Mat.BEDROCK:
-		return false
-	mask[nidx] = 1
-	queue[tail] = nidx
-	return true
-
-## True if `to` is reachable from `from`. Early-exits as soon as it is found.
-func reachable(from: Vector2i, to: Vector2i, max_nodes: int = 200000) -> bool:
-	if not in_bounds(from.x, from.y) or not in_bounds(to.x, to.y):
-		return false
-	if is_solid(from.x, from.y) or is_solid(to.x, to.y):
-		return false
-	var goal := idx(to.x, to.y)
-	var mask := PackedByteArray()
-	mask.resize(w * h)
-	mask.fill(0)
-	var queue := PackedInt32Array()
-	queue.resize(1024)
-	var head := 0
-	var tail := 0
-	var start := idx(from.x, from.y)
-	queue[tail] = start
-	tail += 1
-	mask[start] = 1
-	var visited := 0
-	while head < tail and visited < max_nodes:
-		var cur: int = queue[head]
-		head += 1
-		visited += 1
-		if cur == goal:
+## Grid line-of-sight between two world points (Bresenham over cells).
+func line_clear(a: Vector2, b: Vector2) -> bool:
+	var c0 := world_to_cell(a)
+	var c1 := world_to_cell(b)
+	var dx := absi(c1.x - c0.x)
+	var dy := -absi(c1.y - c0.y)
+	var sx := 1 if c0.x < c1.x else -1
+	var sy := 1 if c0.y < c1.y else -1
+	var err := dx + dy
+	var x := c0.x
+	var y := c0.y
+	var guard := 0
+	while guard < 256:
+		guard += 1
+		if (x != c0.x or y != c0.y) and (x != c1.x or y != c1.y) and is_solid(x, y):
+			return false
+		if x == c1.x and y == c1.y:
 			return true
-		var cx: int = cur % w
-		var cy: int = cur / w
-		if cx > 0 and _try_visit(mask, queue, tail, cur - 1, cx - 1, cy):
-			tail += 1
-		if cx < w - 1 and _try_visit(mask, queue, tail, cur + 1, cx + 1, cy):
-			tail += 1
-		if cy > 0 and _try_visit(mask, queue, tail, cur - w, cx, cy - 1):
-			tail += 1
-		if cy < h - 1 and _try_visit(mask, queue, tail, cur + w, cx, cy + 1):
-			tail += 1
-		if tail + 4 >= queue.size():
-			queue.resize(queue.size() * 2)
+		var e2 := 2 * err
+		if e2 >= dy:
+			err += dy
+			x += sx
+		if e2 <= dx:
+			err += dx
+			y += sy
 	return false
 
-## BFS shortest path through open cells. Empty if unreachable.
-func path_between(from: Vector2i, to: Vector2i, max_nodes: int = 200000) -> Array:
-	if not in_bounds(from.x, from.y) or not in_bounds(to.x, to.y):
-		return []
-	if is_solid(from.x, from.y) or is_solid(to.x, to.y):
-		return []
-	var parent := PackedInt32Array()
-	parent.resize(w * h)
-	parent.fill(-1)
-	var queue := PackedInt32Array()
-	queue.resize(1024)
-	var head := 0
-	var tail := 0
-	var start := idx(from.x, from.y)
-	var goal := idx(to.x, to.y)
-	queue[tail] = start
-	tail += 1
-	parent[start] = start
-	var visited := 0
-	var found := false
-	while head < tail and visited < max_nodes:
-		var cur: int = queue[head]
-		head += 1
-		visited += 1
-		if cur == goal:
-			found = true
-			break
-		var cx: int = cur % w
-		var cy: int = cur / w
-		if cx > 0:
-			tail = _visit_path(parent, queue, tail, cur - 1, cur)
-		if cx < w - 1:
-			tail = _visit_path(parent, queue, tail, cur + 1, cur)
-		if cy > 0:
-			tail = _visit_path(parent, queue, tail, cur - w, cur)
-		if cy < h - 1:
-			tail = _visit_path(parent, queue, tail, cur + w, cur)
-		if tail + 4 >= queue.size():
-			queue.resize(queue.size() * 2)
-	if not found:
-		return []
-	var out: Array = []
-	var cur2 := goal
-	while cur2 != start:
-		out.append(Vector2i(cur2 % w, cur2 / w))
-		cur2 = parent[cur2]
-	out.append(Vector2i(start % w, start / w))
-	out.reverse()
-	return out
 
-func _visit_path(parent: PackedInt32Array, queue: PackedInt32Array, tail: int,
-		nidx: int, from_idx: int) -> int:
-	if parent[nidx] != -1:
-		return tail
-	if material[nidx] != Balance.Mat.EMPTY:
-		return tail
-	parent[nidx] = from_idx
-	queue[tail] = nidx
-	return tail + 1
-
-func serialise() -> Dictionary:
+func to_dict() -> Dictionary:
 	return {
-		"w": w, "h": h, "tile": tile_size,
-		"material": material, "damage": damage, "ore": ore,
-		"explored": explored, "variant": variant, "gas": gas,
-		"strata": strata, "spawn": spawn_cell, "lift": lift_cell, "relic": relic_cell,
-		"protected": protected_cells.keys(),
+		"w": w, "h": h,
+		"mat": Marshalls.raw_to_base64(mat),
+		"ore": Marshalls.raw_to_base64(ore),
+		"flags": Marshalls.raw_to_base64(flags),
+		"stratum": Marshalls.raw_to_base64(stratum),
+		"hp": Marshalls.raw_to_base64(hp.to_byte_array()),
+		"water": Marshalls.raw_to_base64(water),
+		"lava": Marshalls.raw_to_base64(lava),
+		"sand": Marshalls.raw_to_base64(sand),
 	}
 
-func deserialise(d: Dictionary) -> void:
-	setup(int(d["w"]), int(d["h"]))
-	tile_size = int(d.get("tile", Balance.CELL))
-	material = d["material"]
-	damage = d["damage"]
-	ore = d["ore"]
-	explored = d["explored"]
-	variant = d["variant"]
-	gas = d.get("gas", {})
-	strata = d.get("strata", PackedStringArray())
-	spawn_cell = d.get("spawn", Vector2i.ZERO)
-	lift_cell = d.get("lift", Vector2i.ZERO)
-	relic_cell = d.get("relic", Vector2i.ZERO)
-	protected_cells.clear()
-	for i in d.get("protected", []):
-		protected_cells[int(i)] = true
+
+static func from_dict(d: Dictionary) -> TerrainGrid:
+	var g := TerrainGrid.new(int(d["w"]), int(d["h"]))
+	g.mat = Marshalls.base64_to_raw(d["mat"])
+	g.ore = Marshalls.base64_to_raw(d["ore"])
+	g.flags = Marshalls.base64_to_raw(d["flags"])
+	g.stratum = Marshalls.base64_to_raw(d["stratum"])
+	g.hp = Marshalls.base64_to_raw(d["hp"]).to_float32_array()
+	if d.has("water"):
+		g.water = Marshalls.base64_to_raw(d["water"])
+	if d.has("lava"):
+		g.lava = Marshalls.base64_to_raw(d["lava"])
+	if d.has("sand"):
+		g.sand = Marshalls.base64_to_raw(d["sand"])
+	return g
