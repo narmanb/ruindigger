@@ -238,10 +238,6 @@ const UPGRADES := {
 		"desc": ["60 ore units", "90 ore units", "130 ore units", "180 ore units"]},
 	"hull": {"name": "HULL PLATING", "costs": [110, 260, 520],
 		"desc": ["100 hull", "130 hull", "165 hull", "210 hull"]},
-	"charge_rack": {"name": "CHARGE RACK", "costs": [140, 300, 560],
-		"desc": ["Carry up to 6 charges", "Carry up to 8 charges", "Carry up to 10 charges", "Carry up to 12 charges"]},
-	"sticky": {"name": "STICKY CHARGES", "costs": [240],
-		"desc": ["Charges bounce and roll", "Charges stick to walls, ceilings and foes (toggle at the Supply Locker or in Pause)"]},
 	"scaffold": {"name": "SCAFFOLD HOPPER", "costs": [90, 210, 430],
 		"desc": ["40 ladder energy", "70 ladder energy", "110 ladder energy", "160 ladder energy"]},
 }
@@ -273,27 +269,37 @@ const WATER_TINT := 3                # WaterRenderer.COLORS row used for all wat
 const ZONE_ENTRY_ROWS := 3          # rows past a zone border before you count as inside it
 const FOOT_SINK_MAX := 5             # px the sprite may sink onto rough ground
 const CAMERA_LOOK_AHEAD := 0.11     # fraction of the visible width
-const CHARGE_PRICE := 25
-const CHARGES_FREE := 2
-const CHARGES_MAX := 6               # without the Charge Rack upgrade
-const CHARGES_MAX_BY_LEVEL := [6, 8, 10, 12]
 
-# --- Explosives (Demolitions counter; WORK IN PROGRESS, not wired in yet) ---
-# Two slots per dive (main + backup), each with its own button. See HANDOFF.md.
+# --- Explosives (bought and upgraded at the Demolitions counter) ---
+# You pack two slots per dive (main + backup); each slot has its own button.
+# "free": units the main slot gets with every contract. "carry": most you can
+# hold, by BIGGER RACK level.
 const EXPLOSIVES := {
-	"charge": {"name": "DEMO CHARGE", "price": 25, "carry": [6, 8, 10, 12], "desc": "Bounces and rolls, then blows."},
-	"sticky": {"name": "STICKY CHARGE", "price": 35, "carry": [4, 6, 8, 10], "desc": "Sticks to rock, ceilings and foes."},
-	"rocket": {"name": "DRILL ROCKET", "price": 45, "carry": [3, 4, 5, 6], "desc": "Bores straight ahead, then blows.", "bore_time": 1.2, "speed": 160.0},
-	"remote": {"name": "REMOTE CHARGE", "price": 40, "carry": [3, 4, 5, 6], "desc": "Throw it; press again to set it off.", "max_out": 1},
-	"mine": {"name": "PROXIMITY MINE", "price": 35, "carry": [3, 4, 5, 6], "desc": "Arms after a second; anything that steps on it sets it off.", "arm": 1.0, "trigger": 1.2},
+	"charge": {"name": "DEMO CHARGE", "short": "CHRG", "price": 25, "free": 2, "carry": [6, 8, 10, 12], "desc": "Bounces and rolls, then blows."},
+	"sticky": {"name": "STICKY CHARGE", "short": "STKY", "price": 35, "free": 1, "carry": [4, 6, 8, 10], "desc": "Sticks to rock, ceilings and foes, then blows."},
+	"rocket": {"name": "DRILL ROCKET", "short": "RCKT", "price": 45, "free": 1, "carry": [3, 4, 5, 6], "desc": "Bores straight through rock the way you aim, then blows."},
+	"remote": {"name": "REMOTE CHARGE", "short": "REMT", "price": 40, "free": 1, "carry": [3, 4, 5, 6], "desc": "Throw it, then press again to set it off."},
+	"mine": {"name": "PROXIMITY MINE", "short": "MINE", "price": 35, "free": 1, "carry": [3, 4, 5, 6], "desc": "Laid at your feet. Arms once you step away; the next thing to come near sets it off."},
 }
-const EXPLOSIVE_DEFAULT := {"main": "charge", "backup": ""}
+const EXPLOSIVE_ORDER := ["charge", "sticky", "rocket", "remote", "mine"]
+const EXPLOSIVE_DEFAULT := ["charge", ""]      # main slot, backup slot ("" = empty)
+const CACHE_OVERFILL := 2            # a supply cache may take you this far past your carry limit
+const ROCKET_LIFE := 1.6             # s before a drill rocket blows on its own
+const ROCKET_SPEED := 170.0          # px/s in open air
+const ROCKET_BORE_SPEED := 100.0     # px/s while cutting rock
+const REMOTE_MAX_OUT := 1            # remote charges out at once; pressing again sets them off
+const REMOTE_DELAY := 0.15           # s between the press and the blast
+const MINE_ARM := 1.0                # s before a proximity mine can arm
+const MINE_TRIGGER := 1.3            # cells: a foe or the digger this close sets it off
+const MINE_DELAY := 0.35             # s of warning beep before it blows
 # capped upgrades sold at the Demolitions counter (cost per next level)
+const DEMO_TRACKS := ["capacity", "power", "radius"]
 const DEMO_UPGRADES := {
 	"capacity": {"name": "BIGGER RACK", "costs": [140, 300, 560], "desc": "Carry more of every explosive."},
 	"power": {"name": "BLAST POWER", "costs": [180, 380], "mult": [1.0, 1.25, 1.5], "desc": "Explosions hit rock and foes harder."},
 	"radius": {"name": "BLAST RADIUS", "costs": [200, 420], "mult": [1.0, 1.15, 1.3], "desc": "Explosions reach further."},
 }
+const STICKY_REFUND := 240           # old saves: the retired STICKY CHARGES upgrade is paid back
 
 # --- Demolition charge ---
 const CHARGE_FUSE := 2.2
@@ -639,10 +645,6 @@ func heat_cooling(level: int) -> float:
 
 func scaffold_capacity(level: int) -> int:
 	return SCAFFOLD_CAPACITY[clampi(level, 0, SCAFFOLD_CAPACITY.size() - 1)]
-
-
-func charges_max(level: int) -> int:
-	return CHARGES_MAX_BY_LEVEL[clampi(level, 0, CHARGES_MAX_BY_LEVEL.size() - 1)]
 
 
 ## Explosives: how many of a type you can carry at a BIGGER RACK level.

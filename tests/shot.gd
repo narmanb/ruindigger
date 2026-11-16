@@ -20,6 +20,13 @@ func _ready() -> void:
 	if screen == "results":
 		Game.last_result = {"extracted": args.get("ok", "1") == "1", "cause": "burrow crawler", "cargo": {1: 9, 2: 4, 3: 2, 5: 3},
 			"credits": 200, "relic": true, "relic_bonus": 260, "depth": 388, "kills": 3, "time": 612.0, "seed": 4242, "contract": "STANDARD SURVEY"}
+	# slots=charge,rocket: pack these explosives (second may be empty)
+	if args.has("slots"):
+		var sl: PackedStringArray = String(args["slots"]).split(",")
+		Progress.slots = [sl[0], sl[1] if sl.size() > 1 else ""]
+		for k: String in Progress.slots:
+			if k != "":
+				Progress.explosives[k] = 3
 	if screen == "mine":
 		Game.contract = Game.contract_offers[0]
 		Game.contract["seed"] = int(args.get("seed", "7"))

@@ -134,6 +134,10 @@ static func icon(ci: CanvasItem, kind: String, c: Vector2, s: float, a: float = 
 		"drill": _drill(ci, c, s, a)
 		"jump": _jump(ci, c, s, a)
 		"charge": _bomb(ci, c, s, a)
+		"sticky": _sticky(ci, c, s, a)
+		"rocket": _rocket(ci, c, s, a)
+		"remote": _remote(ci, c, s, a)
+		"mine": _mine(ci, c, s, a)
 		"ladder": _ladder(ci, c, s, a)
 		"sonar": _sonar(ci, c, s, a)
 		"cryo": _cryo(ci, c, s, a)
@@ -182,6 +186,50 @@ static func _bomb(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
 	for k in 6:
 		var d := Vector2.RIGHT.rotated(k * TAU / 6.0)
 		ci.draw_line(spark + d * 1.5, spark + d * s * 0.14, Color(YELLOW, a), 1.0)
+
+
+static func _sticky(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
+	# a bomb with glue running off it
+	_bomb(ci, c + Vector2(0, -s * 0.08), s * 0.9, a)
+	for k in 3:
+		var x := c.x - s * 0.3 + k * s * 0.24
+		var h := s * (0.2 if k == 1 else 0.12)
+		ci.draw_rect(Rect2(roundf(x), roundf(c.y + s * 0.26), 2, roundf(h)), Color(GREEN, a))
+
+
+static func _rocket(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
+	# a drill-nosed rocket pointing right, with a flame
+	var body := Rect2((c + Vector2(-s * 0.34, -s * 0.16)).round(), Vector2(s * 0.42, s * 0.32).round())
+	ci.draw_rect(body.grow(1.0), Color(OUTLINE, a))
+	ci.draw_rect(body, Color(METAL_HI, a))
+	var nb := Vector2(body.end.x, c.y)
+	ci.draw_colored_polygon(PackedVector2Array([nb + Vector2(0, -s * 0.24), nb + Vector2(s * 0.4, 0), nb + Vector2(0, s * 0.24)]), Color(ORANGE, a))
+	ci.draw_line(nb + Vector2(s * 0.1, -s * 0.16), nb + Vector2(s * 0.18, s * 0.12), Color(YELLOW, a), 1.0)
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(body.position.x, c.y - s * 0.12), Vector2(body.position.x - s * 0.24, c.y), Vector2(body.position.x, c.y + s * 0.12)]), Color(YELLOW, a))
+
+
+static func _remote(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
+	# a charge with an aerial and a signal
+	var r := s * 0.28
+	var bc := c + Vector2(-s * 0.12, s * 0.14)
+	ci.draw_circle(bc, r + 1.0, Color(OUTLINE, a))
+	ci.draw_circle(bc, r, Color(CYAN.darkened(0.25), a))
+	ci.draw_circle(bc + Vector2(-r * 0.35, -r * 0.35), r * 0.35, Color(CYAN.lightened(0.4), a))
+	var top := bc + Vector2(r * 0.5, -r * 1.7)
+	ci.draw_line(bc + Vector2(r * 0.5, -r * 0.6), top, Color(TEXT, a), 1.0)
+	for k in 2:
+		ci.draw_arc(top, s * (0.14 + k * 0.12), -PI * 0.45, PI * 0.2, 6, Color(YELLOW, a), 1.0)
+
+
+static func _mine(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:
+	# a low dome on a base plate with a warning light
+	var w := s * 0.42
+	var by := c.y + s * 0.26
+	ci.draw_rect(Rect2(roundf(c.x - w), roundf(by), roundf(w * 2.0), 3), Color(METAL_LO.lightened(0.2), a))
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(c.x - w * 0.85, by), Vector2(c.x - w * 0.5, by - s * 0.34), Vector2(c.x + w * 0.5, by - s * 0.34), Vector2(c.x + w * 0.85, by)]), Color(METAL_HI, a))
+	ci.draw_rect(Rect2(roundf(c.x - 1.5), roundf(by - s * 0.34 - 4.0), 3, 3), Color(RED, a))
+	for k in 2:
+		ci.draw_arc(Vector2(c.x, by - s * 0.34 - 2.0), s * (0.16 + k * 0.1), -PI * 0.85, -PI * 0.15, 6, Color(ORANGE, a), 1.0)
 
 
 static func _ladder(ci: CanvasItem, c: Vector2, s: float, a: float) -> void:

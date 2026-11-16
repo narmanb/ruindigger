@@ -281,10 +281,16 @@ func _save() -> void:
 			if int(carry[k]) < int(carry[k - 1]):
 				demo_ok = false
 	check(demo_ok, "every explosive has a price and a carry limit per rack level that never shrinks")
-	check(Balance.explosive_carry("charge", 0) == Balance.CHARGES_MAX_BY_LEVEL[0] and Balance.explosive_carry("charge", 99) == Balance.CHARGES_MAX_BY_LEVEL[3], "demo charge carry matches the old Charge Rack levels")
+	check(Balance.explosive_carry("charge", 0) == 6 and Balance.explosive_carry("charge", 99) == 12, "demo charge carry matches the old Charge Rack levels (6 to 12)")
+	var meta_ok := true
+	for kind: String in Balance.EXPLOSIVE_ORDER:
+		var info2: Dictionary = Balance.EXPLOSIVES.get(kind, {})
+		if not (info2.has("name") and info2.has("short") and info2.has("desc") and info2.has("free")) or String(info2.get("short", "")).length() != 4:
+			meta_ok = false
+	check(meta_ok and Balance.EXPLOSIVE_ORDER.size() == Balance.EXPLOSIVES.size(), "every explosive has a name, a 4-letter short name, a description and a free count")
 	check(Balance.explosive_carry("nope", 1) == 0 and is_equal_approx(Balance.demo_mult("capacity", 2), 1.0), "unknown explosives carry nothing; non-blast upgrades have no multiplier")
 	check(is_equal_approx(Balance.demo_mult("power", 0), 1.0) and Balance.demo_mult("power", 2) > Balance.demo_mult("power", 1) and Balance.demo_mult("radius", 9) > 1.0, "blast power and radius rise with level and start at x1")
-	check(Balance.EXPLOSIVES.has(Balance.EXPLOSIVE_DEFAULT["main"]), "the default main slot is a real explosive")
+	check(Balance.EXPLOSIVES.has(Balance.EXPLOSIVE_DEFAULT[0]) and Balance.EXPLOSIVE_DEFAULT[1] == "", "the default loadout is a real explosive and no backup")
 	section("save")
 	Progress.reset()
 	Progress.credits = 777
@@ -306,7 +312,10 @@ func _save() -> void:
 	Progress.from_dict({"credits": -50, "upgrades": {"drill": 99, "heat": "x", "cargo": 1.5}, "charges": 1e9, "stats": "nope"})
 	check(Progress.credits == 0, "negative credits clamped")
 	check(Progress.level("drill") == 3 and Progress.level("heat") == 0 and Progress.level("cargo") == 1, "upgrade levels clamped/validated")
-	check(Progress.charges == Balance.CHARGES_MAX, "charges clamped")
+	check(Progress.charges == Progress.carry("charge"), "charges clamped")
+	Progress.from_dict({"version": 2, "explosives": {"rocket": 1e9, "nope": 5, "mine": "x"}, "demo": {"power": 99, "radius": -4}, "slots": ["rocket", "rocket"]})
+	check(Progress.stock("rocket") == Progress.carry("rocket") and Progress.stock("mine") == 0 and not Progress.explosives.has("nope"), "explosive stock clamped / validated")
+	check(Progress.demo_level("power") == 2 and Progress.demo_level("radius") == 0 and Progress.slots == ["charge", ""], "demolitions upgrades clamped; a bad slot pair falls back to the default")
 	# buying
 	Progress.reset()
 	Progress.credits = 1000
@@ -546,6 +555,23 @@ func _generation_v2_checks(tag: String, d: Dictionary, gen: MineGenerator) -> vo
 func _ui() -> void:
 	section("ui layout")
 	var buttons: Array = TouchControls.default_buttons()
+	# two explosive slots: the two half-width buttons sit side by side inside
+	# the single CHARGE button's footprint, so every layout check below holds
+	var two: Array = TouchControls.default_buttons(true)
+	var one_rect := Rect2()
+	var halves: Array[Rect2] = []
+	for b in buttons:
+		if b["action"] == "charge":
+			one_rect = TouchControls.button_rect(b, Rect2(0, 0, 640, 360), 1.0, Vector2.ZERO)
+	for b in two:
+		if b["action"] in ["charge", "charge2"]:
+			halves.append(TouchControls.button_rect(b, Rect2(0, 0, 640, 360), 1.0, Vector2.ZERO))
+			check(TouchControls.layout_name(b) == "charge", "%s moves with the CHARGE layout offset" % b["action"])
+	check(two.size() == buttons.size() + 1 and halves.size() == 2, "with a backup packed there is one button per explosive slot")
+	if halves.size() == 2:
+		check(one_rect.grow(1.0).encloses(halves[0]) and one_rect.grow(1.0).encloses(halves[1]), "both slot buttons fit inside the single CHARGE button's footprint")
+		check(not halves[0].intersects(halves[1]) and halves[0].end.x <= halves[1].position.x and is_equal_approx(halves[0].position.y, halves[1].position.y), "the two slot buttons sit side by side without overlapping")
+		check(halves[0].size.x >= 30.0 and halves[0].size.y >= 44.0, "each slot button is still a usable touch target (%dx%d)" % [int(halves[0].size.x), int(halves[0].size.y)])
 	for aspect in [Vector2(640, 360), Vector2(780, 360), Vector2(853, 360), Vector2(640, 400), Vector2(576, 360)]:
 		var sr := Rect2(Vector2.ZERO, aspect)
 		for sc in [0.7, 1.0, 1.5]:

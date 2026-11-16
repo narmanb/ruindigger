@@ -14,9 +14,17 @@ class Charge extends Node2D:
 	var tick_t := 0.0
 	var sticky := false           # sticks where it first touches: rock, ceiling or a foe
 	var shear := false            # a shear charge: clean cut, drops what rested on it
+	var remote := false           # a remote charge: no fuse until detonate() is called
+	var armed := true             # false while a remote charge waits for its signal
 	var glued := false
 	var host: Node2D = null       # the foe it is stuck to
 	var host_off := Vector2.ZERO
+
+	## Remote charge: the signal arrived; it blows after a blink.
+	func detonate() -> void:
+		if remote and not armed:
+			armed = true
+			fuse = Balance.REMOTE_DELAY
 
 	func _ready() -> void:
 		spr = Sprite2D.new()
@@ -25,11 +33,14 @@ class Charge extends Node2D:
 			spr.modulate = Color(0.8, 1.0, 0.75)
 		if shear:
 			spr.modulate = Color(0.65, 0.85, 1.0)
+		if remote:
+			spr.modulate = Color(0.6, 0.9, 1.0)
+			armed = false
 		spr.hframes = 2
 		add_child(spr)
 		ring = Sprite2D.new()
 		ring.texture = load("res://assets/gen/ring.png")
-		var r := (Balance.SHEAR_RADIUS if shear else Balance.CHARGE_RADIUS_CELLS) * Balance.CELL
+		var r: float = (Balance.SHEAR_RADIUS if shear else mine.blast_radius()) * Balance.CELL
 		ring.scale = Vector2.ONE * (r * 2.0 / 64.0)
 		mine.glow_root.add_child(ring)
 
@@ -74,7 +85,8 @@ class Charge extends Node2D:
 		return false
 
 	func _physics_process(delta: float) -> void:
-		fuse -= delta
+		if armed:
+			fuse -= delta
 		if sticky and _sticky_step(delta):
 			stuck = true
 		elif not stuck:
@@ -95,6 +107,13 @@ class Charge extends Node2D:
 		else:
 			if not mine.grid.solid_at(global_position + Vector2(0, 6)):
 				stuck = false
+		ring.global_position = global_position
+		if not armed:
+			# waiting for the signal: a slow, quiet blink and a faint ring
+			tick_t += delta
+			spr.frame = 1 if fmod(tick_t, 1.0) < 0.2 else 0
+			ring.modulate = Color(0.5, 0.9, 1.0, 0.18 + 0.08 * sin(tick_t * 4.0))
+			return
 		# telegraph: faster blinking + pulsing ring as the fuse burns
 		var rate := 4.0 if fuse > 1.0 else 12.0
 		tick_t -= delta * rate
@@ -102,7 +121,6 @@ class Charge extends Node2D:
 			tick_t = 1.0
 			Audio.play_at("fuse", global_position, -4.0, 0.0, 0.01)
 		spr.frame = 1 if fmod(fuse * rate, 1.0) < 0.5 else 0
-		ring.global_position = global_position
 		var urgency := clampf(1.0 - fuse / (Balance.SHEAR_FUSE if shear else Balance.CHARGE_FUSE), 0.0, 1.0)
 		var ra := 0.25 + urgency * 0.5 * (0.6 + 0.4 * sin(fuse * 30.0))
 		ring.modulate = Color(0.5, 0.8, 1.0, ra) if shear else Color(1.0, 0.5 - urgency * 0.3, 0.2, ra)
@@ -110,8 +128,166 @@ class Charge extends Node2D:
 			if shear:
 				mine.shear_blast(global_position)
 			else:
-				mine.explode(global_position, Balance.CHARGE_RADIUS_CELLS, Balance.CHARGE_TILE_DAMAGE, Balance.CHARGE_ENTITY_DAMAGE, "charge")
+				mine.charge_blast(global_position)
 			queue_free()
+
+
+## Drill rocket: flies straight the way it was fired and bores through rock
+## the drill could cut (a tunnel the digger fits through). It blows when its
+## time is up, or at once on a foe or on anything it cannot cut.
+class Rocket extends Node2D:
+	var mine: Node
+	var dir := Vector2i(1, 0)
+	var life := Balance.ROCKET_LIFE
+	var bored := 0
+	var _spin := 0.0
+	var _noise_t := 0.0
+	var glow: Sprite2D
+
+	func _ready() -> void:
+		glow = Sprite2D.new()
+		glow.texture = load("res://assets/gen/glow.png")
+		glow.scale = Vector2(0.35, 0.35)
+		glow.modulate = Color(1.0, 0.6, 0.2, 0.7)
+		mine.glow_root.add_child(glow)
+		rotation = Vector2(dir).angle()
+		Audio.play_at("fuse", global_position, 0.0, 0.1, 0.0)
+
+	func _exit_tree() -> void:
+		if is_instance_valid(glow):
+			glow.queue_free()
+
+	func _blow() -> void:
+		mine.charge_blast(global_position)
+		queue_free()
+
+	func _physics_process(delta: float) -> void:
+		life -= delta
+		_spin += delta * 30.0
+		var g: TerrainGrid = mine.grid
+		var d := Vector2(dir)
+		var nose := global_position + d * 7.0
+		var c := g.world_to_cell(nose)
+		if not g.in_bounds(c.x, c.y) or life <= 0.0:
+			_blow()
+			return
+		for e in mine.enemies:
+			if is_instance_valid(e) and e.has_method("hit_rect") and e.hit_rect().grow(2.0).has_point(nose):
+				_blow()
+				return
+		var cutting := false
+		if g.is_solid(c.x, c.y):
+			var res: Dictionary = mine.damage_cell(c, 9999.0, 0, false, "blast")
+			if res["blocked"]:
+				_blow()             # alloy, bedrock or protected rock: it stops here
+				return
+			cutting = true
+			bored += 1
+			# widen a sideways bore to the digger's height
+			if dir.y == 0 and g.is_solid(c.x, c.y + 1):
+				mine.damage_cell(Vector2i(c.x, c.y + 1), 9999.0, 0, false, "blast")
+			mine.fx.chips(nose, -d, Color(0.85, 0.75, 0.6))
+		_noise_t -= delta
+		if cutting and _noise_t <= 0.0:
+			_noise_t = 0.25
+			mine.noise(global_position, Balance.CRAWLER_HEARING)
+			Audio.play_at("hit_hard", global_position, -6.0, 0.15, 0.05)
+		global_position += d * (Balance.ROCKET_BORE_SPEED if cutting else Balance.ROCKET_SPEED) * delta
+		glow.global_position = global_position - d * 6.0
+		if randf() < 0.5:
+			mine.fx.sparks(global_position - d * 8.0, -d, Color(1.0, 0.7, 0.3))
+		queue_redraw()
+
+	func _draw() -> void:
+		# drawn pointing right; the node is rotated to its heading
+		draw_rect(Rect2(-8, -3, 9, 6), Color("5a5f6e"))
+		draw_rect(Rect2(-8, -3, 9, 2), Color("8d93a6"))
+		draw_colored_polygon(PackedVector2Array([Vector2(1, -4), Vector2(9, 0), Vector2(1, 4)]), Color("ff9a3c"))
+		var k := int(_spin) % 3
+		for i in 3:
+			var x := 2.0 + ((i + k) % 3) * 2.0
+			draw_line(Vector2(x, -3.0 + x * 0.35), Vector2(x + 1.5, 3.0 - x * 0.35), Color("ffd27a"), 1.0)
+		draw_colored_polygon(PackedVector2Array([Vector2(-8, -2), Vector2(-12 - randf() * 3.0, 0), Vector2(-8, 2)]), Color(1.0, 0.8, 0.3, 0.9))
+		if life < 0.4 and int(life * 20.0) % 2 == 0:
+			draw_circle(Vector2(-3, 0), 2.0, Color(1, 0.2, 0.2))
+
+
+## Proximity mine: laid at your feet. It arms after MINE_ARM seconds, but
+## only once the digger has stepped out of its reach; after that the next foe
+## or digger to come near sets it off (after a short beep).
+class ProxMine extends Node2D:
+	var mine: Node
+	var t := 0.0
+	var armed := false
+	var tripped := -1.0
+	var vy := 0.0
+	var ring: Sprite2D
+
+	func _ready() -> void:
+		ring = Sprite2D.new()
+		ring.texture = load("res://assets/gen/ring.png")
+		ring.scale = Vector2.ONE * (Balance.MINE_TRIGGER * Balance.CELL * 2.0 / 64.0)
+		ring.modulate = Color(1.0, 0.8, 0.3, 0.12)
+		mine.glow_root.add_child(ring)
+
+	func _exit_tree() -> void:
+		if is_instance_valid(ring):
+			ring.queue_free()
+
+	func _near(p: Vector2) -> bool:
+		return p.distance_to(global_position) <= Balance.MINE_TRIGGER * Balance.CELL
+
+	func _digger_near() -> bool:
+		var pl: Player = mine.player
+		return pl != null and not pl.dead and _near(pl.global_position + Vector2(0, Player.HALF.y - 4.0))
+
+	func _foe_near() -> bool:
+		for e in mine.enemies:
+			if is_instance_valid(e) and e.has_method("hit_rect") and _near(e.hit_rect().get_center()):
+				return true
+		return false
+
+	## Set it off now (after the warning beep).
+	func trip() -> void:
+		if tripped < 0.0:
+			tripped = Balance.MINE_DELAY
+			Audio.play_at("gas_warn", global_position, -2.0, 0.0, 0.0)
+
+	func _physics_process(delta: float) -> void:
+		t += delta
+		var g: TerrainGrid = mine.grid
+		if not g.solid_at(global_position + Vector2(0, 4)):
+			vy = minf(vy + 700.0 * delta, 380.0)
+			global_position.y += vy * delta
+		else:
+			vy = 0.0
+		ring.global_position = global_position
+		if tripped >= 0.0:
+			tripped -= delta
+			ring.modulate = Color(1.0, 0.3, 0.2, 0.5)
+			if tripped <= 0.0:
+				mine.charge_blast(global_position)
+				queue_free()
+		elif not armed:
+			if t >= Balance.MINE_ARM and not _digger_near():
+				armed = true
+				Audio.play_at("ui_click", global_position, -4.0, 0.0, 0.0)
+		elif _foe_near() or _digger_near():
+			trip()
+		else:
+			ring.modulate = Color(1.0, 0.35, 0.25, 0.16 + 0.08 * sin(t * 5.0))
+		queue_redraw()
+
+	func _draw() -> void:
+		draw_rect(Rect2(-6, 1, 12, 3), Color("3c3f4a"))
+		draw_colored_polygon(PackedVector2Array([Vector2(-5, 1), Vector2(-3, -3), Vector2(3, -3), Vector2(5, 1)]), Color("6b7080"))
+		draw_rect(Rect2(-3, -3, 6, 1), Color("9aa0b4"))
+		var lit := Color(1.0, 0.85, 0.3)      # amber: not armed yet
+		if tripped >= 0.0:
+			lit = Color(1, 1, 1) if int(tripped * 30.0) % 2 == 0 else Color(1.0, 0.2, 0.15)
+		elif armed:
+			lit = Color(1.0, 0.2, 0.15) if fmod(t, 0.8) < 0.4 else Color(0.4, 0.08, 0.06)
+		draw_rect(Rect2(-1, -5, 2, 2), lit)
 
 
 ## Anchor bolt: driven into rock, it pins the cells around it so collapses,

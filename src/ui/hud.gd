@@ -336,27 +336,39 @@ class Diag extends Control:
 		var ty := Y0 + 2.0 * ROW - 4.0
 		var pressed: bool = hud.cargo_btn != null and hud.cargo_btn.is_pressed()
 		draw_colored_polygon(PackedVector2Array([Vector2(size.x - 9, ty - 3), Vector2(size.x - 5, ty), Vector2(size.x - 9, ty + 3)]), HudSkin.YELLOW if pressed else HudSkin.ORANGE)
-		# charges as red pips, lures beside them
+		# explosives and lures. One slot packed: pips, as before. Two slots:
+		# each shows its short name and a count so both fit on the row.
 		var y := Y0 + 3.0 * ROW
-		HudSkin.label(self, Vector2(10, y), "CHRG", 9, HudSkin.MUTED)
+		var k1 := Game.slot_kind(0)
+		var k2 := Game.slot_kind(1)
 		var ch: int = Game.run.get("charges", 0)
-		for i in maxi(ch, 3):
-			var r := Rect2(BX + i * 10, y - 8, 8, 9)
-			if i < ch:
-				draw_rect(r, HudSkin.RED)
-				draw_rect(Rect2(r.position, Vector2(8, 2)), HudSkin.RED.lightened(0.45))
-			else:
-				draw_rect(r, HudSkin.MUTED, false, 1.0)
-		# lures: cyan pips, like the charges
 		var lures := int(Game.run.get("lures", 0))
-		var lx := BX + maxi(ch, 3) * 10 + 10
+		var lx := 0.0
+		var lstep := 10.0
+		HudSkin.label(self, Vector2(10, y), _short(k1), 9, HudSkin.MUTED)
+		if k2 == "":
+			for i in maxi(ch, 3):
+				var r := Rect2(BX + i * 10, y - 8, 8, 9)
+				if i < ch:
+					draw_rect(r, HudSkin.RED)
+					draw_rect(Rect2(r.position, Vector2(8, 2)), HudSkin.RED.lightened(0.45))
+				else:
+					draw_rect(r, HudSkin.MUTED, false, 1.0)
+			lx = BX + maxi(ch, 3) * 10 + 10
+		else:
+			_count(Vector2(44, y), ch, HudSkin.RED)
+			HudSkin.label(self, Vector2(71, y), _short(k2), 9, HudSkin.MUTED)
+			_count(Vector2(105, y), int(Game.run.get("charges2", 0)), HudSkin.ORANGE)
+			lx = 130.0
+			lstep = 7.0
+		# lures: cyan pips
 		HudSkin.label(self, Vector2(lx, y), "LURE", 9, HudSkin.MUTED)
-		lx += 34
+		lx += 34 if k2 == "" else 30
 		for i in maxi(lures, Balance.LURES_PER_RUN):
-			var lr := Rect2(lx + i * 10, y - 8, 8, 9)
+			var lr := Rect2(lx + i * lstep, y - 8, lstep - 2.0, 9)
 			if i < lures:
 				draw_rect(lr, HudSkin.CYAN.darkened(0.15))
-				draw_rect(Rect2(lr.position, Vector2(8, 2)), HudSkin.CYAN.lightened(0.4))
+				draw_rect(Rect2(lr.position, Vector2(lstep - 2.0, 2)), HudSkin.CYAN.lightened(0.4))
 			else:
 				draw_rect(lr, HudSkin.MUTED, false, 1.0)
 		var scap: int = hud.mine.scaffold_cap()
@@ -410,6 +422,19 @@ class Diag extends Control:
 		if Game.run.get("relic", false):
 			var rp := Vector2(size.x - 14, Y0 + 3.0 * ROW - 4.0)
 			draw_colored_polygon(PackedVector2Array([rp + Vector2(0, -6), rp + Vector2(5, 0), rp + Vector2(0, 6), rp + Vector2(-5, 0)]), Color(0.4, 1.0, 1.0, 0.8 + 0.2 * sin(t * 5.0)))
+
+	func _short(kind: String) -> String:
+		return String(Balance.EXPLOSIVES.get(kind, {"short": "CHRG"})["short"])
+
+	## One pip and a number (an explosive slot's count).
+	func _count(p: Vector2, n: int, col: Color) -> void:
+		var r := Rect2(p.x, p.y - 8, 8, 9)
+		if n > 0:
+			draw_rect(r, col)
+			draw_rect(Rect2(r.position, Vector2(8, 2)), col.lightened(0.45))
+		else:
+			draw_rect(r, HudSkin.MUTED, false, 1.0)
+		HudSkin.label(self, Vector2(p.x + 11, p.y), str(n), 9, HudSkin.TEXT if n > 0 else HudSkin.MUTED)
 
 	func _row(i: int, name: String, frac: float, col: Color, txt: String, blink: bool) -> void:
 		var y := Y0 + i * ROW

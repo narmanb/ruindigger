@@ -171,7 +171,7 @@ func close() -> void:
 	root.visible = false
 	mine.hud.touch._release_all()
 	get_tree().paused = _was_paused
-	for action in ["drill", "jump", "charge", "interact", "ladder", "gadget", "lure", "shear", "bolt"]:
+	for action in ["drill", "jump", "charge", "charge2", "interact", "ladder", "gadget", "lure", "shear", "bolt"]:
 		Input.action_release(action)
 	if _was_paused and mine.pause_menu.is_open:
 		mine.pause_menu.root.visible = true

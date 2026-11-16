@@ -957,23 +957,41 @@ static func feet(t: Node) -> void:
 
 
 static func charges(t: Node) -> void:
-	t.section("charge upgrades")
+	t.section("explosives and the Demolitions counter")
 	var saved := Progress.to_dict()
 	Progress.reset()
-	t.check(Progress.charges_max() == 6 and not Progress.sticky_active(), "no upgrades: 6 charges max, no sticky charges")
-	Progress.upgrades["charge_rack"] = 2
-	Progress.upgrades["sticky"] = 1
-	t.check(Progress.charges_max() == 10 and Progress.sticky_active(), "Charge Rack II carries 10; Sticky unlocked is on by default")
+	# --- the counter: slots, stock, upgrades ---
+	t.check(Progress.slots == ["charge", ""] and Progress.carry("charge") == 6 and Progress.packed("charge") == 2, "a new save packs 2 free demo charges in the main slot, no backup")
 	Progress.credits = 1000
 	for k in 12:
-		Progress.buy_charge()
-	t.check(Progress.charges + Balance.CHARGES_FREE == 10, "you can pack charges up to the rack size (%d)" % (Progress.charges + Balance.CHARGES_FREE))
-	Progress.sticky_on = false
+		Progress.buy_explosive("charge")
+	t.check(Progress.stock("charge") == 4 and Progress.packed("charge") == 6 and Progress.credits == 1000 - 4 * int(Balance.EXPLOSIVES["charge"]["price"]), "you can buy up to what you can carry (free units count)")
+	t.check(Progress.buy_demo("capacity") and Progress.carry("charge") == 8 and Progress.carry("rocket") == 4, "BIGGER RACK raises every type's carry limit")
+	Progress.credits = 5000
+	t.check(Progress.buy_demo("power") and Progress.buy_demo("power") and not Progress.buy_demo("power"), "BLAST POWER has two levels and then stops")
+	t.check(Progress.buy_demo("radius") and Progress.buy_demo("radius") and not Progress.buy_demo("radius"), "BLAST RADIUS has two levels and then stops")
+	t.check(Progress.set_slot(1, "rocket") and Progress.slots == ["charge", "rocket"], "a backup explosive can be packed")
+	t.check(Progress.free_units("charge") == 2 and Progress.free_units("rocket") == 0, "only the main slot gets free units")
+	t.check(Progress.set_slot(0, "rocket") and Progress.slots == ["rocket", "charge"], "picking the other slot's type swaps the two")
+	t.check(not Progress.set_slot(0, "") and not Progress.set_slot(1, "nope") and Progress.slots == ["rocket", "charge"], "the main slot cannot be emptied; unknown types are refused")
+	t.check(Progress.set_slot(1, "") and Progress.slots == ["rocket", ""], "the backup slot can be emptied")
+	Progress.set_slot(0, "charge")
+	Progress.set_slot(1, "rocket")
+	Progress.buy_explosive("rocket")
 	var d := Progress.to_dict()
+	Progress.reset()
 	Progress.from_dict(d)
-	t.check(Progress.level("charge_rack") == 2 and Progress.charges == 8 and not Progress.sticky_on and not Progress.sticky_active(), "rack, packed charges and the sticky toggle survive a save")
-	Progress.sticky_on = true
-	# live: a sticky charge thrown at a wall stays there; a normal one drops
+	t.check(Progress.slots == ["charge", "rocket"] and Progress.stock("charge") == 4 and Progress.stock("rocket") == 1 and Progress.demo_level("capacity") == 1 and Progress.demo_level("power") == 2, "slots, stock and upgrades survive a save")
+	# an old save: Charge Rack II, Sticky Charges owned, 5 charges packed
+	Progress.from_dict({"version": 1, "credits": 100, "upgrades": {"drill": 1, "charge_rack": 2, "sticky": 1}, "charges": 5, "sticky_on": true})
+	t.check(Progress.demo_level("capacity") == 2 and Progress.carry("charge") == 10, "old saves: the Charge Rack becomes BIGGER RACK")
+	t.check(Progress.credits == 100 + Balance.STICKY_REFUND, "old saves: the retired Sticky Charges upgrade is paid back")
+	t.check(Progress.stock("charge") == 5 and Progress.slots == ["charge", ""] and Progress.level("drill") == 1, "old saves: packed charges and other upgrades carry over")
+	t.check(InputMap.has_action("charge2"), "the backup slot has its own input action")
+	# --- a dive with two slots ---
+	Progress.reset()
+	Progress.slots = ["charge", "rocket"]
+	Progress.explosives = {"charge": 1, "rocket": 2, "mine": 3}
 	Game.contract = Balance.CONTRACTS[0].duplicate()
 	Game.contract["seed"] = 7
 	await _settle(t)
@@ -983,36 +1001,148 @@ static func charges(t: Node) -> void:
 	var mine: Node = Game.current
 	var pl: Player = mine.player
 	pl.invuln = 1e9
-	t.check(bool(Game.run.get("sticky", false)) and int(Game.run["charges"]) == 10, "the run gets sticky charges and the full rack")
+	t.check(Game.run["slots"] == ["charge", "rocket"] and int(Game.run["charges"]) == 3 and int(Game.run["charges2"]) == 2, "the dive starts with both slots: 2 free + 1 bought, and 2 rockets")
+	t.check(Progress.stock("charge") == 0 and Progress.stock("rocket") == 0 and Progress.stock("mine") == 3, "packed stock goes down with you; other types wait at the outpost")
 	var g: TerrainGrid = mine.grid
 	var pc: Vector2i = g.world_to_cell(pl.global_position)
-	# build a wall 3 cells to the right, open air in front of it
-	for dy in range(-4, 1):
-		for dx in range(1, 3):
-			g.set_mat(pc.x + dx, pc.y + dy, Cell.AIR)
+	# a flat, open test floor around the digger
+	for x in range(pc.x - 8, pc.x + 22):
+		for y in range(pc.y - 5, pc.y + 4):
+			if g.in_bounds(x, y):
+				g.set_flag(x, y, Cell.F_PROTECTED, false)
+				g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.HARD)
+				g.set_water(x, y, 0)
+	await t._frames(3)
+	# sticky sticks, a demo charge falls
+	for dy in range(-5, 1):
 		g.set_mat(pc.x + 3, pc.y + dy, Cell.HARD)
-	var sticky_pos := Vector2(pc.x * 16 + 24, pc.y * 16 - 24)
-	mine.spawn_charge(sticky_pos, Vector2(220, 0))
-	var ch: Node2D = null
-	for e in mine.entity_root.get_children():
-		if e is Hazards.Charge:
-			ch = e
+	var throw_pos := Vector2(pc.x * 16 + 24, pc.y * 16 - 24)
+	var ch: Hazards.Charge = mine.spawn_charge(throw_pos, Vector2(220, 0), "sticky")
 	await t._frames(40)
-	var stuck_y := ch.global_position.y if is_instance_valid(ch) else -1.0
-	var stuck_ok: bool = is_instance_valid(ch) and ch.glued and absf(stuck_y - sticky_pos.y) < 4.0 and ch.global_position.x > sticky_pos.x + 8.0
-	t.check(stuck_ok, "a sticky charge sticks to the wall where it hits")
+	t.check(is_instance_valid(ch) and ch.glued and absf(ch.global_position.y - throw_pos.y) < 4.0 and ch.global_position.x > throw_pos.x + 8.0, "a sticky charge sticks to the wall where it hits")
 	if is_instance_valid(ch):
 		ch.queue_free()
-	Game.run["sticky"] = false
-	mine.spawn_charge(sticky_pos, Vector2(220, 0))
-	var ch2: Node2D = null
-	for e in mine.entity_root.get_children():
-		if e is Hazards.Charge and not e.is_queued_for_deletion():
-			ch2 = e
+	var ch2: Hazards.Charge = mine.spawn_charge(throw_pos, Vector2(220, 0), "charge")
 	await t._frames(40)
-	t.check(is_instance_valid(ch2) and not ch2.sticky and ch2.global_position.y > sticky_pos.y + 8.0, "with sticky off, a charge falls as before")
+	t.check(is_instance_valid(ch2) and not ch2.sticky and ch2.global_position.y > throw_pos.y + 8.0, "a demo charge bounces off and falls")
 	if is_instance_valid(ch2):
 		ch2.queue_free()
+	for dy in range(-5, 1):
+		g.set_mat(pc.x + 3, pc.y + dy, Cell.AIR)
+	await t._frames(2)
+	# slots: the backup button throws the backup type; an empty slot does nothing
+	var before: int = mine.entity_root.get_child_count()
+	Game.run["slots"] = ["charge", ""]
+	pl.use_explosive(1, 0.0)
+	t.check(mine.entity_root.get_child_count() == before and int(Game.run["charges2"]) == 2, "an empty backup slot does nothing")
+	Game.run["slots"] = ["charge", "rocket"]
+	# drill rocket: bores a digger-sized tunnel through basalt, then blows
+	for x in range(pc.x + 3, pc.x + 16):
+		for y in range(pc.y - 5, pc.y + 1):
+			g.set_mat(x, y, Cell.HARD)
+	pl.facing = 1
+	pl.use_explosive(1, 0.0)
+	var rk: Hazards.Rocket = null
+	for e in mine.entity_root.get_children():
+		if e is Hazards.Rocket:
+			rk = e
+	t.check(rk != null and int(Game.run["charges2"]) == 1, "the backup button fires a drill rocket and uses one")
+	var row := g.world_to_cell(rk.global_position).y if rk else pc.y
+	var bored := 0
+	for k in 240:
+		if not is_instance_valid(rk):
+			break
+		bored = rk.bored
+		await t._frames(1)
+	var tunnel := true
+	for x in range(pc.x + 3, pc.x + 7):
+		if g.is_solid(x, row) or g.is_solid(x, row + 1):
+			tunnel = false
+	t.check(not is_instance_valid(rk) and bored >= 6 and tunnel, "a drill rocket bores a two-cell-high tunnel through basalt (%d cells) and then blows" % bored)
+	t.check(g.is_solid(pc.x + 4, row - 2), "the rock above the tunnel's start is left alone")
+	# ...and stops dead at alloy
+	for y in range(pc.y - 5, pc.y + 1):
+		g.set_mat(pc.x + 3, y, Cell.ALLOY)
+	var rk2: Hazards.Rocket = mine.spawn_rocket(pl.global_position + Vector2(8, -6), Vector2i(1, 0))
+	for k in 60:
+		if not is_instance_valid(rk2):
+			break
+		await t._frames(1)
+	t.check(not is_instance_valid(rk2) and g.get_mat(pc.x + 3, row) == Cell.ALLOY, "a drill rocket blows at once on alloy and does not cut it")
+	for x in range(pc.x - 8, pc.x + 22):
+		for y in range(pc.y - 5, pc.y + 1):
+			g.set_mat(x, y, Cell.AIR)
+	await t._frames(3)
+	# remote charge: no fuse; the same button sets it off
+	Game.run["slots"] = ["remote", ""]
+	Game.run["charges"] = 2
+	pl.use_explosive(0, 0.0)
+	t.check(mine.remotes_out() == 1 and int(Game.run["charges"]) == 1, "a remote charge is thrown")
+	await t._frames(int((Balance.CHARGE_FUSE + 1.0) * 60.0))
+	t.check(mine.remotes_out() == 1, "a remote charge waits: it has no fuse")
+	pl.use_explosive(0, 0.0)
+	t.check(int(Game.run["charges"]) == 1, "pressing again sets it off instead of throwing another")
+	await t._frames(30)
+	t.check(mine.remotes_out() == 0, "the remote charge has gone off")
+	# proximity mine: arms once you step away; a foe sets it off
+	for x in range(pc.x - 8, pc.x + 22):
+		for y in range(pc.y - 5, pc.y + 4):
+			g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.HARD)
+	await t._frames(3)
+	var home := pl.global_position
+	Game.run["slots"] = ["mine", ""]
+	Game.run["charges"] = 2
+	pl.use_explosive(0, 0.0)
+	var pm: Hazards.ProxMine = null
+	for e in mine.entity_root.get_children():
+		if e is Hazards.ProxMine:
+			pm = e
+	t.check(pm != null and int(Game.run["charges"]) == 1, "a proximity mine is laid at your feet")
+	await t._frames(int((Balance.MINE_ARM + 0.5) * 60.0))
+	t.check(is_instance_valid(pm) and not pm.armed, "a mine does not arm while you stand on it")
+	pl.global_position = home + Vector2(7 * 16, 0)
+	pl.velocity = Vector2.ZERO
+	await t._frames(6)
+	t.check(is_instance_valid(pm) and pm.armed and pm.tripped < 0.0, "it arms once you step away")
+	var cr: Crawler = mine.spawn_crawler(g.world_to_cell(pm.global_position) + Vector2i(1, 0))
+	cr.asleep = false
+	var hp0 := cr.hp
+	for k in 90:
+		if not is_instance_valid(pm):
+			break
+		await t._frames(1)
+	await t._frames(2)
+	t.check(not is_instance_valid(pm) and (not is_instance_valid(cr) or cr.hp < hp0 or cr.state == Crawler.S.DEAD), "a crawler walking onto a mine sets it off and is hurt")
+	# ...and so does a forgetful digger
+	var pm2: Hazards.ProxMine = mine.spawn_mine(home + Vector2(0, Player.HALF.y - 5.0))
+	await t._frames(int((Balance.MINE_ARM + 0.3) * 60.0))
+	t.check(is_instance_valid(pm2) and pm2.armed, "a second mine arms while you are away")
+	pl.invuln = 0.0
+	var php := pl.hp
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	for k in 90:
+		if not is_instance_valid(pm2):
+			break
+		await t._frames(1)
+	await t._frames(2)
+	t.check(not is_instance_valid(pm2) and pl.hp < php, "walking back onto your own mine sets it off and hurts")
+	pl.invuln = 1e9
+	pl.hp = pl.max_hp
+	# blast upgrades
+	t.check(is_equal_approx(mine.blast_radius(), Balance.CHARGE_RADIUS_CELLS) and is_equal_approx(mine.blast_power(), 1.0), "no upgrades: the standard blast")
+	Progress.demo = {"power": 2, "radius": 2}
+	t.check(is_equal_approx(mine.blast_radius(), Balance.CHARGE_RADIUS_CELLS * 1.3) and is_equal_approx(mine.blast_power(), 1.5), "BLAST RADIUS and BLAST POWER scale your explosives")
+	Progress.demo = {}
+	# a supply cache restocks whatever your main explosive is
+	Game.run["slots"] = ["rocket", ""]
+	Game.run["charges"] = 3
+	var cache := Entities.Cache.new()
+	cache.mine = mine
+	cache.charges = 5
+	mine.entity_root.add_child(cache)
+	cache.use(pl)
+	t.check(int(Game.run["charges"]) == Progress.carry("rocket") + Balance.CACHE_OVERFILL, "a supply cache restocks your main explosive, up to %d over your limit" % Balance.CACHE_OVERFILL)
 	Progress.from_dict(saved)
 	await _settle(t)
 	Game.goto("title", true)

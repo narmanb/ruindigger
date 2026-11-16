@@ -236,7 +236,9 @@ func _physics_process(delta: float) -> void:
 
 	_update_drill(delta, ax, ay)
 	if _just("charge"):
-		_throw_charge(ay)
+		use_explosive(0, ay)
+	if _just("charge2"):
+		use_explosive(1, ay)
 	if _just("interact") and mine:
 		mine.player_interact(self)
 	if _just("ladder") and mine:
@@ -493,7 +495,7 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 				mine.noise(global_position, Balance.CRAWLER_HEARING * (0.5 if Game.has_relic("muffled") else 1.0))
 		if drill_blocked and _blocked_msg_t <= 0.0 and mine:
 			_blocked_msg_t = 2.0
-			mine.toast("Too tough - needs DRILL Mk.IV or a charge" if grid.get_mat(targets[0].x, targets[0].y) == Cell.ALLOY else "Indestructible")
+			mine.toast("Too tough - needs DRILL Mk.IV" if grid.get_mat(targets[0].x, targets[0].y) == Cell.ALLOY else "Indestructible")
 		_shake_t = 0.06
 		if drill_dir.y > 0 and hit_any:
 			velocity.y = minf(velocity.y, 30.0)
@@ -642,20 +644,42 @@ func throw_lure() -> void:
 	Audio.play("throw")
 
 
-func _throw_charge(ay: float) -> void:
-	if not mine or Game.run.get("charges", 0) <= 0:
-		if mine:
-			mine.toast("No charges left")
-			Audio.play("ui_deny")
+## Use the explosive in a slot (0 main, 1 backup). What happens depends on
+## its type: thrown charges, a drill rocket fired the way you aim, a remote
+## charge (press again to set it off), or a mine laid at your feet.
+func use_explosive(slot: int, ay: float) -> void:
+	if not mine or dead:
 		return
-	Game.run["charges"] = int(Game.run["charges"]) - 1
-	var v := Vector2(Balance.CHARGE_THROW.x * facing, Balance.CHARGE_THROW.y)
-	if ay > 0.5:
-		v = Vector2(0, 40)          # drop at feet
-	elif ay < -0.5:
-		v = Vector2(40 * facing, -260)
-	v += velocity * 0.4
-	mine.spawn_charge(global_position + Vector2(facing * 6, -6), v)
+	var kind := Game.slot_kind(slot)
+	if kind == "":
+		return
+	if kind == "remote" and mine.has_method("remotes_out") and mine.remotes_out() >= Balance.REMOTE_MAX_OUT:
+		mine.detonate_remotes()
+		return
+	var key := Game.slot_key(slot)
+	if int(Game.run.get(key, 0)) <= 0:
+		mine.toast("No %s left" % String(Balance.EXPLOSIVES[kind]["name"]).to_lower())
+		Audio.play("ui_deny")
+		return
+	Game.run[key] = int(Game.run[key]) - 1
+	match kind:
+		"rocket":
+			var dir := Vector2i(facing, 0)
+			if ay < -0.5:
+				dir = Vector2i(0, -1)
+			elif ay > 0.5:
+				dir = Vector2i(0, 1)
+			mine.spawn_rocket(global_position + Vector2(dir.x * 8, -6 + dir.y * 10), dir)
+		"mine":
+			mine.spawn_mine(global_position + Vector2(0, HALF.y - 5.0))
+		_:
+			var v := Vector2(Balance.CHARGE_THROW.x * facing, Balance.CHARGE_THROW.y)
+			if ay > 0.5:
+				v = Vector2(0, 40)          # drop at feet
+			elif ay < -0.5:
+				v = Vector2(40 * facing, -260)
+			v += velocity * 0.4
+			mine.spawn_charge(global_position + Vector2(facing * 6, -6), v, kind)
 	Audio.play("throw")
 
 

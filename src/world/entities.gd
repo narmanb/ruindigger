@@ -229,14 +229,16 @@ class Cache extends Node2D:
 		if used:
 			return
 		used = true
-		Game.run["charges"] = mini(Progress.charges_max() + 2, int(Game.run.get("charges", 0)) + charges)
+		# caches restock your main explosive, whatever type it is
+		var main := Game.slot_kind(0)
+		Game.run["charges"] = mini(Progress.carry(main) + Balance.CACHE_OVERFILL, int(Game.run.get("charges", 0)) + charges)
 		if repair > 0.0:
 			pl.heal(repair)
 		spr.modulate = Color(0.5, 0.5, 0.5)
 		Audio.play("ui_buy")
 		var parts: Array = []
 		if charges > 0:
-			parts.append("+%d CHARGE%s" % [charges, "S" if charges > 1 else ""])
+			parts.append("+%d %s" % [charges, String(Balance.EXPLOSIVES.get(main, {"name": "CHARGE"})["name"])])
 		if repair > 0:
 			parts.append("+%d HULL" % int(repair))
 		mine.toast("SUPPLY CACHE: " + " ".join(parts))

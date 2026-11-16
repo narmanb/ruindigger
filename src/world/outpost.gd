@@ -122,13 +122,15 @@ func _build() -> void:
 	_prop("sign", Vector2(30 * C, GROUND * C - 6))
 	_prop("pebbles", Vector2(22 * C, GROUND * C - 4))
 	_prop("bones", Vector2(6 * C, (GROUND - 1) * C - 4))
-	for lx in [7, 15.5, 24, 31]:
+	for lx in [7, 15.5, 25.4, 31]:
 		_lamp_post(Vector2(lx * C, GROUND * C))
 	_terminal(Vector2(13 * C, GROUND * C), "UPGRADES")
 	_terminal(Vector2(20 * C, GROUND * C), "CONTRACTS")
+	_terminal(Vector2(23.5 * C, GROUND * C), "DEMO")
 	stations = [
 		{"name": "upgrades", "x": 13 * C, "label": "UPGRADE TERMINAL"},
 		{"name": "contracts", "x": 20 * C, "label": "CONTRACT BOARD"},
+		{"name": "demolitions", "x": 23.5 * C, "label": "DEMOLITIONS"},
 		{"name": "supply", "x": 27 * C, "label": "SUPPLY LOCKER"},
 		{"name": "lift", "x": 36 * C, "label": "DESCEND"},
 	]
@@ -306,7 +308,7 @@ func shake(_a: float) -> void:
 	pass
 
 
-func spawn_charge(_p: Vector2, _v: Vector2) -> void:
+func spawn_charge(_p: Vector2, _v: Vector2, _k: String = "charge") -> void:
 	pass
 
 
@@ -340,6 +342,8 @@ func player_interact(pl: Player) -> void:
 			_open_panel(_contract_panel())
 		"supply":
 			_open_panel(_supply_panel())
+		"demolitions":
+			_open_panel(_demolitions_panel())
 		"lift":
 			_open_panel(_launch_panel())
 
@@ -473,22 +477,7 @@ func _contract_panel() -> Control:
 func _supply_panel() -> Control:
 	var fr := _frame("SUPPLY LOCKER")
 	var v: VBoxContainer = fr[1]
-	v.add_child(UIKit.label("Each contract includes %d free demolition charges." % Balance.CHARGES_FREE, 10))
-	v.add_child(UIKit.label("Packed for next run: %d extra (max %d total)" % [Progress.charges, Progress.charges_max()], 10, UIKit.TEAL))
-	var b := UIKit.button("BUY CHARGE - %d CR" % Balance.CHARGE_PRICE, func() -> void:
-		if Progress.buy_charge():
-			Audio.play("ui_buy")
-			_open_panel(_supply_panel())
-		else:
-			Audio.play("ui_deny"), 220)
-	b.disabled = Progress.credits < Balance.CHARGE_PRICE or Progress.charges + Balance.CHARGES_FREE >= Progress.charges_max()
-	v.add_child(b)
-	if Progress.level("sticky") > 0:
-		v.add_child(UIKit.button("STICKY CHARGES: %s" % ("ON" if Progress.sticky_on else "OFF"), func() -> void:
-			Progress.sticky_on = not Progress.sticky_on
-			Progress.save_progress()
-			Audio.play("ui_confirm")
-			_open_panel(_supply_panel()), 220))
+	v.add_child(UIKit.label("Explosives are bought and packed at the DEMOLITIONS counter.", 10, UIKit.MUTED))
 	v.add_child(UIKit.label("GADGETS - one active (GADGET button, G) and one passive", 10, UIKit.TEAL, true))
 	for kind in ["active", "passive"]:
 		var row := HBoxContainer.new()
@@ -513,6 +502,98 @@ func _supply_panel() -> Control:
 	return fr[0]
 
 
+## Demolitions counter: pick the two explosives you take down (each gets its
+## own button in the mine), buy units of them, and buy the blast upgrades.
+func _demolitions_panel() -> Control:
+	var fr := _frame("DEMOLITIONS")
+	var v: VBoxContainer = fr[1]
+	v.add_child(UIKit.label("CREDITS: %d" % Progress.credits, 11, UIKit.TEAL, true))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(420, 222)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	v.add_child(scroll)
+	UIKit.touch_scrollbar(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 5)
+	scroll.add_child(list)
+	for slot in 2:
+		list.add_child(UIKit.label("MAIN SLOT - comes with free units" if slot == 0 else "BACKUP SLOT - optional, gets its own button", 9, UIKit.TEAL, true))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 3)
+		list.add_child(row)
+		var kinds: Array = Balance.EXPLOSIVE_ORDER.duplicate()
+		if slot == 1:
+			kinds.push_front("")
+		for kind: String in kinds:
+			var on: bool = Progress.slots[slot] == kind
+			var nm: String = "NONE" if kind == "" else String(Balance.EXPLOSIVES[kind]["short"])
+			var sb := UIKit.button(("> " if on else "") + nm, func() -> void:
+				if Progress.set_slot(slot, kind):
+					Audio.play("ui_confirm")
+				else:
+					Audio.play("ui_deny")
+				_open_panel(_demolitions_panel()), 64 if slot == 1 else 78)
+			if kind != "":
+				sb.tooltip_text = String(Balance.EXPLOSIVES[kind]["desc"])
+			row.add_child(sb)
+	list.add_child(UIKit.Scanline.new())
+	for kind: String in Progress.slots:
+		if kind == "":
+			continue
+		var info: Dictionary = Balance.EXPLOSIVES[kind]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var left := VBoxContainer.new()
+		left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var free := Progress.free_units(kind)
+		left.add_child(UIKit.label("%s   packed %d / %d%s" % [info["name"], Progress.packed(kind), Progress.carry(kind), ("  (%d free)" % free) if free > 0 else ""], 11, UIKit.AMBER, true))
+		var d := UIKit.label(String(info["desc"]), 9, UIKit.TEXT)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size.x = 290
+		left.add_child(d)
+		row.add_child(left)
+		var full := Progress.stock(kind) + free >= Progress.carry(kind)
+		var bb := UIKit.button("FULL" if full else "BUY %d CR" % int(info["price"]), func() -> void:
+			if Progress.buy_explosive(kind):
+				Audio.play("ui_buy")
+			else:
+				Audio.play("ui_deny")
+			_open_panel(_demolitions_panel()), 96)
+		bb.disabled = not Progress.can_buy_explosive(kind)
+		row.add_child(bb)
+		list.add_child(row)
+	list.add_child(UIKit.Scanline.new())
+	for track: String in Balance.DEMO_TRACKS:
+		var info: Dictionary = Balance.DEMO_UPGRADES[track]
+		var lv := Progress.demo_level(track)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var left := VBoxContainer.new()
+		left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var pips := ""
+		for i in (info["costs"] as Array).size():
+			pips += "#" if i < lv else "-"
+		left.add_child(UIKit.label("%s  [%s]" % [info["name"], pips], 11, UIKit.AMBER, true))
+		var detail := String(info["desc"])
+		if info.has("mult"):
+			detail += "  Now x%s" % String.num(Balance.demo_mult(track, lv), 2)
+		left.add_child(UIKit.label(detail, 9, UIKit.TEXT))
+		row.add_child(left)
+		var cost := Progress.demo_cost(track)
+		var ub := UIKit.button("MAX" if cost < 0 else "%d CR" % cost, func() -> void:
+			if Progress.buy_demo(track):
+				Audio.play("ui_buy")
+			else:
+				Audio.play("ui_deny")
+			_open_panel(_demolitions_panel()), 96)
+		ub.disabled = cost < 0 or Progress.credits < cost
+		row.add_child(ub)
+		list.add_child(row)
+	v.add_child(UIKit.button("CLOSE", _close_panel))
+	return fr[0]
+
+
 func _launch_panel() -> Control:
 	var fr := _frame("LIFT CONTROL")
 	var v: VBoxContainer = fr[1]
@@ -525,7 +606,11 @@ func _launch_panel() -> Control:
 		for id in Game.modifiers:
 			names.append(String(Balance.modifier(String(id))["name"]))
 		v.add_child(UIKit.label("MODIFIERS: %s  (+%d%% ore pay)" % [", ".join(names), int(round(float(mc["mod_bonus"]) * 100.0))], 10, UIKit.TEAL))
-	v.add_child(UIKit.label("Relic bonus: %d CR    Charges: %d    Cargo: %d" % [c.get("reward", 0), Balance.CHARGES_FREE + Progress.charges, cargo_cap()], 10, UIKit.TEAL))
+	var packed: Array = []
+	for kind: String in Progress.slots:
+		if kind != "":
+			packed.append("%d %s" % [Progress.packed(kind), Balance.EXPLOSIVES[kind]["short"]])
+	v.add_child(UIKit.label("Relic bonus: %d CR    Explosives: %s    Cargo: %d" % [c.get("reward", 0), " + ".join(packed), cargo_cap()], 10, UIKit.TEAL))
 	v.add_child(UIKit.label("Death loses unbanked cargo. Upgrades are permanent.", 9, UIKit.MUTED))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)

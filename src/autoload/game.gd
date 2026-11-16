@@ -116,19 +116,27 @@ func goto(screen: String, instant: bool = false) -> void:
 
 
 func start_run() -> void:
-	var charges: int = Balance.CHARGES_FREE + Progress.charges
-	Progress.charges = 0
+	# the two explosive slots: what was bought (plus the main slot's free
+	# units) goes down with you; stock of other types waits at the outpost
+	var slots: Array = Progress.slots.duplicate()
+	var ammo: Array = [0, 0]
+	for i in 2:
+		var kind: String = slots[i]
+		if kind != "":
+			ammo[i] = Progress.packed(kind)
+			Progress.explosives[kind] = 0
 	Progress.stats["runs"] = int(Progress.stats.get("runs", 0)) + 1
 	Progress.save_progress()
 	run = {
 		"seed": int(contract.get("seed", 1234)),
 		"contract": modded_contract(contract, modifiers),
 		"modifiers": modifiers.duplicate(),
-		"charges": charges,
+		"slots": slots,           # explosive type per slot: [main, backup]
+		"charges": ammo[0],       # units left in the main slot
+		"charges2": ammo[1],      # units left in the backup slot
 		"lures": Balance.LURES_PER_RUN,
 		"shears": Balance.SHEARS_PER_RUN,
 		"bolts": Balance.BOLTS_PER_RUN,
-		"sticky": Progress.sticky_active(),
 		"relics": [],
 		"loadout": loadout.duplicate(),
 		"gadget_cd": 0.0,
@@ -160,6 +168,24 @@ func descend(hull_now: float, from_depth_cells: int) -> void:
 	run["depth_offset"] = from_depth_cells
 	run["max_depth"] = maxi(int(run.get("max_depth", 0)), from_depth_cells)
 	goto("mine")
+
+
+## Explosive type in a slot of this run (0 main, 1 backup); "" when empty.
+func slot_kind(i: int) -> String:
+	var s: Array = run.get("slots", Balance.EXPLOSIVE_DEFAULT)
+	return String(s[i]) if i >= 0 and i < s.size() else ""
+
+
+func slot_key(i: int) -> String:
+	return "charges" if i == 0 else "charges2"
+
+
+func slot_ammo(i: int) -> int:
+	return int(run.get(slot_key(i), 0))
+
+
+func has_explosive(kind: String) -> bool:
+	return slot_kind(0) == kind or slot_kind(1) == kind
 
 
 func has_relic(id: String) -> bool:

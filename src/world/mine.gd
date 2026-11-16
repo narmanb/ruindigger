@@ -860,9 +860,10 @@ func _zone_reached(z: int) -> void:
 		reveal_zone(z)
 	if not Game.has_relic("spares"):
 		return
-	if int(Game.run.get("charges", 0)) < Progress.charges_max():
+	var main := Game.slot_kind(0)
+	if main != "" and int(Game.run.get("charges", 0)) < Progress.carry(main):
 		Game.run["charges"] = int(Game.run.get("charges", 0)) + 1
-		toast("SPARE PARTS - you rig up a charge")
+		toast("SPARE PARTS - you rig up a %s" % String(Balance.EXPLOSIVES[main]["name"]).to_lower())
 	elif int(Game.run.get("lures", 0)) < Balance.SPARE_LURES_MAX:
 		Game.run["lures"] = int(Game.run.get("lures", 0)) + 1
 		toast("SPARE PARTS - you rig up a lure")
@@ -1227,7 +1228,7 @@ func spawn_shear(pos: Vector2, v: Vector2) -> void:
 	ch.mine = self
 	ch.shear = true
 	ch.fuse = Balance.SHEAR_FUSE
-	ch.sticky = bool(Game.run.get("sticky", false))
+	ch.sticky = Game.has_explosive("sticky")
 	ch.vel = v
 	ch.position = pos
 	entity_root.add_child(ch)
@@ -1275,13 +1276,74 @@ func spawn_lure(pos: Vector2, v: Vector2) -> Node2D:
 	return lu
 
 
-func spawn_charge(pos: Vector2, v: Vector2) -> void:
+## A thrown explosive: "charge" (bounces), "sticky" or "remote".
+func spawn_charge(pos: Vector2, v: Vector2, kind: String = "charge") -> Hazards.Charge:
 	var ch := Hazards.Charge.new()
 	ch.mine = self
-	ch.sticky = bool(Game.run.get("sticky", false))
+	ch.sticky = kind == "sticky"
+	ch.remote = kind == "remote"
 	ch.vel = v
 	ch.position = pos
 	entity_root.add_child(ch)
+	if ch.remote:
+		remotes.append(ch)
+	return ch
+
+
+var remotes: Array = []          # remote charges waiting for their signal
+
+
+func remotes_out() -> int:
+	var live: Array = []
+	for ch in remotes:
+		if is_instance_valid(ch) and not ch.is_queued_for_deletion() and not ch.armed:
+			live.append(ch)
+	remotes = live
+	return remotes.size()
+
+
+## Set off every remote charge that is out. Returns how many.
+func detonate_remotes() -> int:
+	var n := remotes_out()
+	for ch in remotes:
+		ch.detonate()
+	remotes.clear()
+	if n > 0:
+		Audio.play("ui_confirm", -4.0)
+	return n
+
+
+func spawn_rocket(pos: Vector2, dir: Vector2i) -> Hazards.Rocket:
+	var rk := Hazards.Rocket.new()
+	rk.mine = self
+	rk.dir = dir
+	rk.position = pos
+	entity_root.add_child(rk)
+	return rk
+
+
+func spawn_mine(pos: Vector2) -> Hazards.ProxMine:
+	var pm := Hazards.ProxMine.new()
+	pm.mine = self
+	pm.position = pos
+	entity_root.add_child(pm)
+	return pm
+
+
+## Blast radius (cells) and power of your explosives, with the Demolitions
+## upgrades applied.
+func blast_radius() -> float:
+	return Balance.CHARGE_RADIUS_CELLS * Balance.demo_mult("radius", Progress.demo_level("radius"))
+
+
+func blast_power() -> float:
+	return Balance.demo_mult("power", Progress.demo_level("power"))
+
+
+## One of your explosives going off (charge, sticky, remote, rocket, mine).
+func charge_blast(pos: Vector2) -> void:
+	var p := blast_power()
+	explode(pos, blast_radius(), Balance.CHARGE_TILE_DAMAGE * p, Balance.CHARGE_ENTITY_DAMAGE * p, "charge")
 
 
 ## A fresh ore drop, graded by the zone it came from.

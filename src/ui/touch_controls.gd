@@ -8,7 +8,9 @@ extends Control
 ##   fixed stick   - stays at its resting spot
 ##   floating stick - appears under the finger anywhere in the left zone
 ##   d-pad         - 8-way pad at the resting spot
-## Right: a 2x2 block of octagonal buttons (LADDER DRILL / CHARGE JUMP), a
+## Right: a 2x2 block of octagonal buttons (LADDER DRILL / CHARGE JUMP; with
+## a backup explosive packed, CHARGE splits into two half-width buttons side
+## by side, one per slot, in the same footprint), a
 ## context USE button beside it (only when something is in reach), and a
 ## retractable gadget toolbar above the block (the active gadget and LURE).
 ## The toolbar's tab slides it off the right edge and back; its state is
@@ -54,7 +56,8 @@ var show_bar := true          # the outpost has no gadgets: it turns the toolbar
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	buttons = default_buttons()
+	_two = _two_slots()
+	buttons = default_buttons(_two)
 	bar_open = bool(Settings.get_value("gadget_bar_open"))
 	bar_t = 1.0 if bar_open else 0.0
 	Settings.changed.connect(func() -> void:
@@ -69,14 +72,36 @@ func _ready() -> void:
 ##   LADDER  DRILL
 ##   CHARGE  JUMP      plus USE to the left, only when something is in reach.
 ## hw/hh are the octagon's half extents; r (= hh) is kept for older callers.
-static func default_buttons() -> Array:
-	return [
+## `two`: a backup explosive is packed, so CHARGE becomes two half-width
+## buttons (slot 1 left, slot 2 right) inside the same footprint. Both follow
+## the "charge" layout offset, so they always move together.
+static func default_buttons(two: bool = false) -> Array:
+	var out: Array = [
 		{"name": "DRILL", "action": "drill", "off": Vector2(-41, -86), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "drill", "accent": HudSkin.ORANGE},
 		{"name": "JUMP", "action": "jump", "off": Vector2(-41, -32), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "jump", "accent": HudSkin.CYAN},
-		{"name": "CHARGE", "action": "charge", "off": Vector2(-112, -32), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "charge", "accent": HudSkin.ORANGE},
+	]
+	if two:
+		out.append({"name": "CHARGE", "action": "charge", "layout": "charge", "slot": 0, "off": Vector2(-129, -32), "hw": 16.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "charge", "accent": HudSkin.ORANGE})
+		out.append({"name": "CHARGE", "action": "charge2", "layout": "charge", "slot": 1, "off": Vector2(-95, -32), "hw": 16.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "charge", "accent": HudSkin.YELLOW})
+	else:
+		out.append({"name": "CHARGE", "action": "charge", "slot": 0, "off": Vector2(-112, -32), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "charge", "accent": HudSkin.ORANGE})
+	out.append_array([
 		{"name": "LADDER", "action": "ladder", "off": Vector2(-112, -86), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "ladder", "accent": HudSkin.ORANGE},
 		{"name": "USE", "action": "interact", "off": Vector2(-180, -59), "hw": 31.0, "hh": 20.0, "r": 20.0, "finger": -1, "icon": "use", "accent": HudSkin.TEAL},
-	]
+	])
+	return out
+
+
+var _two := false
+
+
+func _two_slots() -> bool:
+	return Game.slot_kind(1) != ""
+
+
+## The layout-offset name a button is saved under (both charge buttons share one).
+static func layout_name(b: Dictionary) -> String:
+	return String(b.get("layout", b["action"]))
 
 
 func _update_visible() -> void:
@@ -148,11 +173,11 @@ static func bar_layout(sr: Rect2, scale: float, top_y: float, right_x: float, t:
 
 
 func _btn_pos(b: Dictionary) -> Vector2:
-	return button_pos(b, _safe_rect(), float(Settings.get_value("touch_scale")), Settings.layout_offset(b["action"]))
+	return button_pos(b, _safe_rect(), float(Settings.get_value("touch_scale")), Settings.layout_offset(layout_name(b)))
 
 
 func _btn_rect(b: Dictionary) -> Rect2:
-	return button_rect(b, _safe_rect(), float(Settings.get_value("touch_scale")), Settings.layout_offset(b["action"]))
+	return button_rect(b, _safe_rect(), float(Settings.get_value("touch_scale")), Settings.layout_offset(layout_name(b)))
 
 
 func _btn_r(b: Dictionary) -> float:
@@ -167,7 +192,7 @@ func _bar() -> Dictionary:
 	var top := INF
 	var right := -INF
 	for b in buttons:
-		if b["action"] in ["drill", "ladder", "jump", "charge"]:
+		if b["action"] in ["drill", "ladder", "jump", "charge", "charge2"]:
 			var r := _btn_rect(b)
 			top = minf(top, r.position.y)
 			right = maxf(right, r.end.x)
@@ -351,6 +376,12 @@ func _notification(what: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if _two_slots() != _two:
+		# a backup explosive was packed or unpacked: swap the CHARGE layout
+		_release_all()
+		_two = _two_slots()
+		buttons = default_buttons(_two)
+		queue_redraw()
 	if mine and mine.player:
 		var it: Dictionary = mine.nearest_interactable(mine.player)
 		var lbl: String = it.get("label", "")
@@ -410,7 +441,7 @@ func _control_pos(name: String) -> Vector2:
 	if name == "move":
 		return _rest_pos()
 	for b in buttons:
-		if b["action"] == name:
+		if layout_name(b) == name:
 			return _btn_pos(b)
 	return Vector2.ZERO
 
@@ -418,7 +449,7 @@ func _control_pos(name: String) -> Vector2:
 func _control_at(p: Vector2) -> String:
 	for b in buttons:
 		if _hit(b, p):
-			return b["action"]
+			return layout_name(b)
 	if p.distance_to(_rest_pos()) < move_radius() * 1.3:
 		return "move"
 	return ""
@@ -451,14 +482,26 @@ func _draw() -> void:
 		var dim := 1.0
 		if b["action"] == "ladder" and mine and mine.player and not edit_mode and not mine.player.can_build_ladder():
 			dim = 0.45
-		if b["action"] == "charge" and not edit_mode and Game.run.has("charges") and int(Game.run["charges"]) <= 0:
-			dim = 0.45
-		var bheld: bool = b["finger"] != -1 or (edit_mode and _drag_name == b["action"])
+		var icon: String = b["icon"]
+		var is_slot: bool = b.has("slot") and Game.run.has("charges")
+		if is_slot:
+			# an explosive slot: its type's icon and short name, dim when empty
+			# (a remote charge that is out can still be set off)
+			var kind := Game.slot_kind(int(b["slot"]))
+			if kind != "":
+				icon = kind
+				label = String(Balance.EXPLOSIVES[kind]["short"]) if _two else String(Balance.EXPLOSIVES[kind]["name"]).split(" ")[-1]
+			var waiting: bool = kind == "remote" and mine != null and mine.has_method("remotes_out") and mine.remotes_out() > 0
+			if waiting:
+				label = "FIRE"
+			if not edit_mode and Game.slot_ammo(int(b["slot"])) <= 0 and not waiting:
+				dim = 0.45
+		var bheld: bool = b["finger"] != -1 or (edit_mode and _drag_name == layout_name(b))
 		var hw := float(b.get("hw", b["r"])) * sc
 		var hh := float(b.get("hh", b["r"])) * sc
-		_draw_button(_btn_pos(b), hw, hh, b["accent"], b["icon"], label, bheld, dim, op)
-		if b["action"] == "charge" and Game.run.has("charges"):
-			_badge(_btn_pos(b) + Vector2(hw - 10.0, -hh + 8.0), str(Game.run["charges"]), op)
+		_draw_button(_btn_pos(b), hw, hh, b["accent"], icon, label, bheld, dim, op)
+		if is_slot:
+			_badge(_btn_pos(b) + Vector2(hw - (6.0 if _two else 10.0), -hh + 8.0), str(Game.slot_ammo(int(b["slot"]))), op)
 	if show_bar:
 		_draw_bar(op, sc)
 

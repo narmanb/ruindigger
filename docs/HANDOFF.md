@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.12.0** (Android code 25). **`main` is the
+Last updated at version **0.13.0** (Android code 26). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.12.0. Note: `t._frames(n)` waits on
+`structures` separately. All are green at 0.13.0. Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
 of something updated in `_process` should poll with a cap, not wait a fixed n. Wrap Godot in `timeout`: a
 parse error makes a headless run hang. The screenshot harness is
@@ -50,6 +50,20 @@ parse error makes a headless run hang. The screenshot harness is
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.13.0:** explosives and the Demolitions counter.
+  - Data: `Balance.EXPLOSIVES` / `EXPLOSIVE_ORDER` / `DEMO_UPGRADES`.
+  - Save (`Progress`, VERSION 2): `explosives` (stock by type), `demo`
+    (upgrade levels), `slots` ([main, backup]). Version 1 saves migrate in
+    `from_dict` (Charge Rack -> capacity, Sticky upgrade refunded).
+    `charge_rack` and `sticky` are no longer upgrade tracks.
+  - Run: `Game.run["slots"]`, `["charges"]` (main slot ammo), `["charges2"]`
+    (backup). Helpers `Game.slot_kind/slot_ammo/has_explosive`.
+  - Input: `charge` and `charge2` -> `Player.use_explosive(slot, ay)`.
+  - `Hazards.Charge` (flags `sticky`, `remote`), `Hazards.Rocket`,
+    `Hazards.ProxMine`; every blast goes through `Mine.charge_blast`.
+  - Touch: `TouchControls.default_buttons(two)`; both slot buttons share the
+    "charge" layout offset. Outpost: `_demolitions_panel`.
+  - Screenshot args: `slots=charge,rocket`, `screen=outpost panel=demolitions`.
 - **0.12.0:** three map relics. Dowsing Rod (`Mine._dowse` writes a second
   "sensed" layer, `Minimap.sense_img/sense_tex`, drawn under the explored
   map in the minimap, pause map and survey map), Greedy Lamp
@@ -108,33 +122,16 @@ parse error makes a headless run hang. The screenshot harness is
 - The owner likes relic pairs being a lucky find. Making them easier to find
   (sonar or map marks) is a "maybe later".
 
-## Next up (owner's idea, agreed 2026-11-16): explosives and a Demolitions counter
-- Split charges into separate types you buy and carry: **normal** and
-  **sticky** (sticky is currently a one-time upgrade with an ON/OFF toggle; it
-  becomes its own charge type instead).
-- **Drill rocket:** fires straight in the facing direction, bores through
-  sediment, rubble and basalt for a set time, then explodes (early on alloy,
-  bedrock or a foe).
-- **Remote charge:** throw it, press again to detonate (probably one out at a time).
-- **Proximity mine:** dropped at your feet, arms after ~1 s, set off by a foe
-  or the player.
-- Sell them at a **separate Demolitions counter** at the outpost; the owner does
-  not want the Supply Locker crowded.
-- **Started (session branch only, not on main):** `Balance.EXPLOSIVES`,
-  `EXPLOSIVE_DEFAULT` and `DEMO_UPGRADES` hold first-guess data. Nothing uses
-  them yet. Next chunk: the Demolitions counter and the run loadout.
-- **Decided: two slots per dive** (main + backup), chosen at the Demolitions
-  counter. Each slot gets **its own button, side by side** (no toggling), kept
-  small; this matters for players who map touch controls to a gamepad. Needs
-  a second charge input action and the UI layout checks.
-- **Demolitions counter also sells capped upgrades** (a few levels each, not
-  endless): carry capacity per type (fold the existing CHARGE RACK upgrade in
-  here), blast power, blast radius. Suggested extras the owner is open to:
-  shorter fuse, drill rocket bore range, mine trigger range or "ignores you",
-  more than one remote charge out, blast shielding (less self-damage). Old
-  saves that own CHARGE RACK / STICKY CHARGES need a sensible migration.
-- Related "kit shop" idea: buying extra lures. The owner is not keen on shears
-  and bolts, so leave those alone unless asked.
+## Explosives follow-ups (0.13.0 built the plan; these are what is left)
+- The owner has not played 0.13.0 yet. Prices, carry limits, rocket life and
+  speed, mine timings and the upgrade multipliers are first guesses in `Balance`.
+- Upgrade ideas the owner is open to, not built: shorter fuse, drill rocket
+  bore range, mine trigger range or "ignores you", more than one remote charge
+  out (`REMOTE_MAX_OUT`), blast shielding (less self-damage).
+- "Kit shop": buying extra lures. The owner is not keen on shears and bolts.
+- Not done: mines do not chain when another blast catches them; crawlers do
+  not avoid mines; the counter's slot buttons show 4-letter names only (the
+  full name and description appear once a type is in a slot).
 
 ## Open items and ideas the owner liked
 - **Zone guardians:** one optional boss arena per zone, beaten by using that zone's terrain against it. Proposed: start with Dustworks and Spore Veins. This was my top recommendation. The owner asked for details, then chose breakers first.

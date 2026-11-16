@@ -26,7 +26,8 @@ SIL Open Font License fonts (see *Credits*).
 | Jump / air jet / wall jump | Space, Z | A | JUMP |
 | Drop through wooden platform | Down + Jump | Down + A | Hold stick/D-pad down + JUMP |
 | Drill (hold) | J, X, Shift | RB / RT | DRILL (hold) |
-| Throw charge | K, C (hold down to drop at your feet) | LB / LT | CHARGE |
+| Main explosive | K, C (hold down to drop at your feet) | LB / LT | CHARGE (left half when two are packed) |
+| Backup explosive | H, N | right stick click | right half of CHARGE |
 | Interact (lift, relic, cache) | E, F | Y | USE (shown when something is in reach) |
 | Raise a Rubble Ladder | L, Q | X | LADDER |
 | Cargo manifest | I | Pause → CARGO MANIFEST | CARGO button below depth panel, or tap the cargo meter |
@@ -86,7 +87,7 @@ SIL Open Font License fonts (see *Credits*).
 
 ### The loop
 1. **Outpost**: walk to the *Upgrade Terminal*, the *Contract Board*, the
-   *Supply Locker* (buy extra charges) and the *Lift*.
+   *Demolitions counter* (pick, buy and upgrade explosives), the *Supply Locker* (gadgets) and the *Lift*.
 2. **Mine**: five zones. Each has its own palette, terrain, background props,
    lighting and ambient track.
    * **Dustworks**: ochre sediment, timber shaft, roots, fossils, an unstable

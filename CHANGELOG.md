@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.0
+**Explosives and the Demolitions counter**
+- **A new DEMO terminal at the outpost** (between the Contract Board and the Supply Locker). Explosives moved here from the Supply Locker, which now only handles gadgets.
+- **Five explosives.** Sticky is now its own type instead of an upgrade with a toggle.
+  - **Demo charge** (25 CR): bounces and rolls, then blows. As before.
+  - **Sticky charge** (35 CR): sticks to the first rock, ceiling or foe it touches.
+  - **Drill rocket** (45 CR): flies straight the way you face (or up / down if you aim), boring a tunnel you can walk through in sediment, rubble and basalt. It blows after 1.6 seconds, or at once on a foe or on anything it can't cut (alloy, bedrock).
+  - **Remote charge** (40 CR): throw it and it waits, with no fuse. Press the same button again to set it off. One can be out at a time.
+  - **Proximity mine** (35 CR): laid at your feet. It arms after a second, once you have stepped away (amber light, then blinking red). After that, the next foe to come near sets it off after a short beep. So do you, if you walk back onto it.
+- **Two slots per dive.** Pick a main explosive and, if you like, a backup. The main slot comes with free units every dive (2 demo charges, or 1 of any other type); the backup only has what you buy. Bought units of types you don't pack wait at the outpost.
+- **One button each, side by side.** With a backup packed, the CHARGE button splits into two half-width buttons in the same space, each with its type's icon, short name and count. No toggling. Keyboard: K / C for the main slot, H / N for the backup. Gamepad: LB / LT for the main slot, right-stick click for the backup. With no backup, the screen looks exactly as before.
+- The status panel shows both slots as a short name and a count when two are packed.
+- **Upgrades at the counter** (each one capped):
+  - **BIGGER RACK** (3 levels): carry more of every type. This is the old Charge Rack; demo charges still go 6 / 8 / 10 / 12.
+  - **BLAST POWER** (2 levels): x1.25, then x1.5 damage to rock and foes.
+  - **BLAST RADIUS** (2 levels): x1.15, then x1.3 reach.
+  - Power and radius apply to all five types. They don't change shear charges or gas explosions.
+- **Old saves carry over.** Your Charge Rack level becomes BIGGER RACK, packed charges stay packed, and if you owned the Sticky Charges upgrade its 240 CR is paid back.
+- Supply caches in the mine and the Spare Parts relic now restock your main explosive, whatever type it is. Fault Line triggers on all five types. Shear charges stick only when you have sticky charges packed.
+- Fixed a misleading message: drilling alloy said "needs DRILL Mk.IV or a charge", but charges have never been able to break alloy.
+
 ## 0.12.0
 **Three map relics** (the pool grows from 16 to 19). This finishes the relic plan.
 - **Dowsing Rod:** water within 20 cells of you shows on the minimap and the survey map before you get there, even through solid rock. It's drawn in a paler blue than water you have actually seen (normally only about 7 cells around you), and the survey map's legend lists it as SENSED WATER. The marks update every second and clear when the water drains away.
