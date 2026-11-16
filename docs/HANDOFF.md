@@ -1,14 +1,22 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.9.0** (Android code 21) on branch
-**`feature/fun-pass`**.
+Last updated at version **0.9.0** (Android code 21). **`main` is the
+up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
-- `feature/fun-pass`: current work. All recent builds come from here. Push here.
-- `feature/first-civilization`: the deep stage work (0.6.x). `fun-pass` was
-  branched from it, so it is included.
-- `finish-0.5`, `ccr-79c19570-j1j312`, `main`: never modify, force-push or merge
-  without the owner asking. `main` is behind; merging is the owner's call.
+- `main`: the current game. The owner wants it to always be the most
+  up-to-date branch.
+- **Workflow:** do the work on the session's own branch, then merge it into
+  `main` after every update (versioned or docs-only) and push both. Merge,
+  never force-push. If the session's rules only allow pushing its own branch,
+  ask the owner before pushing `main`.
+- `feature/fun-pass`: where 0.7.0-0.9.0 were built. Its files match `main` at
+  0.9.0. No longer the working branch.
+- `feature/first-civilization`: the deep stage work (0.6.x), included in `main`.
+- `finish-0.5`, `ccr-79c19570-j1j312`: old history. Never modify, force-push or
+  merge without the owner asking.
+- `main` also holds the original 0.1 top-down build in its history (tag
+  `v0.1.0`); the 0.9.0 merge replaced its files.
 - No pull requests unless asked.
 
 ## How the owner works (follow these)
@@ -19,7 +27,7 @@ Last updated at version **0.9.0** (Android code 21) on branch
   these disagree. Docs-only commits need no bump.
 - After pushing, give the owner the Actions page link and do not wait for the
   build. CI uploads the APK unzipped as `RuinDigger-<version>.apk`:
-  https://github.com/narmanb/ruindigger/actions?query=branch%3Afeature%2Ffun-pass
+  https://github.com/narmanb/ruindigger/actions?query=branch%3Amain
 - Plain language. Say what was and was not tested. **Nothing has ever been
   measured on a phone**; only desktop (headless and xvfb).
 - Commit trailers per the session's attribution instructions. Never put model
