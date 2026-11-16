@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.14.0** (Android code 27). **`main` is the
+Last updated at version **0.15.0** (Android code 28). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.14.0. Note: `t._frames(n)` waits on
+`structures` separately. All are green at 0.15.0. Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
 of something updated in `_process` should poll with a cap, not wait a fixed n. Wrap Godot in `timeout`: a
 parse error makes a headless run hang. The screenshot harness is
@@ -50,6 +50,14 @@ parse error makes a headless run hang. The screenshot harness is
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.15.0:** Shielded Brute (`src/enemies/brute.gd`, its own pixel-space
+  walker, not a Crawler) and Flier (`src/enemies/flier.gd`, a Crawler whose
+  `walkable` is any open cell). Placed at runtime by `Mine.roamer_cells()` /
+  `_spawn_roamers()` from a seeded stream: the generator is untouched. Art:
+  `gen_brute` / `gen_flier` in `tools/assetgen/gen_sprites.py`. `Crawler` now
+  has per-kind vars (`max_hp`, `speed_*`, `bite`, `sight`). `Mine.noise` calls
+  `hear` on anything that has it. Screenshot args: `brute=N [brute_state=S]`,
+  `flier=N`.
 - **0.13.0:** explosives and the Demolitions counter.
   - Data: `Balance.EXPLOSIVES` / `EXPLOSIVE_ORDER` / `DEMO_UPGRADES`.
   - Save (`Progress`, VERSION 2): `explosives` (stock by type), `demo`
@@ -121,6 +129,23 @@ parse error makes a headless run hang. The screenshot harness is
   "greater" relics (wait until the pool is bigger).
 - The owner likes relic pairs being a lucky find. Making them easier to find
   (sonar or map marks) is a "maybe later".
+
+## Enemy plan (agreed with the owner)
+- **Batch 1: done in 0.15.0** (shielded brute, flier).
+- **Batch 2 (next):** burrower (digs through rock toward noise; a blunt
+  armoured mole-worm, no eyes, you see the rock bulge before it breaks
+  through), bomb-eater (**rare**; squat scavenger that swallows your planted
+  mines and remote charges, belly blinks with the fuse light, a walking bomb),
+  spore creature (Spore Veins; drifting puffball that leaves a gas cloud when
+  it dies and can set off a blast).
+- **Batch 3:** water-lover (pale eel, strong in water, flops and dims on dry
+  ground: drain its pool), lava creature (The First Civilization; slag
+  salamander, water or cryo freezes it into a rock statue).
+- Frequencies the owner asked for: brute uncommon but met several times a run;
+  flier and bomb-eater rare; the rest tied to their zones.
+- Show the owner a screenshot of each new enemy next to the digger.
+- 0.14.0 and 0.15.0 were pushed with "[skip ci]" (the owner was still testing
+  the 0.13.0 APK). The next push the owner wants a build for must not skip CI.
 
 ## Explosives follow-ups (0.13.0 built the plan; these are what is left)
 - The owner has not played 0.13.0 yet. Prices, carry limits, rocket life and

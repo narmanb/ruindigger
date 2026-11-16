@@ -26,6 +26,7 @@ static func run(t: Node) -> void:
 	await relics_batch_c(t)
 	await feet(t)
 	await charges(t)
+	await roamers(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -1562,6 +1563,208 @@ static func kit(t: Node) -> void:
 			if not (g.get_stratum(ec.x, ec.y) in Balance.BREAKER_ZONES):
 				wrong += 1
 	t.check(wrong == 0, "breakers spawn only in the Forgotten Engine and Drowned Aqueducts")
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+## 0.15.0 enemies: the shielded brute and the flier.
+static func roamers(t: Node) -> void:
+	t.section("shielded brute and flier")
+	t.check(Brute.HALF.y * 2.0 > Player.HALF.y * 2.0 and Brute.HALF.x * 2.0 >= Player.HALF.x * 4.0, "the brute is taller than the digger and at least twice as wide")
+	for seed_v in [7, 4242]:
+		Game.contract = Balance.CONTRACTS[0].duplicate()
+		Game.contract["seed"] = seed_v
+		await _settle(t)
+		Game.start_run()
+		await _settle(t)
+		await t._frames(5)
+		var m0: Node = Game.current
+		var cells: Array = m0.roamer_cells()
+		var again: Array = m0.roamer_cells()
+		var want := 0
+		for n in Balance.BRUTES_PER_ZONE:
+			want += int(n)
+		var zones_ok := true
+		var per_zone: Dictionary = {}
+		var sp: Vector2i = m0.data["spawn"]
+		for c: Vector2i in cells[0]:
+			var z: int = m0.grid.get_stratum(c.x, c.y)
+			per_zone[z] = int(per_zone.get(z, 0)) + 1
+			if z == Balance.Z_DUST or absi(c.x - sp.x) + absi(c.y - sp.y) < Balance.BRUTE_MIN_SPAWN_DIST:
+				zones_ok = false
+		for z in per_zone:
+			if int(per_zone[z]) > int(Balance.BRUTES_PER_ZONE[z]):
+				zones_ok = false
+		t.check(cells == again, "seed %d: brutes and fliers are placed the same way every time" % seed_v)
+		t.check((cells[0] as Array).size() >= want - 1 and zones_ok, "seed %d: a brute in each zone below the Dustworks (%d of %d), none near the start" % [seed_v, (cells[0] as Array).size(), want])
+		var fl_ok := (cells[1] as Array).size() <= Balance.FLIERS_PER_MAP
+		for c: Vector2i in cells[1]:
+			if not (m0.grid.get_stratum(c.x, c.y) in Balance.FLIER_ZONES):
+				fl_ok = false
+		t.check(fl_ok and (cells[1] as Array).size() >= 1, "seed %d: fliers are rare (%d) and keep to the zones below the Dustworks" % [seed_v, (cells[1] as Array).size()])
+		var live_b := 0
+		var live_f := 0
+		for e in m0.enemies:
+			if e is Brute:
+				live_b += 1
+			elif e is Flier:
+				live_f += 1
+		t.check(live_b == (cells[0] as Array).size() and live_f == (cells[1] as Array).size(), "seed %d: they are in the mine" % seed_v)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	pl.invuln = 1e9
+	var pc: Vector2i = g.world_to_cell(pl.global_position)
+	var floor_it := func() -> void:
+		for x in range(pc.x - 10, pc.x + 24):
+			for y in range(pc.y - 6, pc.y + 4):
+				if g.in_bounds(x, y):
+					g.set_flag(x, y, Cell.F_PROTECTED, false)
+					g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.HARD)
+					g.set_water(x, y, 0)
+	floor_it.call()
+	await t._frames(3)
+	var home := pl.global_position
+	# --- the plate ---
+	var br: Brute = mine.spawn_brute(Vector2i(pc.x + 5, pc.y))
+	br.set_physics_process(false)
+	br.facing = -1                      # plate toward the digger
+	var front := br.global_position + Vector2(-40, 0)
+	var back := br.global_position + Vector2(40, 0)
+	var hp := br.hp
+	br.last_hit = "drill"
+	br.hit(40.0, front)
+	t.check(is_equal_approx(hp - br.hp, 40.0 * Balance.BRUTE_PLATE), "the plate stops most of a drill hit from the front (%.0f of 40)" % (hp - br.hp))
+	hp = br.hp
+	br.last_hit = "drill"
+	br.hit(40.0, back)
+	t.check(is_equal_approx(hp - br.hp, 40.0), "a drill hit on its back does full damage")
+	hp = br.hp
+	br.last_hit = "charge"
+	br.hit(40.0, front)
+	t.check(is_equal_approx(hp - br.hp, 40.0 * Balance.BRUTE_PLATE), "the plate stops a blast from the front too")
+	hp = br.hp
+	br.last_hit = "gas"
+	br.hit(10.0, front, false)
+	t.check(is_equal_approx(hp - br.hp, 10.0), "a gas cloud gets past the plate")
+	br.stun(1.2)
+	t.check(br.state != Brute.S.STUNNED, "a blast's short shock does not stagger it")
+	hp = br.hp
+	br.crushed()
+	t.check(is_equal_approx(hp - br.hp, Balance.BRUTE_RUBBLE_DAMAGE) and br.state == Brute.S.STUNNED, "falling rock ignores the plate and stuns it")
+	hp = br.hp
+	br.last_hit = "drill"
+	br.hit(20.0, front)
+	t.check(is_equal_approx(hp - br.hp, 20.0), "while it is stunned the plate is down")
+	br.last_hit = "drill"
+	br.hit(9999.0, back)
+	t.check(br.state == Brute.S.DEAD and not mine.enemies.has(br), "it can be killed")
+	await t._frames(30)
+	# --- walking, turning, hitting ---
+	var b2: Brute = mine.spawn_brute(Vector2i(pc.x + 4, pc.y))
+	b2.facing = 1                        # looking away from the digger
+	b2.charge_cd = 99.0
+	await t._frames(4)
+	t.check(b2.on_floor and absf(b2.global_position.y + Brute.HALF.y - (pc.y + 1) * 16.0) < 1.0, "it stands on the floor")
+	var saw_turn := false
+	for k in 120:
+		await t._frames(1)
+		if b2.state == Brute.S.TURN:
+			saw_turn = true
+		if b2.facing == -1:
+			break
+	t.check(saw_turn and b2.facing == -1, "it has to turn around to face you, and that takes a moment")
+	pl.invuln = 0.0
+	var php := pl.hp
+	for k in 400:
+		await t._frames(1)
+		if pl.hp < php:
+			break
+	t.check(is_equal_approx(php - pl.hp, Balance.BRUTE_DAMAGE), "it walks up and shoves you with the plate (%.0f)" % (php - pl.hp))
+	pl.invuln = 1e9
+	pl.hp = pl.max_hp
+	b2.queue_free()
+	mine.enemies.erase(b2)
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	floor_it.call()
+	await t._frames(3)
+	# --- its charge: through sediment, but basalt stuns it ---
+	for y in range(pc.y - 5, pc.y + 1):
+		g.set_mat(pc.x + 9, y, Cell.SOFT)
+		g.set_mat(pc.x + 14, y, Cell.HARD)
+		g.set_mat(pc.x + 15, y, Cell.HARD)
+	var b3: Brute = mine.spawn_brute(Vector2i(pc.x + 4, pc.y))
+	b3.facing = 1
+	await t._frames(4)
+	b3.state = Brute.S.CHARGE
+	b3.state_t = 0.0
+	b3.forget_t = 0.0
+	for k in 200:
+		await t._frames(1)
+		if b3.state == Brute.S.STUNNED:
+			break
+		if b3.state != Brute.S.CHARGE:
+			b3.state = Brute.S.CHARGE       # keep it charging until it meets the wall
+			b3.state_t = 0.0
+	t.check(not g.is_solid(pc.x + 9, pc.y) and not g.is_solid(pc.x + 9, pc.y - 1), "a charging brute goes straight through sediment")
+	t.check(b3.state == Brute.S.STUNNED and b3.slams == 1 and g.get_mat(pc.x + 14, pc.y) == Cell.HARD, "charging into basalt stuns it and leaves the rock standing")
+	t.check(not b3.plate_blocks(b3.global_position + Vector2(40, 0)), "after a slam the plate is down")
+	b3.queue_free()
+	mine.enemies.erase(b3)
+	floor_it.call()
+	await t._frames(3)
+	# --- ledges and soft walls on the way to you ---
+	for x in range(pc.x + 4, pc.x + 7):
+		g.set_mat(x, pc.y, Cell.HARD)       # a one-cell step up
+	for y in range(pc.y - 5, pc.y + 1):
+		g.set_mat(pc.x + 3, y, Cell.SOFT)   # and a sediment wall at the far end of the ledge
+	var b4: Brute = mine.spawn_brute(Vector2i(pc.x + 10, pc.y))
+	b4.facing = -1
+	b4.charge_cd = 99.0
+	b4.attack_cd = 99.0
+	var top_y := 9999.0
+	for k in 900:
+		await t._frames(1)
+		b4.target_x = pl.global_position.x
+		b4.forget_t = 5.0
+		if b4.state == Brute.S.IDLE:
+			b4.state = Brute.S.HUNT
+		top_y = minf(top_y, b4.global_position.y)
+		if b4.global_position.x < (pc.x + 3) * 16.0:
+			break
+	t.check(top_y <= pc.y * 16.0 - Brute.HALF.y + 1.0, "it steps up a one-cell ledge")
+	t.check(not g.is_solid(pc.x + 3, pc.y - 1) and not g.is_solid(pc.x + 3, pc.y - 2) and b4.global_position.x < (pc.x + 4) * 16.0, "it smashes through a sediment wall to reach you (x %.0f, wall at %d)" % [b4.global_position.x, (pc.x + 3) * 16])
+	b4.queue_free()
+	mine.enemies.erase(b4)
+	floor_it.call()
+	await t._frames(3)
+	# --- flier ---
+	for x in range(pc.x - 10, pc.x + 24):
+		for y in range(pc.y - 12, pc.y - 5):
+			g.set_mat(x, y, Cell.AIR)
+	var air := Vector2i(pc.x + 6, pc.y - 6)
+	var fl: Flier = mine.spawn_flier(air)
+	var cr: Crawler = mine.spawn_crawler(Vector2i(pc.x + 12, pc.y))
+	await t._frames(2)
+	t.check(fl.walkable(air) and not cr.walkable(air), "a flier can cross open air where a crawler cannot go")
+	t.check(is_equal_approx(fl.max_hp, Balance.FLIER_HP) and fl.max_hp < cr.max_hp, "a flier is fragile")
+	cr.queue_free()
+	mine.enemies.erase(cr)
+	fl._begin_tunnel()
+	t.check(fl.state != Crawler.S.TUNNEL, "a flier never tunnels")
+	pl.invuln = 0.0
+	php = pl.hp
+	for k in 600:
+		await t._frames(1)
+		if pl.hp < php:
+			break
+	t.check(is_equal_approx(php - pl.hp, Balance.FLIER_DAMAGE), "a flier comes down through the open air and bites (%.0f)" % (php - pl.hp))
+	pl.invuln = 1e9
+	fl.last_hit = "drill"
+	fl.hit(Balance.FLIER_HP + 1.0, pl.global_position)
+	t.check(fl.state == Crawler.S.DEAD, "one good drill hit kills a flier")
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

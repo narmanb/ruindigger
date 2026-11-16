@@ -244,6 +244,154 @@ def gen_crawler():
 
 
 # --------------------------------------------------------------------------
+# Shielded Brute: 48x40, hunched beetle behind a tall front plate, faces
+# right. Feet at y=38. Stands a little taller than the digger and far wider.
+# --------------------------------------------------------------------------
+def brute_frame(kind, t):
+    c = Canvas(48, 40)
+    a = t * math.tau
+    bob = round(math.sin(a) * 1) if kind in ("walk", "charge") else 0
+    lean = {"brace": -2, "charge": 2, "attack": 3}.get(kind, 0)
+    if kind == "attack" and t >= 0.5:
+        lean = 5
+    drop = 2 if kind == "stun" else (1 if kind == "brace" else 0)
+    # legs (stubby, alternating)
+    for i, lx in enumerate((13, 20, 27)):
+        lift = round(max(0.0, math.sin(a + i * 2.1)) * 2) if kind in ("walk", "charge") else 0
+        c.rect(lx, 31 - lift, 5, 7, P("chit1"))
+        c.rect(lx, 36 - lift, 6, 2, P("chit0"))
+        c.px(lx + 1, 32 - lift, P("chit3"))
+    # soft back: the weak spot, pale with glowing vents
+    c.ellipse(6, 9 + bob + drop, 31, 25, P("flesh1"))
+    c.ellipse(8, 9 + bob + drop, 26, 13, P("flesh2"))
+    c.ellipse(11, 10 + bob + drop, 14, 5, P("flesh3"))
+    glow = "eye2" if (kind != "stun" and (t < 0.5 or kind == "charge")) else "eye1"
+    for vx, vy in ((10, 19), (9, 25), (13, 14), (14, 29)):
+        c.rect(vx, vy + bob + drop, 3, 2, P("eye0"))
+        c.px(vx + 1, vy + bob + drop, P(glow))
+    # carapace ridge over the shoulders
+    c.ellipse(17, 5 + bob + drop, 19, 13, P("chit2"))
+    c.ellipse(19, 5 + bob + drop, 14, 5, P("chit4"))
+    for k in range(3):
+        c.px(20 + k * 4, 11 + bob + drop, P("chit0"))
+    # small head peering over the top of the plate
+    hx = 31 + lean
+    hy = 1 + bob + drop * 3
+    c.ellipse(hx - 5, hy, 11, 10, P("chit2"))
+    c.ellipse(hx - 4, hy, 8, 4, P("chit4"))
+    c.px(hx - 5, hy + 5, P("chit0"))
+    if kind == "stun":
+        c.rect(hx, hy + 4, 3, 1, P("eye0"))
+    else:
+        c.rect(hx, hy + 3, 3, 2, P("red1"))
+        c.px(hx + 1, hy + 3, P("red2"))
+        c.px(hx + 2, hy + 3, P("red3"))
+    # the plate: a tall scarred shield covering the whole front
+    px0 = 33 + lean
+    top = 8 + bob + drop * 2
+    plate = [(px0, top + 3), (px0 + 5, top), (px0 + 10, top + 5), (px0 + 11, 22 + drop), (px0 + 8, 37), (px0, 38), (px0 - 2, 22)]
+    c.poly(plate, P("steel2"))
+    c.poly([(px0 + 1, top + 4), (px0 + 5, top + 1), (px0 + 6, 21 + drop), (px0 + 4, 36), (px0 + 1, 36)], P("steel3"))
+    c.line(px0 + 5, top + 1, px0 + 9, top + 5, P("steel4"))
+    c.line(px0 + 1, top + 5, px0 + 1, 34, P("steel4"))
+    # scars and rivets
+    c.line(px0 + 3, top + 9, px0 + 8, top + 15, P("steel0"))
+    c.line(px0 + 2, 24, px0 + 6, 21, P("steel0"))
+    c.line(px0 + 6, 28, px0 + 9, 33, P("steel1"))
+    for ry in (top + 7, 19, 31):
+        c.px(px0 + 8, ry, P("steel4"))
+        c.px(px0 + 8, ry + 1, P("steel0"))
+    # hazard band low on the plate
+    c.rect(px0 + 1, 33, 7, 2, P("shell2"))
+    c.px(px0 + 3, 33, P("ink0"))
+    c.px(px0 + 6, 34, P("ink0"))
+    if kind == "stun":
+        for k in range(3):
+            sa = a + k * 2.1
+            c.px(round(hx + math.cos(sa) * 6), round(hy - 2 + math.sin(sa) * 2), P("gold3"))
+    if kind == "hurt":
+        a2 = c.arr()
+        a2[a2 > 0] = P("white0")
+        c.set_arr(a2)
+    c.outline()
+    return c.rgba()
+
+
+def gen_brute():
+    frames = []
+    meta = {}
+    for name, n in [("walk", 4), ("idle", 2), ("brace", 2), ("charge", 2), ("attack", 2), ("stun", 2), ("hurt", 1)]:
+        meta[name] = [len(frames), n]
+        for i in range(n):
+            frames.append(brute_frame(name, i / n))
+    save(to_image(sheet(frames, 48, 40, 4)), "brute.png")
+    META["brute"] = {"fw": 48, "fh": 40, "cols": 4, "anims": meta}
+
+
+# --------------------------------------------------------------------------
+# Flier: 28x22 moth-drone with tattered wings and one amber eye, faces right.
+# --------------------------------------------------------------------------
+def flier_frame(kind, t):
+    c = Canvas(28, 22)
+    a = t * math.tau
+    flap = math.sin(a + math.pi / 4)        # -0.7 wings down .. 0.7 wings up, never flat
+    if kind == "stun":
+        flap = -0.8
+    cy = 12
+    cx = 14
+    # wings: ragged membranes, behind the body
+    for side in (-1, 1):
+        wx = cx + side * 2 - 1
+        tipx = cx + side * 12 - 1
+        tipy = cy - round(flap * 12) - 1
+        midx = cx + side * 8 - 1
+        col = "teal3" if side == 1 else "teal2"
+        c.poly([(wx, cy - 3), (midx, cy - round(flap * 10) - 4), (tipx, tipy), (midx + side, cy + 3 - round(flap * 5)), (wx, cy + 2)], P(col))
+        c.line(wx, cy - 1, tipx, tipy, P("teal4"))
+        c.line(wx, cy, midx, cy - round(flap * 5), P("teal4"))
+        # tatters
+        c.px(midx + side, cy + 2 - round(flap * 2), 0)
+        c.px(tipx - side, tipy + 2, 0)
+        c.px(midx - side * 2, cy + 2 - round(flap * 1), 0)
+    # body: a small armoured abdomen and a head
+    c.ellipse(cx - 6, cy - 2, 9, 6, P("chit2"))
+    c.ellipse(cx - 5, cy - 2, 6, 2, P("chit3"))
+    c.px(cx - 6, cy + 1, P("chit1"))
+    c.px(cx - 7, cy + 1, P("chit0"))            # tail sting
+    c.ellipse(cx, cy - 4, 8, 8, P("chit2"))
+    c.ellipse(cx + 1, cy - 4, 5, 3, P("chit4"))
+    # one amber eye
+    eye = "red" if kind == "attack" else "eye"
+    if kind == "stun":
+        c.rect(cx + 3, cy - 1, 3, 1, P("eye0"))
+    else:
+        c.rect(cx + 3, cy - 2, 3, 3, P(eye + "1"))
+        c.px(cx + 4, cy - 1, P(eye + "2"))
+        c.px(cx + 5, cy - 2, P("white0"))
+    # feelers and dangling legs
+    c.line(cx + 5, cy - 4, cx + 8, cy - 7 + round(flap), P("chit3"))
+    c.line(cx + 1, cy + 3, cx, cy + 6, P("chit1"))
+    c.line(cx + 4, cy + 3, cx + 5, cy + 6 + (1 if kind == "attack" else 0), P("chit1"))
+    if kind == "hurt":
+        a2 = c.arr()
+        a2[a2 > 0] = P("white0")
+        c.set_arr(a2)
+    c.outline()
+    return c.rgba()
+
+
+def gen_flier():
+    frames = []
+    meta = {}
+    for name, n in [("fly", 4), ("attack", 2), ("stun", 2), ("hurt", 1)]:
+        meta[name] = [len(frames), n]
+        for i in range(n):
+            frames.append(flier_frame(name, i / n))
+    save(to_image(sheet(frames, 28, 22, 4)), "flier.png")
+    META["flier"] = {"fw": 28, "fh": 22, "cols": 4, "anims": meta}
+
+
+# --------------------------------------------------------------------------
 # Ruin Sentry: 24x24 base (mounted on floor), separate head with eye states.
 # --------------------------------------------------------------------------
 def gen_sentry():
@@ -699,6 +847,8 @@ def main():
     gen_player()
     gen_drill()
     gen_crawler()
+    gen_brute()
+    gen_flier()
     gen_sentry()
     gen_items()
     gen_fx()

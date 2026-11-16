@@ -19,6 +19,7 @@ static var _warned := false
 func _ready() -> void:
 	super._ready()
 	hp = Balance.BREAKER_HP
+	max_hp = hp
 	spr.modulate = Color(1.0, 0.72, 0.5)
 	spr.scale = Vector2(1.25, 1.25)
 

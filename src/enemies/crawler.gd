@@ -23,6 +23,13 @@ var next_cell := Vector2i.ZERO
 var move_t := 1.0
 var state := S.PATROL
 var hp := Balance.CRAWLER_HP
+# per-kind numbers (subclasses such as Flier change them in _ready)
+var max_hp := Balance.CRAWLER_HP
+var speed_patrol := Balance.CRAWLER_SPEED_PATROL
+var speed_chase := Balance.CRAWLER_SPEED_CHASE
+var bite := Balance.CRAWLER_DAMAGE
+var sight := Balance.CRAWLER_SIGHT
+var bite_name := "burrow crawler"
 var path: Array[Vector2i] = []
 var repath_t := 0.0
 var target_cell := Vector2i(-1, -1)
@@ -160,7 +167,7 @@ func _physics_process(delta: float) -> void:
 				if windup <= 0.0:
 					attack_cd = Balance.CRAWLER_ATTACK_COOLDOWN
 					if pl and not pl.dead and global_position.distance_to(pl.global_position) < 26.0 and hitstun <= 0.0:
-						pl.take_damage(Balance.CRAWLER_DAMAGE, global_position, "burrow crawler")
+						pl.take_damage(bite, global_position, bite_name)
 						Audio.play_at("crawler_bite", global_position)
 	_step(delta)
 	_current(delta)
@@ -204,7 +211,7 @@ func _sees_player() -> bool:
 	if pl == null or pl.dead:
 		return false
 	var d := pl.global_position.distance_to(global_position)
-	if d > Balance.CRAWLER_SIGHT * Balance.CELL:
+	if d > sight * Balance.CELL:
 		return false
 	if d > Balance.DUST_CLOAK_NEAR * Balance.CELL and mine.has_method("cloaked") and mine.cloaked():
 		return false
@@ -289,7 +296,7 @@ func _tunnel(delta: float) -> void:
 
 
 func _step(delta: float) -> void:
-	var speed := Balance.CRAWLER_SPEED_CHASE if state in [S.CHASE, S.INVESTIGATE] else Balance.CRAWLER_SPEED_PATROL
+	var speed := speed_chase if state in [S.CHASE, S.INVESTIGATE] else speed_patrol
 	if state in [S.STUNNED, S.TUNNEL] or hitstun > 0.0 or windup > 0.0:
 		speed = 0.0
 	if move_t < 1.0:
@@ -391,9 +398,9 @@ func _knockback(from: Vector2) -> void:
 
 
 func _draw() -> void:
-	if hp < Balance.CRAWLER_HP and state != S.DEAD:
+	if hp < max_hp and state != S.DEAD:
 		var w := 18.0
-		var f := clampf(hp / Balance.CRAWLER_HP, 0.0, 1.0)
+		var f := clampf(hp / max_hp, 0.0, 1.0)
 		draw_rect(Rect2(-w * 0.5 - 1, -17, w + 2, 4), Color(0, 0, 0, 0.7))
 		draw_rect(Rect2(-w * 0.5, -16, w * f, 2), Color(1.0, 0.35, 0.3))
 	if windup > 0.0:

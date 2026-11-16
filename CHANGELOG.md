@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.15.0
+**Two new enemies: the Shielded Brute and the Flier** (the first of three enemy batches)
+- **Shielded Brute.** A hunched beetle, a little taller than you and more than twice as wide, behind a scarred steel plate that covers its whole front. Its back is soft and pale, with glowing vents.
+  - **The plate stops your drill and your blasts from the front**: only 15% gets through, with sparks. Hits on its back do full damage.
+  - **Ways to beat it:** jump over it and drill its back (it takes half a second to turn around); drop a ceiling on it (falling rock ignores the plate, does heavy damage and stuns it); stick a charge to its back or let a blast go off behind it; or bait its charge into basalt.
+  - **It shoves** with the plate when you are in reach (24 damage, after a visible wind-up).
+  - **It charges** when you are 4 to 9 cells ahead on its level: it braces for 0.7 seconds while red dashes light up along the floor, then runs. A charge goes straight through sediment, rubble and cracked rock. Charging into basalt or alloy stuns it for 2.5 seconds, and while it is stunned the plate is down.
+  - It walks on floors, steps up one-cell ledges, falls off edges and smashes through sediment in its way. It cannot climb ladders or shafts. It hears drilling and blasts, like crawlers do.
+  - A blast's short shock does not stagger it. Gas clouds, lava and steam get past the plate.
+  - 180 hull. It drops 4 scrap and 2 cobalt.
+  - **Where:** one in each zone below the Dustworks (Spore Veins, Drowned Aqueducts, Crystal Hollows, Forgotten Engine) and two in The First Civilization. Never within 30 cells of where you start.
+- **Flier (rare).** A moth-drone with tattered teal wings and one amber eye. It hunts like a crawler but flies, so open shafts and caverns don't stop it. It is fragile (18 hull: one good drill hit), bites for 8, and can't dig. Two per main mine, one in The First Civilization.
+- Brutes and fliers are placed on the finished map from their own seeded stream, so world generation and its fairness checks are unchanged, and a seed always gets the same ones.
+- Art for both is made by the art generator, like the crawler's.
+
 ## 0.14.0
 **More Demolitions upgrades, and mines that chain**
 - Four new upgrades at the Demolitions counter, two levels each. The counter shows what you have now and what the next level gives.

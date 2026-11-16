@@ -67,6 +67,24 @@ func _process(_d: float) -> void:
 		var cs: Node = mine.hud.cargo_screen
 		if cs and cs.get("scroll") != null:
 			cs.scroll.scroll_vertical = 100000
+	# brute=N / flier=N: put one N cells to the right of the digger (flier: and 3 up)
+	if frame == 22 and mine and mine.get("player") != null and mine.has_method("spawn_brute"):
+		var pcell: Vector2i = mine.grid.world_to_cell(mine.player.global_position)
+		if args.has("brute"):
+			var bx := pcell.x + int(args["brute"])
+			for x in range(pcell.x + 1, bx + 4):
+				for y in range(pcell.y - 3, pcell.y + 1):
+					mine.grid.set_mat(x, y, Cell.AIR)
+				mine.grid.set_mat(x, pcell.y + 1, Cell.HARD)
+			var br: Brute = mine.spawn_brute(Vector2i(bx, pcell.y))
+			br.facing = -1
+			if args.has("brute_state"):
+				br.set_physics_process(false)
+				br.state = int(args["brute_state"])
+				br.state_t = 0.3
+				br._visual()
+		if args.has("flier"):
+			mine.spawn_flier(pcell + Vector2i(int(args["flier"]), -3)).set_physics_process(false)
 	if frame == 20 and mine and mine.get("player") != null and args.has("teleport"):
 		var p: PackedStringArray = args["teleport"].split(",")
 		mine.player.global_position = Vector2(float(p[0]) * 16 + 8, float(p[1]) * 16)

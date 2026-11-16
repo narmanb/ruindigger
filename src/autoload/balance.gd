@@ -447,6 +447,41 @@ const CRAWLER_TUNNEL_TIME := 1.6    # s to chew one sediment cell
 const CRAWLER_PATH_RADIUS := 22
 const CRAWLER_CAP := 20
 
+# --- Shielded Brute: a big, slow walker behind a front plate ---
+const BRUTE_HP := 180.0
+const BRUTE_PLATE := 0.15            # share of drill and blast damage that gets through the plate
+const BRUTE_SPEED := 38.0            # px/s walking
+const BRUTE_CHARGE_SPEED := 150.0
+const BRUTE_SIGHT := 12              # cells
+const BRUTE_FORGET := 5.0            # s without sight or noise before it stops hunting
+const BRUTE_TURN := 0.55             # s to turn around (its back is exposed meanwhile)
+const BRUTE_DAMAGE := 24.0           # shove with the plate
+const BRUTE_WINDUP := 0.45
+const BRUTE_ATTACK_COOLDOWN := 1.4
+const BRUTE_REACH := 14.0            # px in front of the plate
+const BRUTE_CHARGE_RANGE := [4, 9]   # cells: it charges when you are this far ahead on its level
+const BRUTE_BRACE := 0.7             # s of bracing before a charge (the warning)
+const BRUTE_CHARGE_TIME := 1.6
+const BRUTE_CHARGE_DAMAGE := 30.0
+const BRUTE_CHARGE_COOLDOWN := 5.0
+const BRUTE_SLAM_STUN := 2.5         # s stunned after charging into rock it cannot break
+const BRUTE_SMASH := 0.7             # s to break through sediment, rubble or cracked rock in its way
+const BRUTE_RUBBLE_DAMAGE := 55.0    # falling rock ignores the plate
+const BRUTE_STUN_MIN := 2.0          # stuns shorter than this (a blast's shock) do not stagger it
+# brutes per zone (runtime placement, fixed per seed): none in the Dustworks
+const BRUTES_PER_ZONE := [0, 1, 1, 1, 1]
+const DEEP_BRUTES := 2
+const BRUTE_MIN_SPAWN_DIST := 30     # cells from where you start
+# --- Flier: a rare moth-drone that crosses open air ---
+const FLIER_HP := 18.0
+const FLIER_SPEED_PATROL := 2.2      # cells / s
+const FLIER_SPEED_CHASE := 4.6
+const FLIER_SIGHT := 11
+const FLIER_DAMAGE := 8.0
+const FLIERS_PER_MAP := 2            # rare: this many in the whole main mine
+const FLIER_ZONES := [1, 2, 3, 4]
+const DEEP_FLIERS := 1
+
 # --- Ruin Sentry ---
 const SENTRY_HP := 55.0
 const SENTRY_RANGE := 11            # cells

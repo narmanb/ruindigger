@@ -66,6 +66,7 @@ func _ready() -> void:
 	if gate and engine:
 		gate.powered = false      # the Thermal Engine decides
 	_spawn_player()
+	_spawn_roamers()
 	_spawn_water_props()
 	_build_ui()
 	compass = OreCompass.new()
@@ -328,6 +329,104 @@ func _spawn_entities() -> void:
 					entity_root.add_child(m)
 					s.module = m
 					enemies.append(m)
+
+
+func spawn_brute(cell: Vector2i) -> Brute:
+	var b := Brute.new()
+	b.mine = self
+	# stands on the floor under `cell`, centred on the gap between two columns
+	b.position = Vector2((cell.x + 1) * C, (cell.y + 1) * C - Brute.HALF.y)
+	entity_root.add_child(b)
+	enemies.append(b)
+	return b
+
+
+func spawn_flier(cell: Vector2i) -> Flier:
+	var f := Flier.new()
+	f.mine = self
+	f.position = grid.cell_center(cell)
+	entity_root.add_child(f)
+	enemies.append(f)
+	return f
+
+
+## Room for a brute standing on (x, y) and (x+1, y): two columns of floor,
+## three rows of dry air.
+func brute_fits(x: int, y: int) -> bool:
+	for dx in 2:
+		if not grid.is_solid(x + dx, y + 1) or grid.get_mat(x + dx, y + 1) in [Cell.GAS, Cell.LOOSE]:
+			return false
+		for dy in 3:
+			if grid.get_mat(x + dx, y - dy) != Cell.AIR or grid.get_water(x + dx, y - dy) > 0 or grid.get_lava(x + dx, y - dy) > 0:
+				return false
+			if grid.has_flag(x + dx, y - dy, Cell.F_PROTECTED) or grid.has_flag(x + dx, y - dy, Cell.F_NO_RUBBLE):
+				return false
+	return true
+
+
+## Open air for a flier: a clear 5x5 around the cell.
+func flier_fits(x: int, y: int) -> bool:
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			if grid.get_mat(x + dx, y + dy) != Cell.AIR or grid.get_water(x + dx, y + dy) > 0 or grid.get_lava(x + dx, y + dy) > 0:
+				return false
+	return true
+
+
+## Brutes and fliers are placed here, on the finished map, from their own
+## seeded stream: the generator and its fairness checks are untouched, and a
+## seed always gets the same ones. Returns [brute cells, flier cells].
+func roamer_cells() -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value ^ 0x62727574 ^ (0x64656570 if stage == "deep" else 0)
+	var start: Vector2i = data.get("spawn", Vector2i(grid.w / 2, 4))
+	var taken: Array[Vector2i] = []
+	var far := func(c: Vector2i) -> bool:
+		if absi(c.x - start.x) + absi(c.y - start.y) < Balance.BRUTE_MIN_SPAWN_DIST:
+			return false
+		for o in taken:
+			if absi(c.x - o.x) + absi(c.y - o.y) < 16:
+				return false
+		return true
+	var brutes: Array[Vector2i] = []
+	var plan: Array = []                 # [zone or -1, count]
+	if stage == "deep":
+		plan.append([-1, Balance.DEEP_BRUTES])
+	else:
+		for z in Balance.BRUTES_PER_ZONE.size():
+			plan.append([z, int(Balance.BRUTES_PER_ZONE[z])])
+	for p: Array in plan:
+		var made := 0
+		var tries := 0
+		while made < int(p[1]) and tries < 1500:
+			tries += 1
+			var c := Vector2i(rng.randi_range(4, grid.w - 6), rng.randi_range(8, grid.h - 6))
+			if int(p[0]) >= 0 and grid.get_stratum(c.x, c.y) != int(p[0]):
+				continue
+			if brute_fits(c.x, c.y) and far.call(c):
+				brutes.append(c)
+				taken.append(c)
+				made += 1
+	var fliers: Array[Vector2i] = []
+	var want := Balance.DEEP_FLIERS if stage == "deep" else Balance.FLIERS_PER_MAP
+	var tries2 := 0
+	while fliers.size() < want and tries2 < 3000:
+		tries2 += 1
+		var c := Vector2i(rng.randi_range(5, grid.w - 6), rng.randi_range(8, grid.h - 6))
+		if stage != "deep" and not (grid.get_stratum(c.x, c.y) in Balance.FLIER_ZONES):
+			continue
+		if flier_fits(c.x, c.y) and far.call(c):
+			fliers.append(c)
+			taken.append(c)
+	return [brutes, fliers]
+
+
+func _spawn_roamers() -> void:
+	var cells := roamer_cells()
+	for c: Vector2i in cells[0]:
+		spawn_brute(c)
+	for c: Vector2i in cells[1]:
+		spawn_flier(c)
 
 
 func _spawn_water_props() -> void:
@@ -990,7 +1089,7 @@ func noise(pos: Vector2, radius_cells: float) -> void:
 	if pressure:
 		pressure.on_noise(radius_cells)
 	for e in enemies:
-		if is_instance_valid(e) and e is Crawler:
+		if is_instance_valid(e) and e.has_method("hear"):
 			e.hear(pos, radius_cells)
 
 
