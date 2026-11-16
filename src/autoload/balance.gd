@@ -645,6 +645,22 @@ func charges_max(level: int) -> int:
 	return CHARGES_MAX_BY_LEVEL[clampi(level, 0, CHARGES_MAX_BY_LEVEL.size() - 1)]
 
 
+## Explosives: how many of a type you can carry at a BIGGER RACK level.
+func explosive_carry(kind: String, level: int) -> int:
+	if not EXPLOSIVES.has(kind):
+		return 0
+	var c: Array = EXPLOSIVES[kind]["carry"]
+	return int(c[clampi(level, 0, c.size() - 1)])
+
+
+## Explosives: blast multiplier for a Demolitions upgrade ("power" / "radius").
+func demo_mult(track: String, level: int) -> float:
+	if not DEMO_UPGRADES.has(track) or not DEMO_UPGRADES[track].has("mult"):
+		return 1.0
+	var m: Array = DEMO_UPGRADES[track]["mult"]
+	return float(m[clampi(level, 0, m.size() - 1)])
+
+
 func cargo_capacity(level: int) -> int:
 	return CARGO_CAPACITY[clampi(level, 0, CARGO_CAPACITY.size() - 1)]
 

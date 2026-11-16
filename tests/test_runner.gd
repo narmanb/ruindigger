@@ -269,6 +269,22 @@ func _save() -> void:
 			break
 	check(ver != "" and presets.contains('version/name="%s"' % ver), "the Android build is named for the game version (%s)" % ver)
 	check(top == ver, "the newest changelog entry is this version (%s vs %s): bump the version with every update" % [top, ver])
+	section("explosives data")
+	var demo_ok := true
+	for kind: String in Balance.EXPLOSIVES:
+		var info: Dictionary = Balance.EXPLOSIVES[kind]
+		var carry: Array = info["carry"]
+		# one carry entry per BIGGER RACK level, never shrinking
+		if carry.size() != (Balance.DEMO_UPGRADES["capacity"]["costs"] as Array).size() + 1 or int(info["price"]) <= 0:
+			demo_ok = false
+		for k in range(1, carry.size()):
+			if int(carry[k]) < int(carry[k - 1]):
+				demo_ok = false
+	check(demo_ok, "every explosive has a price and a carry limit per rack level that never shrinks")
+	check(Balance.explosive_carry("charge", 0) == Balance.CHARGES_MAX_BY_LEVEL[0] and Balance.explosive_carry("charge", 99) == Balance.CHARGES_MAX_BY_LEVEL[3], "demo charge carry matches the old Charge Rack levels")
+	check(Balance.explosive_carry("nope", 1) == 0 and is_equal_approx(Balance.demo_mult("capacity", 2), 1.0), "unknown explosives carry nothing; non-blast upgrades have no multiplier")
+	check(is_equal_approx(Balance.demo_mult("power", 0), 1.0) and Balance.demo_mult("power", 2) > Balance.demo_mult("power", 1) and Balance.demo_mult("radius", 9) > 1.0, "blast power and radius rise with level and start at x1")
+	check(Balance.EXPLOSIVES.has(Balance.EXPLOSIVE_DEFAULT["main"]), "the default main slot is a real explosive")
 	section("save")
 	Progress.reset()
 	Progress.credits = 777
