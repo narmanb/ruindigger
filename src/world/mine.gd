@@ -366,6 +366,7 @@ var _ladder_t := 0.0
 
 func _physics_process(delta: float) -> void:
 	_grow_ladders(delta)
+	_glutton_rattle(delta)
 	if lava:
 		lava.update(delta)
 		steam.update(delta)
@@ -550,6 +551,7 @@ func _update_presented_zone() -> void:
 	var s := maxi(0, grid.get_stratum(c.x, c.y))
 	if presented_zone < 0:
 		presented_zone = s
+		_zone_reached(s)
 		return
 	if s == presented_zone:
 		return
@@ -558,6 +560,7 @@ func _update_presented_zone() -> void:
 	var dn := grid.get_stratum(c.x, clampi(c.y + m, 0, grid.h - 1))
 	if up == s and dn == s:
 		presented_zone = s
+		_zone_reached(s)
 
 
 func _atmosphere(delta: float) -> void:
@@ -626,7 +629,14 @@ func _tutorial(delta: float) -> void:
 # ---------------------------------------------------------------------------
 # Shared rules
 func cargo_cap() -> int:
-	return Balance.cargo_capacity(Progress.level("cargo"))
+	return Balance.cargo_capacity(Progress.level("cargo")) + (Balance.GLUTTON_SLOTS if Game.has_relic("glutton") else 0)
+
+
+## Damage scale for falling rock, rubble and boulders hitting the digger.
+func rock_damage_mult() -> float:
+	if Game.has_relic("hardhat"):
+		return 0.0
+	return Balance.PLATING_MULT if has_passive("plating") else 1.0
 
 
 func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, source: String) -> Dictionary:
@@ -749,6 +759,10 @@ func _grow_ladders(delta: float) -> void:
 func drill_cell(c: Vector2i, amount: float, tier: int, by: Player) -> void:
 	var m := grid.get_mat(c.x, c.y)
 	var res := damage_cell(c, amount, tier, false, "drill")
+	if res["broken"] and Game.has_relic("echo"):
+		_echo_n += 1
+		if _echo_n % Balance.ECHO_EVERY == 0:
+			_echo_break(c + by.drill_dir, tier)
 	var pos := grid.cell_center(c)
 	var toward := (by.global_position - pos).normalized()
 	var contact := pos + toward * 7.0
@@ -763,6 +777,65 @@ func drill_cell(c: Vector2i, amount: float, tier: int, by: Player) -> void:
 		Audio.play_at("hit_" + Cell.sound_class(m), contact, -8.0, 0.12, 0.07)
 		if grid.get_ore(c.x, c.y) != 0 and randf() < 0.3:
 			fx.glints(contact, Balance.ore_color(grid.get_ore(c.x, c.y)))
+
+
+## Echo Drill: the block behind the one you just broke goes too, if your
+## drill could cut it (tier, protection and bedrock rules still apply).
+func _echo_break(c: Vector2i, tier: int) -> void:
+	if not grid.is_solid(c.x, c.y):
+		return
+	var r2 := damage_cell(c, 9999.0, tier, false, "drill")
+	if r2["broken"]:
+		fx.flash(grid.cell_center(c), Color(Balance.RUN_RELICS[_relic_index("echo")]["color"]), 0.5, 0.25)
+
+
+func _relic_index(id: String) -> int:
+	for k in Balance.RUN_RELICS.size():
+		if Balance.RUN_RELICS[k]["id"] == id:
+			return k
+	return 0
+
+
+## Glutton's Sack: ore on board rattles while you move; louder the fuller you are.
+func _glutton_rattle(delta: float) -> void:
+	if not Game.has_relic("glutton") or player == null or player.dead or ending:
+		return
+	var n := Game.cargo_count()
+	if n <= 0 or player.velocity.length() < 40.0:
+		return
+	_rattle_t -= delta
+	if _rattle_t > 0.0:
+		return
+	_rattle_t = Balance.GLUTTON_RATTLE
+	var f := clampf(float(n) / float(maxi(1, cargo_cap())), 0.0, 1.0)
+	noise(player.global_position, lerpf(Balance.GLUTTON_NOISE[0], Balance.GLUTTON_NOISE[1], f))
+	Audio.play_at("pickup", player.global_position, -10.0, 0.3, 0.05)
+
+
+## First arrival in a zone this run. Spare Parts hands out a charge (or a
+## lure when the charge rack is full).
+func _zone_reached(z: int) -> void:
+	var seen: Array = Game.run.get("zones_seen", [])
+	if seen.has(z):
+		return
+	seen.append(z)
+	Game.run["zones_seen"] = seen
+	if not Game.has_relic("spares"):
+		return
+	if int(Game.run.get("charges", 0)) < Progress.charges_max():
+		Game.run["charges"] = int(Game.run.get("charges", 0)) + 1
+		toast("SPARE PARTS - you rig up a charge")
+	elif int(Game.run.get("lures", 0)) < Balance.SPARE_LURES_MAX:
+		Game.run["lures"] = int(Game.run.get("lures", 0)) + 1
+		toast("SPARE PARTS - you rig up a lure")
+	else:
+		toast("SPARE PARTS - your kit is already full")
+		return
+	Audio.play("pickup", -4.0)
+
+
+var _echo_n := 0
+var _rattle_t := 0.0
 
 
 func drill_enemies(r: Rect2, dmg: float, by: Player) -> void:
@@ -1236,6 +1309,7 @@ func extract(l: Node2D) -> void:
 	if ending:
 		return
 	ending = true
+	Game.run["hull_frac"] = player.hp / maxf(1.0, player.max_hp)
 	player.controls_enabled = false
 	player.stop_sounds()
 	Audio.loop("lift_hum", true, -6.0)
@@ -1281,6 +1355,7 @@ func extract_gate() -> void:
 	if ending or gate == null or not gate.online:
 		return
 	ending = true
+	Game.run["hull_frac"] = player.hp / maxf(1.0, player.max_hp)
 	player.controls_enabled = false
 	player.stop_sounds()
 	Game.run["deep_exit"] = true

@@ -531,7 +531,7 @@ class Collapse extends Node2D:
 				r.position.y += b["off"]
 				var pl: Player = mine.player
 				if pl and not pl.dead and Rect2(pl.global_position - Player.HALF, Player.HALF * 2.0).intersects(r.grow(-2.0)):
-					pl.take_damage(Balance.BOULDER_PLAYER_DAMAGE * (Balance.PLATING_MULT if mine.has_passive("plating") else 1.0), r.get_center(), "falling basalt")
+					pl.take_damage(Balance.BOULDER_PLAYER_DAMAGE * mine.rock_damage_mult(), r.get_center(), "falling basalt")
 					hit = true
 				for e in mine.enemies:
 					if is_instance_valid(e) and e.hit_rect().intersects(r.grow(-1.0)):
@@ -657,7 +657,7 @@ class Collapse extends Node2D:
 		if pl and not pl.dead:
 			var pr := Rect2(pl.global_position - Player.HALF, Player.HALF * 2.0)
 			if pr.intersects(rect):
-				pl.take_damage(Balance.RUBBLE_PLAYER_DAMAGE * (Balance.PLATING_MULT if mine.has_passive("plating") else 1.0), rect.get_center(), "falling rubble")
+				pl.take_damage(Balance.RUBBLE_PLAYER_DAMAGE * mine.rock_damage_mult(), rect.get_center(), "falling rubble")
 				pl.velocity.y = maxf(pl.velocity.y, 60.0)
 				return true
 		for e in mine.enemies:

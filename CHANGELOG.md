@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0
+**Six new run relics** (the pool grows from 6 to 12). Like the others, each lasts until the run ends and shows in the cargo manifest.
+- **Echo Drill:** every fifth block you drill out also breaks the block behind it. It follows your drill's limits: it cannot cut alloy before the Mk.IV drill, bedrock or protected rock.
+- **Overdrive:** when the drill overheats it keeps cutting at half power (rock and foes alike) instead of locking you out. It still vents steam while it works, and recovers normally once you let go.
+- **Hard Hat:** falling rubble, boulders, tremors, breaker roof drops and shear-charge drops can't hurt you.
+- **Blood Bargain:** when you extract, your ore pays extra for the hull you are missing: half your hull gone pays +50%, almost none left pays nearly double. It shows as its own line on the results screen.
+- **Glutton's Sack:** +30 rack slots. While you move with ore aboard it rattles every 2.5 seconds, and crawlers nearby hear it (3 to 10 cells, louder the fuller your rack).
+- **Spare Parts:** the first time you reach each zone in a run (The First Civilization counts as one), you rig up a free charge. If your charge rack is full you get a lure instead (up to 5).
+- With more relics in the pool, which relic sits at a given spot on a seed has changed. Where relics are placed has not.
+- Relic lines in the cargo manifest now wrap if they are too long.
+
 ## 0.9.1
 **Run relic fixes**
 - **No more duplicate relics.** The relic in The First Civilization is rolled from its own seed, so it could be one you already carried (a wasted find). Now a relic you already hold is swapped for one you do not.

@@ -50,6 +50,16 @@ func _process(_d: float) -> void:
 			physics_times.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
 		previous_us = now
 	var mine: Node = Game.current
+	# allrelics=1: hold every run relic; cargo_open=1: show the cargo manifest
+	if frame == 15 and mine and mine.get("player") != null and args.has("allrelics"):
+		for info: Dictionary in Balance.RUN_RELICS:
+			(Game.run["relics"] as Array).append(info["id"])
+	if frame == 18 and mine and mine.get("hud") != null and args.has("cargo_open"):
+		mine.hud.open_cargo()
+	if frame == 30 and mine and mine.get("hud") != null and args.has("cargo_open") and args.has("cargo_end"):
+		var cs: Node = mine.hud.cargo_screen
+		if cs and cs.get("scroll") != null:
+			cs.scroll.scroll_vertical = 100000
 	if frame == 20 and mine and mine.get("player") != null and args.has("teleport"):
 		var p: PackedStringArray = args["teleport"].split(",")
 		mine.player.global_position = Vector2(float(p[0]) * 16 + 8, float(p[1]) * 16)

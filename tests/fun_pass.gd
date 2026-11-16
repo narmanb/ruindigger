@@ -21,6 +21,7 @@ static func run(t: Node) -> void:
 	await modifiers(t)
 	await gadgets(t)
 	await relics(t)
+	await relics_batch_a(t)
 	await feet(t)
 	await charges(t)
 	await sand(t)
@@ -538,6 +539,110 @@ static func relics(t: Node) -> void:
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)
+
+
+## 0.10.0 relics: Echo Drill, Overdrive, Hard Hat, Blood Bargain, Glutton's
+## Sack and Spare Parts.
+static func relics_batch_a(t: Node) -> void:
+	t.section("new relics: echo, overdrive, hard hat, bargain, glutton, spares")
+	for id in ["echo", "overdrive", "hardhat", "bargain", "glutton", "spares"]:
+		var found := false
+		for info: Dictionary in Balance.RUN_RELICS:
+			if info["id"] == id:
+				found = true
+		t.check(found, "relic %s is in the pool" % id)
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 11
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	var held: Array = Game.run["relics"]
+	held.clear()
+	# Echo Drill: the fifth block broken also breaks the one behind it
+	var gc: Vector2i = g.world_to_cell(pl.global_position)
+	var row := gc.y - 6
+	for x in range(gc.x - 8, gc.x + 8):
+		g.set_mat(x, row, Cell.SOFT)
+	pl.drill_dir = Vector2i(1, 0)
+	held.append("echo")
+	mine._echo_n = 0
+	for k in 5:
+		mine.drill_cell(Vector2i(gc.x - 8 + k, row), 999.0, 0, pl)
+	t.check(not g.is_solid(gc.x - 4, row) and not g.is_solid(gc.x - 3, row) and g.is_solid(gc.x - 2, row), "Echo Drill: the fifth block also breaks the one behind it, and no further")
+	held.clear()
+	mine._echo_n = 0
+	for k in 5:
+		mine.drill_cell(Vector2i(gc.x + 1 + k, row), 999.0, 0, pl)
+	t.check(g.is_solid(gc.x + 6, row), "without Echo Drill nothing extra breaks")
+	# Overdrive: an overheated drill keeps cutting
+	pl.input_override = {"drill": true}
+	pl.heat = pl.heat_cap
+	pl.overheated = true
+	await t._frames(3)
+	t.check(not pl.drilling, "an overheated drill stops without Overdrive")
+	held.append("overdrive")
+	pl.heat = pl.heat_cap
+	pl.overheated = true
+	await t._frames(3)
+	t.check(pl.drilling and pl.overheated, "Overdrive: the overheated drill keeps working")
+	pl.input_override = {}
+	held.clear()
+	await t._frames(2)
+	# Hard Hat: falling rock does no damage
+	t.check(is_equal_approx(mine.rock_damage_mult(), 1.0) or is_equal_approx(mine.rock_damage_mult(), Balance.PLATING_MULT), "rock hurts without Hard Hat")
+	held.append("hardhat")
+	t.check(is_zero_approx(mine.rock_damage_mult()), "Hard Hat: rock damage scale is zero")
+	pl.invuln = 0.0
+	var hp0 := pl.hp
+	mine.collapse._hit_entities(Rect2(pl.global_position - Vector2(7, 8), Vector2(14, 16)))
+	t.check(is_equal_approx(pl.hp, hp0), "Hard Hat: falling rubble does not hurt")
+	held.clear()
+	# Blood Bargain: pay scales with missing hull
+	Game.run["hull_frac"] = 0.5
+	t.check(Game.bargain_pay_for(200) == 0, "no bargain pay without the relic")
+	held.append("bargain")
+	t.check(Game.bargain_pay_for(200) == 100, "Blood Bargain: half hull missing pays +50%")
+	Game.run["hull_frac"] = 1.0
+	t.check(Game.bargain_pay_for(200) == 0, "Blood Bargain: full hull pays nothing extra")
+	Game.run["hull_frac"] = 0.0
+	t.check(Game.bargain_pay_for(200) == int(200 * Balance.BARGAIN_MAX), "Blood Bargain caps at double")
+	Game.run.erase("hull_frac")
+	held.clear()
+	# Glutton's Sack: a bigger rack that rattles while you move with ore
+	var cap0: int = mine.cargo_cap()
+	held.append("glutton")
+	t.check(mine.cargo_cap() == cap0 + Balance.GLUTTON_SLOTS, "Glutton's Sack adds rack slots")
+	Game.run["cargo"] = {}
+	mine._rattle_t = 0.0
+	pl.velocity = Vector2(120, 0)
+	mine._glutton_rattle(0.1)
+	t.check(is_zero_approx(mine._rattle_t), "an empty rack does not rattle")
+	Game.run["cargo"] = {1: 20}
+	pl.velocity = Vector2(120, 0)
+	mine._glutton_rattle(0.1)
+	t.check(is_equal_approx(mine._rattle_t, Balance.GLUTTON_RATTLE), "ore aboard rattles while you move")
+	Game.run["cargo"] = {}
+	held.clear()
+	# Spare Parts: a charge (or a lure) on first arrival in each zone
+	Game.run["zones_seen"] = [0]
+	Game.run["charges"] = 0
+	mine._zone_reached(1)
+	t.check(int(Game.run["charges"]) == 0, "no spare parts without the relic")
+	held.append("spares")
+	mine._zone_reached(2)
+	t.check(int(Game.run["charges"]) == 1, "Spare Parts: a charge on reaching a new zone")
+	mine._zone_reached(2)
+	mine._zone_reached(1)
+	t.check(int(Game.run["charges"]) == 1, "Spare Parts: only once per zone")
+	Game.run["charges"] = Progress.charges_max()
+	var lures0 := int(Game.run.get("lures", 0))
+	mine._zone_reached(3)
+	t.check(int(Game.run["charges"]) == Progress.charges_max() and int(Game.run["lures"]) == mini(lures0 + 1, Balance.SPARE_LURES_MAX), "Spare Parts: a lure when the charge rack is full")
+	held.clear()
 
 
 static func feet(t: Node) -> void:

@@ -127,7 +127,9 @@ func refresh() -> void:
 		for rid in rel:
 			for info: Dictionary in Balance.RUN_RELICS:
 				if info["id"] == rid:
-					rows.add_child(UIKit.label("%s: %s" % [info["name"], info["desc"]], 11, Color(info["color"])))
+					var rl := UIKit.label("%s: %s" % [info["name"], info["desc"]], 11, Color(info["color"]))
+					rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+					rows.add_child(rl)
 	rows.add_child(UIKit.Scanline.new())
 	rows.add_child(UIKit.label("ZONE KEEPSAKES - separate pouch", 12, UIKit.TEAL, true))
 	if finds.is_empty():

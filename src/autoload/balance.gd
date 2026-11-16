@@ -114,12 +114,25 @@ const RUN_RELICS := [
 	{"id": "calm", "name": "Calm Stone", "desc": "The mine wakes 35% slower.", "color": "8affc4"},
 	{"id": "spine", "name": "Iron Spine", "desc": "+40 hull for the rest of the run, repaired now.", "color": "c8c8d8"},
 	{"id": "coil", "name": "Quick Coil", "desc": "Gadgets recharge twice as fast.", "color": "7fe8ff"},
+	{"id": "echo", "name": "Echo Drill", "desc": "Every fifth block you drill breaks the one behind it too.", "color": "ffe08a"},
+	{"id": "overdrive", "name": "Overdrive", "desc": "An overheated drill keeps cutting at half power.", "color": "ff9a5c"},
+	{"id": "hardhat", "name": "Hard Hat", "desc": "Falling rock, rubble and boulders can't hurt you.", "color": "f2c94c"},
+	{"id": "bargain", "name": "Blood Bargain", "desc": "Ore pays extra for missing hull when you extract, up to double.", "color": "e05a5a"},
+	{"id": "glutton", "name": "Glutton's Sack", "desc": "+30 rack slots, but your ore rattles and draws crawlers.", "color": "c79a5b"},
+	{"id": "spares", "name": "Spare Parts", "desc": "A free charge (or lure) the first time you reach each zone.", "color": "9fb6c8"},
 ]
 const RUN_RELICS_MAIN := 2            # per main-mine map
 const RUN_RELICS_DEEP := 1            # per First Civilization map
 const RUN_RELIC_SEP := 30             # cells between relics
 const SPINE_HULL := 40.0
 const CALM_MULT := 0.65
+const ECHO_EVERY := 5                # Echo Drill: every Nth block broken by the drill also breaks the one behind
+const OVERDRIVE_MULT := 0.5          # Overdrive: drill power while overheated
+const BARGAIN_MAX := 1.0             # Blood Bargain: extra ore pay at zero hull (+100%)
+const GLUTTON_SLOTS := 30
+const GLUTTON_RATTLE := 2.5          # s between rattles while you move with ore aboard
+const GLUTTON_NOISE := [3.0, 10.0]   # rattle radius in cells, empty rack .. full rack
+const SPARE_LURES_MAX := 5           # Spare Parts gives a lure only while you hold fewer
 # --- Gadgets: one active (GADGET button, on a cooldown) + one passive ---
 const GADGETS := {
 	"sonar": {"name": "SONAR", "kind": "active", "cooldown": 22.0, "desc": "Ping: reveals the map nearby and marks ore, gas and loose rock."},

@@ -445,7 +445,8 @@ func _update_platform_drop(delta: float) -> void:
 # ---------------------------------------------------------------------------
 # Drill
 func _update_drill(delta: float, ax: float, ay: float) -> void:
-	var want := _pressed("drill") and not overheated
+	var overdrive := overheated and Game.has_relic("overdrive")
+	var want := _pressed("drill") and (not overheated or overdrive)
 	if ay < -0.5:
 		drill_dir = Vector2i(0, -1)
 	elif ay > 0.5:
@@ -471,7 +472,8 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 			heat_mult = maxf(heat_mult, float(Balance.MATERIAL.get(m0, {"heat": 1.0})["heat"]))
 	if drill_tick <= 0.0:
 		drill_tick = Balance.DRILL_TICK
-		var dmg := Balance.drill_power(drill_level) * Balance.DRILL_TICK
+		var power := Balance.OVERDRIVE_MULT if overdrive else 1.0
+		var dmg := Balance.drill_power(drill_level) * Balance.DRILL_TICK * power
 		var hit_any := false
 		for t in targets:
 			var m := grid.get_mat(t.x, t.y)
@@ -486,7 +488,7 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 			if Cell.tier(m) > drill_level or grid.has_flag(t.x, t.y, Cell.F_PROTECTED) or m == Cell.BEDROCK:
 				drill_blocked = true
 		if mine:
-			mine.drill_enemies(drill_hit_rect(), Balance.DRILL_ENEMY_DPS * Balance.DRILL_TICK, self)
+			mine.drill_enemies(drill_hit_rect(), Balance.DRILL_ENEMY_DPS * Balance.DRILL_TICK * power, self)
 			if hit_any:
 				mine.noise(global_position, Balance.CRAWLER_HEARING * (0.5 if Game.has_relic("muffled") else 1.0))
 		if drill_blocked and _blocked_msg_t <= 0.0 and mine:
@@ -503,13 +505,17 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 	if mine and mine.has_passive("coolant"):
 		heat_mult *= Balance.COOLANT_MULT
 	heat = minf(heat_cap, heat + Balance.HEAT_PER_SEC * heat_mult * delta)
-	if heat >= heat_cap:
+	if heat >= heat_cap and not overheated:
 		overheated = true
-		drilling = false
 		Audio.play("overheat")
+		var keeps := Game.has_relic("overdrive")
+		if not keeps:
+			drilling = false
 		if mine:
-			mine.toast("DRILL OVERHEAT - venting")
+			mine.toast("DRILL OVERHEAT - Overdrive keeps it cutting at half power" if keeps else "DRILL OVERHEAT - venting")
 			mine.fx.steam(global_position + Vector2(facing * 10, -6))
+	elif overdrive and mine and randf() < 0.05:
+		mine.fx.steam(global_position + Vector2(facing * 10, -6))   # still venting while it works
 
 
 func _touching_solid() -> bool:

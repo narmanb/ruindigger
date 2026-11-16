@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.9.1** (Android code 22). **`main` is the
+Last updated at version **0.10.0** (Android code 23). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,14 +39,24 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.9.0. Wrap Godot in `timeout`: a
+`structures` separately. All are green at 0.10.0. Wrap Godot in `timeout`: a
 parse error makes a headless run hang. The screenshot harness is
 `tests/shot.gd`; useful args include `deep=1`, `at=lm:<kind or NAME>`,
 `decor=<kind>`, `sandtest=1`, `kitdemo=1`, `pourtest=1|2`,
 `drill_left=1 stopat=N back=N`, `touch_mode=1`, `gadget_bar_open=0`,
+`allrelics=1`, `cargo_open=1 [cargo_end=1]`,
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.10.0:** six new run relics (Echo Drill, Overdrive, Hard Hat, Blood
+  Bargain, Glutton's Sack, Spare Parts). Hooks: `Mine.drill_cell` (echo),
+  `Player._update_drill` (overdrive), `Mine.rock_damage_mult` (hard hat, also
+  replaces the plating maths), `Game.bargain_pay_for` (bargain, needs
+  `run["hull_frac"]` set on extraction), `Mine.cargo_cap` and
+  `Mine._glutton_rattle` (glutton), `Mine._zone_reached` (spares; also keeps
+  `run["zones_seen"]`).
+- **0.9.1:** no duplicate relics (`Game.unowned_relic_id`, applied when relics
+  spawn) and Iron Spine no longer stacks.
 - **0.9.0:**
   - Breaker enemy (`src/enemies/breaker.gd`). It gnaws the roof over you and takes double damage while gnawing.
   - Shear charges and anchor bolts (`Mine.shear_blast`, `Mine.fire_bolt`, `Mine.anchored`).
@@ -70,6 +80,26 @@ parse error makes a headless run hang. The screenshot harness is
   - Furnished vaults: colossi, furnaces, conduits, husks, rails, archive.
 - Plan and history: `docs/plans/fun-pass-plan.md` (with its build log),
   `docs/primordial-vault-status.md`, `CHANGELOG.md`.
+
+## Run relic plan (agreed with the owner)
+- **Batch B (next, 0.11.0):** Fault Line (charges crack the ceiling above the
+  blast; it falls a moment later), Pressure Valve (at high pressure it vents
+  the meter and stuns nearby foes), Slag Heart (lava crusts into rock around
+  you instead of burning; **offered only in The First Civilization**), Sand
+  Strider (cross sand piles at full speed, leave grains that block crawlers;
+  first check whether piles slow you at all; the owner does not know. If they
+  do not, make it about the crawler-blocking grains and tell the owner).
+- **Batch C (0.12.0):** Dowsing Rod (water pockets show on the minimap through
+  rock within ~20 cells, tinted as "sensed"; the minimap already shows water you
+  have seen), Greedy Lamp (edge-of-screen arrows to the nearest unseen,
+  reachable ore within ~30 cells, coloured by ore; cost: smaller light and
+  faster pressure; needs the UI layout checks), Cartographer's Eye (zones you
+  have visited are fully drawn on the map).
+- **Dropped or held:** Hot Core (hurt you while drilling: rejected), Gnaw Ward
+  (replaced by Hard Hat), Anchor Charm (held: the owner is unsure about bolts),
+  "greater" relics (wait until the pool is bigger).
+- The owner likes relic pairs being a lucky find. Making them easier to find
+  (sonar or map marks) is a "maybe later".
 
 ## Open items and ideas the owner liked
 - **Zone guardians:** one optional boss arena per zone, beaten by using that zone's terrain against it. Proposed: start with Dustworks and Spore Veins. This was my top recommendation. The owner asked for details, then chose breakers first.
