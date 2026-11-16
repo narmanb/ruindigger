@@ -61,6 +61,9 @@ func _physics_process(delta: float) -> void:
 	else:
 		value += Balance.PRESSURE_RATE[z] * _mult() * delta
 	value = clampf(value, 0.0, 100.0)
+	_valve_cd = maxf(0.0, _valve_cd - delta)
+	if value >= Balance.VALVE_AT and _valve_cd <= 0.0 and Game.has_relic("valve"):
+		vent()
 	Game.run["pressure"] = value
 	var t := _tier_of(value)
 	if t != tier:
@@ -78,6 +81,29 @@ func _physics_process(delta: float) -> void:
 		var base: float = Balance.PRESSURE_INTERVAL[tier - 1]
 		event_t = base * rng.randf_range(0.75, 1.3)
 		trigger_event()
+
+
+var _valve_cd := 0.0
+
+
+## Pressure Valve: the meter drops and a shockwave stuns foes near the digger.
+## Returns how many foes were stunned.
+func vent() -> int:
+	_valve_cd = Balance.VALVE_COOLDOWN
+	value = maxf(0.0, value - Balance.VALVE_DROP)
+	var pl: Player = mine.player
+	var n := 0
+	if pl:
+		for e in mine.enemies:
+			if is_instance_valid(e) and e.global_position.distance_to(pl.global_position) <= Balance.VALVE_RADIUS * Balance.CELL:
+				e.stun(Balance.VALVE_STUN)
+				n += 1
+		mine.fx.flash(pl.global_position, Color(0.5, 0.85, 1.0), 2.2, 0.6)
+		mine.fx.burst(pl.global_position, Color(0.6, 0.9, 1.0), 18)
+	mine.shake(0.5)
+	Audio.play("rumble", 0.0)
+	mine.toast("PRESSURE VALVE - the mine vents! Foes nearby are stunned")
+	return n
 
 
 ## Pick and start one event. Returns its name ("" if nothing fit here).

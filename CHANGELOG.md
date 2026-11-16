@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0
+**Four more run relics** (the pool grows from 12 to 16).
+- **Fault Line:** when one of your charges goes off, the ceiling above it cracks across five columns, two rows deep. After about a second of dust it comes down as rubble. Blast a crawler, then let the roof finish it. It cannot crack alloy, bedrock, protected or bolted rock, and it doesn't trigger on gas explosions.
+- **Pressure Valve:** when the pressure meter reaches 80, the mine vents. The meter drops by 40, and every foe within 9 cells of you is stunned for 4 seconds. It can happen again after 45 seconds.
+- **Dust Cloak:** running over sand piles, drilling sand or drilling sediment raises dust for 3 seconds. Crawlers and breakers more than 3 cells away can't see you, and one that was chasing you gives up within a second. They can still hear your drilling.
+- **Slag Heart (The First Civilization only):** lava doesn't burn you. Lava within about 1.5 cells of you crusts into rock, which gives you footing to climb out. Lava still slows you while you wade. This relic is never offered in the main mine.
+- Sand piles turned out not to slow you down at all, and crawlers walk straight through them, so the planned "Sand Strider" would have done nothing. Dust Cloak replaces it.
+
 ## 0.10.0
 **Six new run relics** (the pool grows from 6 to 12). Like the others, each lasts until the run ends and shows in the cargo manifest.
 - **Echo Drill:** every fifth block you drill out also breaks the block behind it. It follows your drill's limits: it cannot cut alloy before the Mk.IV drill, bedrock or protected rock.

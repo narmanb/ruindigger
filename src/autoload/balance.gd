@@ -120,6 +120,11 @@ const RUN_RELICS := [
 	{"id": "bargain", "name": "Blood Bargain", "desc": "Ore pays extra for missing hull when you extract, up to double.", "color": "e05a5a"},
 	{"id": "glutton", "name": "Glutton's Sack", "desc": "+30 rack slots, but your ore rattles and draws crawlers.", "color": "c79a5b"},
 	{"id": "spares", "name": "Spare Parts", "desc": "A free charge (or lure) the first time you reach each zone.", "color": "9fb6c8"},
+	{"id": "faultline", "name": "Fault Line", "desc": "Your charges crack the ceiling above them; it falls a moment later.", "color": "d9a066"},
+	{"id": "valve", "name": "Pressure Valve", "desc": "At high pressure the mine vents: the meter drops and nearby foes are stunned.", "color": "7ad7ff"},
+	{"id": "dustcloak", "name": "Dust Cloak", "desc": "Running on sand or drilling sediment raises dust: foes over 3 cells away lose sight of you.", "color": "d8c49a"},
+	# "deep": only ever offered in The First Civilization
+	{"id": "slag", "name": "Slag Heart", "desc": "Lava doesn't burn you; it crusts into rock around you.", "color": "ff5a2a", "deep": true},
 ]
 const RUN_RELICS_MAIN := 2            # per main-mine map
 const RUN_RELICS_DEEP := 1            # per First Civilization map
@@ -133,6 +138,20 @@ const GLUTTON_SLOTS := 30
 const GLUTTON_RATTLE := 2.5          # s between rattles while you move with ore aboard
 const GLUTTON_NOISE := [3.0, 10.0]   # rattle radius in cells, empty rack .. full rack
 const SPARE_LURES_MAX := 5           # Spare Parts gives a lure only while you hold fewer
+const FAULT_SCAN := 8                # Fault Line: rows above a charge searched for the ceiling
+const FAULT_HALF := 2                # ...cells either side of the blast column that crack
+const FAULT_WARN := 0.9              # s of dust before the cracked ceiling falls
+const VALVE_AT := 80.0               # Pressure Valve: vents when the meter reaches this
+const VALVE_DROP := 40.0             # ...and takes this much off it
+const VALVE_RADIUS := 9.0            # cells: foes this close are stunned
+const VALVE_STUN := 4.0
+const VALVE_COOLDOWN := 45.0
+const SLAG_RADIUS := 1.6             # Slag Heart: lava within this many cells of you crusts
+const SLAG_TICK := 0.3
+const DUST_CLOAK_TIME := 3.0         # Dust Cloak: s you stay hidden after raising dust
+const DUST_CLOAK_NEAR := 3.0         # cells: foes closer than this still see you
+const DUST_CLOAK_FORGET := 0.6       # s a chasing foe keeps hunting once you vanish
+const DUST_CLOAK_RUN := 60.0         # px/s: running this fast over sand raises dust
 # --- Gadgets: one active (GADGET button, on a cooldown) + one passive ---
 const GADGETS := {
 	"sonar": {"name": "SONAR", "kind": "active", "cooldown": 22.0, "desc": "Ping: reveals the map nearby and marks ore, gas and loose rock."},

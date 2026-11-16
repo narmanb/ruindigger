@@ -6,7 +6,7 @@ extends RefCounted
 ## Run relics: `count` spots you can reach and still get out from, dry, on a
 ## floor, away from every entity and each other. Picks which relics appear from
 ## the seed too. Never edits terrain. Works for any generator's grid.
-static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: PackedByteArray, seed_value: int, count: int, entities: Array, avoid: Array, pair_first: bool = false) -> Array:
+static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: PackedByteArray, seed_value: int, count: int, entities: Array, avoid: Array, pair_first: bool = false, deep: bool = false) -> Array:
 	var occupied: Dictionary = {}
 	for e in entities:
 		for dy in range(-3, 4):
@@ -51,6 +51,9 @@ static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: Packed
 		var tmp: int = ids[k]
 		ids[k] = ids[j]
 		ids[j] = tmp
+	if not deep:
+		# relics marked "deep" belong to The First Civilization only
+		ids = ids.filter(func(id: int) -> bool: return not bool(Balance.RUN_RELICS[id].get("deep", false)))
 	var out: Array = []
 	var next := 0
 	for k in picked.size():

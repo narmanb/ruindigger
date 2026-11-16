@@ -215,7 +215,7 @@ func _spawn_entities() -> void:
 	for spec in data.get("run_relics", []):
 		# generation cannot see what the run already holds (the deep stage is built
 		# from its own seed), so a relic you own is swapped for one you do not
-		var rid := Game.unowned_relic_id(int(spec["id"]))
+		var rid := Game.unowned_relic_id(int(spec["id"]), stage == "deep")
 		if rid < 0:
 			continue
 		var rr := RunRelic.new()
@@ -367,6 +367,7 @@ var _ladder_t := 0.0
 func _physics_process(delta: float) -> void:
 	_grow_ladders(delta)
 	_glutton_rattle(delta)
+	_dust_cloak(delta)
 	if lava:
 		lava.update(delta)
 		steam.update(delta)
@@ -416,7 +417,9 @@ func _heat_feedback(delta: float) -> void:
 	var pc := grid.world_to_cell(player.global_position)
 	var feet := grid.world_to_cell(player.global_position + Vector2(0, Player.HALF.y - 1.0))
 	var lava_here := maxi(grid.get_lava(feet.x, feet.y), grid.get_lava(pc.x, pc.y))
-	if lava_here >= Balance.LAVA_BURN_MIN:
+	if lava_here > 0 and Game.has_relic("slag"):
+		_slag_heart(pc, feet)
+	elif lava_here >= Balance.LAVA_BURN_MIN:
 		if _burn_t <= 0.0:
 			_burn_t = Balance.LAVA_BURN_INTERVAL
 			player.invuln = 0.0
@@ -450,6 +453,32 @@ func _heat_feedback(delta: float) -> void:
 		if grid.get_lava(ec.x, ec.y) >= Balance.LAVA_BURN_MIN and randf() < delta / Balance.LAVA_BURN_INTERVAL:
 			e.set("last_hit", "lava")
 			e.hit(Balance.LAVA_ENEMY_DAMAGE, e.global_position + Vector2(0, 8), false)
+
+
+## Slag Heart: lava you wade into crusts into rock around you instead of
+## burning. Rock never forms inside the digger (LavaSim defers those cells).
+func _slag_heart(pc: Vector2i, feet: Vector2i) -> void:
+	if _burn_t > 0.0 or lava == null:
+		return
+	_burn_t = Balance.SLAG_TICK
+	var r := Balance.SLAG_RADIUS
+	var ri := ceili(r)
+	var n := 0
+	for centre: Vector2i in [feet, pc]:
+		for dy in range(-ri, ri + 1):
+			for dx in range(-ri, ri + 1):
+				var cc: Vector2i = centre + Vector2i(dx, dy)
+				if Vector2(dx, dy).length() <= r and grid.get_lava(cc.x, cc.y) > 0 and lava.quench(cc):
+					n += 1
+	if n > 0:
+		fx.sparks(player.global_position + Vector2(0, 10), Vector2.UP, Color(1.0, 0.45, 0.2))
+		Audio.play_at("gas_hiss", player.global_position, -6.0, 0.2, 0.1)
+		if not _slag_told:
+			_slag_told = true
+			toast("SLAG HEART - the lava crusts around you")
+
+
+var _slag_told := false
 
 
 func _water_feedback(delta: float) -> void:
@@ -654,6 +683,8 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 		Audio.play_at("break_hard" if cls != "soft" else "break_soft", pos, -2.0, 0.12, 0.04)
 		if source == "drill":
 			shake(0.07 if cls == "soft" else 0.12)
+			if m == Cell.SOFT:
+				raise_dust()
 		var o: int = res["ore"]
 		if o != 0:
 			var n: int = int(Balance.ORE[o]["drops"]) + (1 if Game.has_relic("charm") else 0)
@@ -836,6 +867,37 @@ func _zone_reached(z: int) -> void:
 
 var _echo_n := 0
 var _rattle_t := 0.0
+var cloak_t := 0.0
+var _cloak_fx_t := 0.0
+
+
+## Dust Cloak: hidden from foes more than DUST_CLOAK_NEAR cells away.
+func cloaked() -> bool:
+	return cloak_t > 0.0
+
+
+## Dust Cloak: dust raised (running on sand, drilling sand or sediment).
+func raise_dust() -> void:
+	if not Game.has_relic("dustcloak") or player == null:
+		return
+	if cloak_t <= 0.0:
+		toast("DUST CLOAK - they can't see you through the dust")
+	cloak_t = Balance.DUST_CLOAK_TIME
+
+
+func _dust_cloak(delta: float) -> void:
+	cloak_t = maxf(0.0, cloak_t - delta)
+	if player == null or player.dead or not Game.has_relic("dustcloak"):
+		return
+	if player.is_on_floor() and absf(player.velocity.x) >= Balance.DUST_CLOAK_RUN:
+		var f := player.feet_cell()
+		if grid.get_sand(f.x, f.y) > 0 or grid.get_sand(f.x, f.y + 1) > 0:
+			raise_dust()
+	if cloak_t > 0.0:
+		_cloak_fx_t -= delta
+		if _cloak_fx_t <= 0.0:
+			_cloak_fx_t = 0.25
+			fx.dust(player.global_position + Vector2(randf_range(-8, 8), 6), Color(0.85, 0.78, 0.6), 3)
 
 
 func drill_enemies(r: Rect2, dmg: float, by: Player) -> void:
@@ -887,6 +949,34 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 	noise(pos, 16.0)
 	if ignite:
 		gas.ignite_near(pos, r)
+	if cause == "charge" and Game.has_relic("faultline"):
+		fault_line(c, ri)
+
+
+## Fault Line: the ceiling over a charge cracks and falls a moment later.
+## Returns the number of cells set to fall.
+func fault_line(c: Vector2i, blast_r: int) -> int:
+	var n := 0
+	for dx in range(-Balance.FAULT_HALF, Balance.FAULT_HALF + 1):
+		var x := c.x + dx
+		var roof := -1
+		for y in range(c.y - 1, c.y - blast_r - Balance.FAULT_SCAN, -1):
+			if grid.is_solid(x, y):
+				roof = y
+				break
+		if roof < 0:
+			continue
+		for k in 2:
+			var cc := Vector2i(x, roof - k)
+			if not breakable_support(cc) or collapse.pending.has(cc):
+				break
+			grid.set_mat(cc.x, cc.y, Cell.LOOSE)
+			collapse.pending[cc] = Balance.FAULT_WARN * randf_range(0.9, 1.2) + 0.3 * k
+			n += 1
+	if n > 0:
+		Audio.play_at("rumble", grid.cell_center(c), -2.0, 0.1, 0.2)
+		toast("FAULT LINE - the ceiling is coming down!")
+	return n
 
 
 # --- gadgets ----------------------------------------------------------------
@@ -1192,6 +1282,7 @@ var _sand_blast_n := 0
 func dig_sand(c: Vector2i) -> void:
 	if sand == null or sand.remove(c) <= 0:
 		return
+	raise_dust()
 	var pos := grid.cell_center(c) + Vector2(0, 4)
 	fx.dust(pos, Cell.debris_color(Cell.SOFT, maxi(0, grid.get_stratum(c.x, c.y))), 4)
 	Audio.play_at("break_soft", pos, -8.0, 0.15, 0.05)

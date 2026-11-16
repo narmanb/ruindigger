@@ -137,6 +137,8 @@ func _physics_process(delta: float) -> void:
 				target_cell = grid.world_to_cell(pl.global_position)
 			else:
 				forget_t -= delta
+				if mine.has_method("cloaked") and mine.cloaked():
+					forget_t = minf(forget_t, Balance.DUST_CLOAK_FORGET)
 				if forget_t <= 0.0:
 					state = S.INVESTIGATE
 					forget_t = 2.0
@@ -203,6 +205,8 @@ func _sees_player() -> bool:
 		return false
 	var d := pl.global_position.distance_to(global_position)
 	if d > Balance.CRAWLER_SIGHT * Balance.CELL:
+		return false
+	if d > Balance.DUST_CLOAK_NEAR * Balance.CELL and mine.has_method("cloaked") and mine.cloaked():
 		return false
 	return grid.line_clear(global_position, pl.global_position + Vector2(0, -4))
 

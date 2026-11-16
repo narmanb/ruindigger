@@ -896,7 +896,7 @@ func _audit() -> bool:
 	var avoid: Array = []
 	for f in data["finds"]:
 		avoid.append(f["cell"])
-	data["run_relics"] = ZoneFinds.relics(g, from_spawn, esc, int(data["seed"]), Balance.RUN_RELICS_DEEP, data["entities"], avoid)
+	data["run_relics"] = ZoneFinds.relics(g, from_spawn, esc, int(data["seed"]), Balance.RUN_RELICS_DEEP, data["entities"], avoid, false, true)
 	return data["dig_to_gate_s"] >= 0.0 and data["dig_to_gate_s"] <= Balance.DEEP_DIG_BUDGET
 
 

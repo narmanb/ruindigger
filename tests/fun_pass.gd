@@ -22,6 +22,7 @@ static func run(t: Node) -> void:
 	await gadgets(t)
 	await relics(t)
 	await relics_batch_a(t)
+	await relics_batch_b(t)
 	await feet(t)
 	await charges(t)
 	await sand(t)
@@ -643,6 +644,154 @@ static func relics_batch_a(t: Node) -> void:
 	mine._zone_reached(3)
 	t.check(int(Game.run["charges"]) == Progress.charges_max() and int(Game.run["lures"]) == mini(lures0 + 1, Balance.SPARE_LURES_MAX), "Spare Parts: a lure when the charge rack is full")
 	held.clear()
+
+
+## 0.11.0 relics: Fault Line, Pressure Valve, Dust Cloak and Slag Heart.
+static func relics_batch_b(t: Node) -> void:
+	t.section("new relics: fault line, pressure valve, dust cloak, slag heart")
+	var slag := -1
+	for k in Balance.RUN_RELICS.size():
+		if Balance.RUN_RELICS[k]["id"] == "slag":
+			slag = k
+	for id in ["faultline", "valve", "dustcloak", "slag"]:
+		var found := false
+		for info: Dictionary in Balance.RUN_RELICS:
+			found = found or info["id"] == id
+		t.check(found, "relic %s is in the pool" % id)
+	# Slag Heart is only ever offered in The First Civilization
+	Game.run["relics"] = []
+	t.check(slag >= 0 and Game.unowned_relic_id(slag, true) == slag, "Slag Heart can be offered in the deep stage")
+	var main_ok := true
+	for k in Balance.RUN_RELICS.size():
+		if Game.unowned_relic_id(k, false) == slag:
+			main_ok = false
+	t.check(main_ok, "Slag Heart is never offered in the main mine")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 13
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	var held: Array = Game.run["relics"]
+	held.clear()
+	var no_slag := true
+	for spec: Dictionary in mine.data.get("run_relics", []):
+		if int(spec["id"]) == slag:
+			no_slag = false
+	t.check(no_slag, "the main mine's generated relics never include Slag Heart")
+	# Fault Line: the ceiling over a blast cracks and is set to fall
+	var gc: Vector2i = g.world_to_cell(pl.global_position)
+	var bc := Vector2i(gc.x + 12, gc.y)
+	for x in range(bc.x - 2, bc.x + 3):
+		for y in range(bc.y - 2, bc.y + 1):
+			g.set_mat(x, y, Cell.AIR)
+		g.set_mat(x, bc.y - 3, Cell.SOFT)
+		g.set_mat(x, bc.y - 4, Cell.SOFT)
+		g.set_flag(x, bc.y - 3, Cell.F_PROTECTED, false)
+		g.set_flag(x, bc.y - 4, Cell.F_PROTECTED, false)
+	var fell: int = mine.fault_line(bc, 1)
+	var all_loose := true
+	for x in range(bc.x - 2, bc.x + 3):
+		for y in [bc.y - 3, bc.y - 4]:
+			if g.get_mat(x, y) != Cell.LOOSE or not mine.collapse.pending.has(Vector2i(x, y)):
+				all_loose = false
+	t.check(fell == 10 and all_loose, "Fault Line: five columns of ceiling, two rows deep, crack and are set to fall (%d)" % fell)
+	for x in range(bc.x - 2, bc.x + 3):
+		for y in [bc.y - 3, bc.y - 4]:
+			mine.collapse.pending.erase(Vector2i(x, y))
+			g.set_mat(x, y, Cell.SOFT)
+	# Pressure Valve: vents at high pressure and stuns foes nearby
+	var pr: Node = mine.pressure
+	pr.value = 85.0
+	await t._frames(3)
+	t.check(pr.value >= Balance.VALVE_AT, "pressure stays high without the valve")
+	held.append("valve")
+	await t._frames(3)
+	t.check(pr.value <= 85.0 - Balance.VALVE_DROP + 1.0 and pr._valve_cd > 0.0, "Pressure Valve: the meter drops by %d" % int(Balance.VALVE_DROP))
+	pr.value = 85.0
+	await t._frames(3)
+	t.check(pr.value >= Balance.VALVE_AT, "Pressure Valve waits for its cooldown")
+	var spot := Vector2i(-1, -1)
+	for r in range(5, 9):
+		for dx in [r, -r]:
+			for dy in range(-2, 3):
+				var c := gc + Vector2i(dx, dy)
+				if spot.x < 0 and not g.is_solid(c.x, c.y) and g.is_solid(c.x, c.y + 1) and g.get_water(c.x, c.y) == 0:
+					spot = c
+	t.check(spot.x >= 0, "found a floor cell near the digger for a test crawler")
+	if spot.x >= 0:
+		var cr: Crawler = mine.spawn_crawler(spot)
+		await t._frames(2)
+		pr._valve_cd = 0.0
+		var stunned: int = pr.vent()
+		t.check(stunned >= 1 and cr.state == Crawler.S.STUNNED, "Pressure Valve: a crawler nearby is stunned")
+		# Dust Cloak: foes beyond 3 cells lose sight of you
+		held.clear()
+		held.append("dustcloak")
+		mine.cloak_t = 0.0
+		mine.raise_dust()
+		t.check(mine.cloaked(), "Dust Cloak: raised dust hides you")
+		cr.stun_t = 0.0
+		cr.state = Crawler.S.CHASE
+		cr.forget_t = Balance.CRAWLER_FORGET
+		t.check(not cr._sees_player(), "Dust Cloak: a crawler %d cells away cannot see you" % absi(spot.x - gc.x))
+		for k in 60:
+			mine.cloak_t = 10.0
+			await t._frames(1)
+			if cr.state != Crawler.S.CHASE:
+				break
+		t.check(cr.state != Crawler.S.CHASE, "Dust Cloak: a chasing crawler gives up")
+		mine.cloak_t = 0.0
+		held.clear()
+		mine.raise_dust()
+		t.check(not mine.cloaked(), "no dust cloak without the relic")
+		if is_instance_valid(cr):
+			mine.enemies.erase(cr)
+			cr.queue_free()
+	held.clear()
+	# Slag Heart: lava does not burn, it crusts around you (lava set up by hand:
+	# the main mine has no lava simulation of its own)
+	mine.steam = SteamField.new(g)
+	mine.lava = LavaSim.new(g, mine.water, mine.steam)
+	mine.lava.occupied = mine._cell_occupied
+	pl.velocity = Vector2.ZERO
+	await t._frames(2)
+	var feet: Vector2i = g.world_to_cell(pl.global_position + Vector2(0, Player.HALF.y - 1.0))
+	var pool: Array[Vector2i] = []
+	for dx in range(-2, 3):
+		var c := Vector2i(feet.x + dx, feet.y)
+		if not g.is_solid(c.x, c.y):
+			pool.append(c)
+	for c in pool:
+		g.set_lava(c.x, c.y, Balance.LAVA_MAX)
+	pl.invuln = 0.0
+	mine._burn_t = 0.0
+	var hp1 := pl.hp
+	held.append("slag")
+	await t._frames(4)
+	var crusted := 0
+	for c in pool:
+		if g.get_mat(c.x, c.y) == Cell.HARD:
+			crusted += 1
+	t.check(is_equal_approx(pl.hp, hp1), "Slag Heart: standing in lava does not burn")
+	t.check(crusted >= 1, "Slag Heart: lava next to you crusts into rock (%d of %d cells)" % [crusted, pool.size()])
+	held.clear()
+	for c in pool:
+		g.set_lava(c.x, c.y, Balance.LAVA_MAX if not g.is_solid(c.x, c.y) else 0)
+	pl.invuln = 0.0
+	mine._burn_t = 0.0
+	var hp2 := pl.hp
+	await t._frames(4)
+	t.check(pl.hp < hp2, "without Slag Heart the lava burns")
+	for y in range(feet.y - 3, feet.y + 4):
+		for x in range(feet.x - 4, feet.x + 5):
+			g.set_lava(x, y, 0)
+	mine.lava = null
+	mine.steam = null
+	pl.hp = pl.max_hp
 
 
 static func feet(t: Node) -> void:

@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.10.0** (Android code 23). **`main` is the
+Last updated at version **0.11.0** (Android code 24). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.10.0. Wrap Godot in `timeout`: a
+`structures` separately. All are green at 0.11.0. Wrap Godot in `timeout`: a
 parse error makes a headless run hang. The screenshot harness is
 `tests/shot.gd`; useful args include `deep=1`, `at=lm:<kind or NAME>`,
 `decor=<kind>`, `sandtest=1`, `kitdemo=1`, `pourtest=1|2`,
@@ -48,6 +48,12 @@ parse error makes a headless run hang. The screenshot harness is
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.11.0:** four more run relics. Fault Line (`Mine.fault_line`, called from
+  `Mine.explode` for charges), Pressure Valve (`Pressure.vent`), Dust Cloak
+  (`Mine.raise_dust` / `Mine.cloaked`, checked in `Crawler._sees_player` and
+  the chase timer), Slag Heart (`Mine._slag_heart`, from `_heat_feedback`). A
+  relic entry with `"deep": true` is only offered in The First Civilization
+  (`ZoneFinds.relics(..., deep)` and `Game.unowned_relic_id(id, deep_ok)`).
 - **0.10.0:** six new run relics (Echo Drill, Overdrive, Hard Hat, Blood
   Bargain, Glutton's Sack, Spare Parts). Hooks: `Mine.drill_cell` (echo),
   `Player._update_drill` (overdrive), `Mine.rock_damage_mult` (hard hat, also
@@ -82,14 +88,9 @@ parse error makes a headless run hang. The screenshot harness is
   `docs/primordial-vault-status.md`, `CHANGELOG.md`.
 
 ## Run relic plan (agreed with the owner)
-- **Batch B (next, 0.11.0):** Fault Line (charges crack the ceiling above the
-  blast; it falls a moment later), Pressure Valve (at high pressure it vents
-  the meter and stuns nearby foes), Slag Heart (lava crusts into rock around
-  you instead of burning; **offered only in The First Civilization**), Sand
-  Strider (cross sand piles at full speed, leave grains that block crawlers;
-  first check whether piles slow you at all; the owner does not know. If they
-  do not, make it about the crawler-blocking grains and tell the owner).
-- **Batch C (0.12.0):** Dowsing Rod (water pockets show on the minimap through
+- **Batch B: done in 0.11.0.** Sand piles do not slow the player and crawlers
+  ignore sand, so Sand Strider was replaced by Dust Cloak (owner's choice).
+- **Batch C (next, 0.12.0):** Dowsing Rod (water pockets show on the minimap through
   rock within ~20 cells, tinted as "sensed"; the minimap already shows water you
   have seen), Greedy Lamp (edge-of-screen arrows to the nearest unseen,
   reachable ore within ~30 cells, coloured by ore; cost: smaller light and
