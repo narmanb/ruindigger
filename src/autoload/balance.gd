@@ -278,6 +278,23 @@ const CHARGES_FREE := 2
 const CHARGES_MAX := 6               # without the Charge Rack upgrade
 const CHARGES_MAX_BY_LEVEL := [6, 8, 10, 12]
 
+# --- Explosives (Demolitions counter; WORK IN PROGRESS, not wired in yet) ---
+# Two slots per dive (main + backup), each with its own button. See HANDOFF.md.
+const EXPLOSIVES := {
+	"charge": {"name": "DEMO CHARGE", "price": 25, "carry": [6, 8, 10, 12], "desc": "Bounces and rolls, then blows."},
+	"sticky": {"name": "STICKY CHARGE", "price": 35, "carry": [4, 6, 8, 10], "desc": "Sticks to rock, ceilings and foes."},
+	"rocket": {"name": "DRILL ROCKET", "price": 45, "carry": [3, 4, 5, 6], "desc": "Bores straight ahead, then blows.", "bore_time": 1.2, "speed": 160.0},
+	"remote": {"name": "REMOTE CHARGE", "price": 40, "carry": [3, 4, 5, 6], "desc": "Throw it; press again to set it off.", "max_out": 1},
+	"mine": {"name": "PROXIMITY MINE", "price": 35, "carry": [3, 4, 5, 6], "desc": "Arms after a second; anything that steps on it sets it off.", "arm": 1.0, "trigger": 1.2},
+}
+const EXPLOSIVE_DEFAULT := {"main": "charge", "backup": ""}
+# capped upgrades sold at the Demolitions counter (cost per next level)
+const DEMO_UPGRADES := {
+	"capacity": {"name": "BIGGER RACK", "costs": [140, 300, 560], "desc": "Carry more of every explosive."},
+	"power": {"name": "BLAST POWER", "costs": [180, 380], "mult": [1.0, 1.25, 1.5], "desc": "Explosions hit rock and foes harder."},
+	"radius": {"name": "BLAST RADIUS", "costs": [200, 420], "mult": [1.0, 1.15, 1.3], "desc": "Explosions reach further."},
+}
+
 # --- Demolition charge ---
 const CHARGE_FUSE := 2.2
 const CHARGE_RADIUS_CELLS := 3.2

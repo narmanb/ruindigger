@@ -120,6 +120,9 @@ parse error makes a headless run hang. The screenshot harness is
   or the player.
 - Sell them at a **separate Demolitions counter** at the outpost; the owner does
   not want the Supply Locker crowded.
+- **Started (session branch only, not on main):** `Balance.EXPLOSIVES`,
+  `EXPLOSIVE_DEFAULT` and `DEMO_UPGRADES` hold first-guess data. Nothing uses
+  them yet. Next chunk: the Demolitions counter and the run loadout.
 - **Decided: two slots per dive** (main + backup), chosen at the Demolitions
   counter. Each slot gets **its own button, side by side** (no toggling), kept
   small; this matters for players who map touch controls to a gamepad. Needs
