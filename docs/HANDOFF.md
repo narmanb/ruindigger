@@ -120,8 +120,16 @@ parse error makes a headless run hang. The screenshot harness is
   or the player.
 - Sell them at a **separate Demolitions counter** at the outpost; the owner does
   not want the Supply Locker crowded.
-- **Ask the owner first:** how to pick which explosive the CHARGE button throws
-  on touch (e.g. a selector on the gadget toolbar, or long-press CHARGE to cycle).
+- **Decided: two slots per dive** (main + backup), chosen at the Demolitions
+  counter. Each slot gets **its own button, side by side** (no toggling), kept
+  small; this matters for players who map touch controls to a gamepad. Needs
+  a second charge input action and the UI layout checks.
+- **Demolitions counter also sells capped upgrades** (a few levels each, not
+  endless): carry capacity per type (fold the existing CHARGE RACK upgrade in
+  here), blast power, blast radius. Suggested extras the owner is open to:
+  shorter fuse, drill rocket bore range, mine trigger range or "ignores you",
+  more than one remote charge out, blast shielding (less self-damage). Old
+  saves that own CHARGE RACK / STICKY CHARGES need a sensible migration.
 - Related "kit shop" idea: buying extra lures. The owner is not keen on shears
   and bolts, so leave those alone unless asked.
 
