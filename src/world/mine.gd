@@ -213,9 +213,14 @@ func _spawn_entities() -> void:
 		entity_root.add_child(find)
 		keepsakes.append(find)
 	for spec in data.get("run_relics", []):
+		# generation cannot see what the run already holds (the deep stage is built
+		# from its own seed), so a relic you own is swapped for one you do not
+		var rid := Game.unowned_relic_id(int(spec["id"]))
+		if rid < 0:
+			continue
 		var rr := RunRelic.new()
 		rr.mine = self
-		rr.id = int(spec["id"])
+		rr.id = rid
 		rr.group = int(spec.get("group", 0))
 		rr.position = grid.cell_center(spec["cell"])
 		entity_root.add_child(rr)

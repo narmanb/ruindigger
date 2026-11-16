@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1
+**Run relic fixes**
+- **No more duplicate relics.** The relic in The First Civilization is rolled from its own seed, so it could be one you already carried (a wasted find). Now a relic you already hold is swapped for one you do not.
+- **Iron Spine no longer stacks.** Taking a second copy used to add another +40 hull. The bonus now applies only the first time.
+
 ## 0.9.0 (feature/fun-pass)
 **The terrain is a weapon, part 2**
 - **Breakers** (new enemy, in the Forgotten Engine and the Drowned Aqueducts; about one in three burrowers there). A bigger, orange burrower with a drill horn. It hunts like a crawler, but when it sees you under a roof it stops and gnaws at that roof. Dust rains above you and an arc fills around it for 3 seconds, then the roof comes down. While it gnaws it is planted and takes **double damage**. Stunning it breaks its grip. A late collapse swarm can bring one with it.

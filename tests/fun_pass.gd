@@ -484,6 +484,35 @@ static func relics(t: Node) -> void:
 	t.check(mine.nearest_interactable(pl).get("kind", "") == "run_relic", "a relic can be taken with USE")
 	mine.player_interact(pl)
 	t.check(Game.has_relic("spine") and is_equal_approx(pl.max_hp, hp0 + Balance.SPINE_HULL) and is_equal_approx(pl.hp, pl.max_hp), "Iron Spine adds hull and repairs")
+	# a second copy does nothing: the hull bonus applies once
+	var rr2 := RunRelic.new()
+	rr2.mine = mine
+	rr2.id = spine
+	rr2.position = pl.global_position
+	mine.entity_root.add_child(rr2)
+	mine.run_relics.append(rr2)
+	pl.hp = pl.max_hp - 30.0
+	rr2.take()
+	t.check(is_equal_approx(pl.max_hp, hp0 + Balance.SPINE_HULL) and is_equal_approx(pl.hp, pl.max_hp - 30.0), "a second Iron Spine does not stack")
+	t.check((Game.run["relics"] as Array).count("spine") == 1, "a relic is only recorded once")
+	# the run never rolls a relic it already holds (the deep stage cannot see the run)
+	var held: Array = Game.run["relics"]
+	held.clear()
+	var n_all: int = Balance.RUN_RELICS.size()
+	t.check(Game.unowned_relic_id(2) == 2, "a free relic is kept as rolled")
+	var all_free := true
+	for k in n_all:
+		held.clear()
+		held.append(Balance.RUN_RELICS[k]["id"])
+		var got := Game.unowned_relic_id(k)
+		if got == k or got < 0 or held.has(Balance.RUN_RELICS[got]["id"]):
+			all_free = false
+	t.check(all_free, "an owned relic is swapped for one the run does not hold")
+	held.clear()
+	for info: Dictionary in Balance.RUN_RELICS:
+		held.append(info["id"])
+	t.check(Game.unowned_relic_id(0) == -1, "nothing is offered once the run holds every relic")
+	held.clear()
 	# Prospector's Charm: one extra unit per seam
 	Game.run["relics"].append("charm")
 	var gc: Vector2i = mine.grid.world_to_cell(pl.global_position)

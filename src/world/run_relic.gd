@@ -56,9 +56,9 @@ func take() -> void:
 	var relics: Array = Game.run["relics"]
 	if not relics.has(info["id"]):
 		relics.append(info["id"])
-	if info["id"] == "spine" and mine.player:
-		mine.player.max_hp += Balance.SPINE_HULL
-		mine.player.hp = mine.player.max_hp
+		if info["id"] == "spine" and mine.player:
+			mine.player.max_hp += Balance.SPINE_HULL
+			mine.player.hp = mine.player.max_hp
 	Audio.play("lift_ding", -2.0)
 	mine.hud.banner(String(info["name"]).to_upper())
 	mine.toast("RUN RELIC: %s" % info["desc"])

@@ -166,6 +166,17 @@ func has_relic(id: String) -> bool:
 	return (run.get("relics", []) as Array).has(id)
 
 
+## A relic id this run does not hold yet: `preferred` if it is free, else the
+## next free one in the list. -1 when the run already holds every relic.
+func unowned_relic_id(preferred: int) -> int:
+	var n: int = Balance.RUN_RELICS.size()
+	for k in n:
+		var id := (preferred + k) % n
+		if not has_relic(String(Balance.RUN_RELICS[id]["id"])):
+			return id
+	return -1
+
+
 func in_deep() -> bool:
 	return run.get("stage", "mine") == "deep"
 
