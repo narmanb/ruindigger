@@ -14,6 +14,13 @@ static func _settle(t: Node) -> void:
 
 
 static func run(t: Node) -> void:
+	# only=<section>: run one section (for chasing an intermittent failure)
+	if t.args.has("only"):
+		match String(t.args["only"]):
+			"roamers": await roamers(t)
+			"roamers_b": await roamers_b(t)
+			"charges": await charges(t)
+		return
 	await economy(t)
 	await orders(t)
 	await pressure(t)
@@ -1848,17 +1855,26 @@ static func roamers_b(t: Node) -> void:
 	mine.enemies.erase(cw)
 	pl.invuln = 0.0
 	var php := pl.hp
+	var in_rock := 0
 	for k in 1500:
 		await t._frames(1)
 		if k % 30 == 0:
 			mine.noise(home, 10.0)              # you keep drilling
+		if g.is_solid(bw.cell.x, bw.cell.y) or g.is_solid(bw.next_cell.x, bw.next_cell.y):
+			in_rock += 1
 		if pl.hp < php:
 			break
 	var tunnel := 0
 	for x in range(pc.x + 6, pc.x + 11):
 		if not g.is_solid(x, pc.y):
 			tunnel += 1
-	t.check(bw.dug >= 5 and tunnel == 5, "it chews straight through the basalt wall toward the noise (%d cells)" % bw.dug)
+	var holes := ""
+	for y in range(pc.y - 8, pc.y + 1):
+		for x in range(pc.x + 6, pc.x + 11):
+			if not g.is_solid(x, y):
+				holes += "(%d,%d)" % [x - pc.x, y - pc.y]
+	t.check(bw.dug >= 5 and tunnel == 5, "it chews straight through the basalt wall toward the noise (%d cells; open: %s)" % [bw.dug, holes])
+	t.check(in_rock == 0, "it never moves into rock it has not chewed out (%d frames inside rock)" % in_rock)
 	t.check(is_equal_approx(php - pl.hp, Balance.BURROWER_DAMAGE), "and bites when it gets to you (%.0f)" % (php - pl.hp))
 	pl.invuln = 1e9
 	pl.hp = pl.max_hp

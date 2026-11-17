@@ -95,7 +95,16 @@ func _step(delta: float) -> void:
 			_chew(delta)
 			return
 	dig_cell = Vector2i(-1, -1)
+	# The crawler's step finishes a move and starts the next one in the same
+	# call. If the next cell is rock, hold the path back so it cannot walk
+	# into it: the check above chews it out on the next step.
+	var held: Array[Vector2i] = []
+	if not path.is_empty() and grid.is_solid(path[0].x, path[0].y):
+		held = path
+		path = []
 	super._step(delta)
+	if not held.is_empty() and path.is_empty():
+		path = held
 
 
 func _chew(delta: float) -> void:

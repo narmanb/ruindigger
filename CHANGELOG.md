@@ -17,6 +17,7 @@
   - Drilling one bursts it into gas as well.
   - **A blast or a fireball sets its gas alight at once**: a fireball instead of a cloud. That burns whatever is next to it, crawlers and other pods included, and you if you are close.
   - 12 hull. Five in the Spore Veins.
+- Fixed before release: about half the time a burrower slid through solid rock without digging it. It now always chews a cell out before moving in.
 - Like the brute and the flier, all three are placed on the finished map from a seeded stream after the brutes and fliers, so world generation is unchanged and existing brute and flier positions did not move.
 
 ## 0.15.0

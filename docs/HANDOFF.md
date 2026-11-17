@@ -39,7 +39,9 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.16.0. Note: `t._frames(n)` waits on
+`structures` separately. All are green at 0.16.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|charges`
+(add more names in `FunPass.run`); loop it to chase an intermittent failure.
+Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
 of something updated in `_process` should poll with a cap, not wait a fixed n. Wrap Godot in `timeout`: a
 parse error makes a headless run hang. The screenshot harness is
