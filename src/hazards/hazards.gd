@@ -143,8 +143,15 @@ class Rocket extends Node2D:
 	var _spin := 0.0
 	var _noise_t := 0.0
 	var glow: Sprite2D
+	var bit: Sprite2D              # the digger's own drill: housing and cone, without the arm
 
 	func _ready() -> void:
+		bit = Sprite2D.new()
+		bit.texture = load("res://assets/gen/drill.png")
+		bit.region_enabled = true
+		bit.region_rect = Rect2(7, 16, 17, 16)
+		bit.position = Vector2(-1, 0)
+		add_child(bit)
 		glow = Sprite2D.new()
 		glow.texture = load("res://assets/gen/glow.png")
 		glow.scale = Vector2(0.35, 0.35)
@@ -196,20 +203,17 @@ class Rocket extends Node2D:
 		glow.global_position = global_position - d * 6.0
 		if randf() < 0.5:
 			mine.fx.sparks(global_position - d * 8.0, -d, Color(1.0, 0.7, 0.3))
+		# the spinning bit: the drill sheet's "active" row, arm cropped off
+		bit.region_rect = Rect2(float(int(_spin) % 4) * 24.0 + 7.0, 16.0, 17.0, 16.0)
+		bit.modulate = Color(1.0, 0.55, 0.5) if (life < 0.4 and int(life * 20.0) % 2 == 0) else Color.WHITE
 		queue_redraw()
 
 	func _draw() -> void:
-		# drawn pointing right; the node is rotated to its heading
-		draw_rect(Rect2(-8, -3, 9, 6), Color("5a5f6e"))
-		draw_rect(Rect2(-8, -3, 9, 2), Color("8d93a6"))
-		draw_colored_polygon(PackedVector2Array([Vector2(1, -4), Vector2(9, 0), Vector2(1, 4)]), Color("ff9a3c"))
-		var k := int(_spin) % 3
-		for i in 3:
-			var x := 2.0 + ((i + k) % 3) * 2.0
-			draw_line(Vector2(x, -3.0 + x * 0.35), Vector2(x + 1.5, 3.0 - x * 0.35), Color("ffd27a"), 1.0)
-		draw_colored_polygon(PackedVector2Array([Vector2(-8, -2), Vector2(-12 - randf() * 3.0, 0), Vector2(-8, 2)]), Color(1.0, 0.8, 0.3, 0.9))
-		if life < 0.4 and int(life * 20.0) % 2 == 0:
-			draw_circle(Vector2(-3, 0), 2.0, Color(1, 0.2, 0.2))
+		# drawn pointing right; the node is rotated to its heading. The bit is
+		# the sprite; this is the exhaust flame behind it.
+		var len := 5.0 + randf() * 4.0
+		draw_colored_polygon(PackedVector2Array([Vector2(-9, -3), Vector2(-9 - len, 0), Vector2(-9, 3)]), Color(1.0, 0.55, 0.15, 0.9))
+		draw_colored_polygon(PackedVector2Array([Vector2(-9, -1.5), Vector2(-9 - len * 0.6, 0), Vector2(-9, 1.5)]), Color(1.0, 0.9, 0.5, 0.95))
 
 
 ## Proximity mine: laid at your feet. It arms after MINE_ARM seconds, but

@@ -21,6 +21,7 @@ static func run(t: Node) -> void:
 			"roamers_b": await roamers_b(t)
 			"roamers_c": await roamers_c(t)
 			"charges": await charges(t)
+			"drops": await drops_on_sand(t)
 		return
 	await economy(t)
 	await orders(t)
@@ -37,6 +38,7 @@ static func run(t: Node) -> void:
 	await roamers(t)
 	await roamers_b(t)
 	await roamers_c(t)
+	await drops_on_sand(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -1069,6 +1071,13 @@ static func charges(t: Node) -> void:
 		if e is Hazards.Rocket:
 			rk = e
 	t.check(rk != null and int(Game.run["charges2"]) == 1, "the backup button fires a drill rocket and uses one")
+	t.check(is_zero_approx(pl.drill_regrow) and rk.bit != null, "the rocket is your own drill: it leaves the arm")
+	pl.input_override = {"drill": true}
+	await t._frames(6)
+	t.check(not pl.drilling and not pl.drill_sprite.visible, "the arm is bare for a moment and cannot drill")
+	await t._frames(int(Balance.ROCKET_REGROW * 60.0) + 4)
+	t.check(pl.drilling and pl.drill_sprite.visible and is_equal_approx(pl.drill_regrow, 1.0), "a new drill grows back in half a second and works again")
+	pl.input_override = {}
 	var row := g.world_to_cell(rk.global_position).y if rk else pc.y
 	var bored := 0
 	for k in 240:
@@ -1700,6 +1709,29 @@ static func roamers(t: Node) -> void:
 	pl.velocity = Vector2.ZERO
 	floor_it.call()
 	await t._frames(3)
+	# --- a crawler whose ground is gone falls, and a long drop hurts ---
+	for x in range(pc.x + 10, pc.x + 19):
+		for y in range(pc.y - 9, pc.y + 1):
+			g.set_flag(x, y, Cell.F_PROTECTED, false)
+			g.set_mat(x, y, Cell.AIR)                   # open air all round, ceiling included
+	g.set_mat(pc.x + 14, pc.y - 5, Cell.HARD)           # one block to cling to, high up
+	var fc: Crawler = mine.spawn_crawler(Vector2i(pc.x + 14, pc.y - 6))
+	await t._frames(3)
+	var fhp := fc.hp
+	t.check(fc.cell.y == pc.y - 6, "a crawler clings to its rock")
+	g.set_mat(pc.x + 14, pc.y - 5, Cell.AIR)            # the rock is dug away
+	var landed := false
+	for k in 60:
+		await t._frames(1)
+		if is_instance_valid(fc) and fc.cell == Vector2i(pc.x + 14, pc.y):
+			landed = true
+			break
+	await t._frames(3)
+	t.check(landed, "with its rock gone a crawler falls straight to the floor instead of hanging in the air")
+	t.check(is_instance_valid(fc) and is_equal_approx(fhp - fc.hp, float(6 - Balance.CRAWLER_FALL_SAFE + 1) * Balance.CRAWLER_FALL_DAMAGE), "a six-cell drop hurts it (%.0f)" % (fhp - fc.hp))
+	if is_instance_valid(fc):
+		fc.queue_free()
+		mine.enemies.erase(fc)
 	# --- its charge: through sediment, but basalt stuns it ---
 	for y in range(pc.y - 5, pc.y + 1):
 		g.set_mat(pc.x + 9, y, Cell.SOFT)
@@ -2143,6 +2175,57 @@ static func roamers_c(t: Node) -> void:
 		if e is Slag:
 			live += 1
 	t.check(slag_ok and live == (dcells[6] as Array).size(), "The First Civilization has slag salamanders, each starting in lava (%d)" % live)
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+## 0.17.1: a droplet caught inside a sand pile must not hang there.
+static func drops_on_sand(t: Node) -> void:
+	t.section("water droplets and sand piles")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(5)
+	var mine: Node = Game.current
+	var g: TerrainGrid = mine.grid
+	var w: WaterSim = mine.water
+	var pc: Vector2i = g.world_to_cell(mine.player.global_position)
+	for x in range(pc.x + 3, pc.x + 12):
+		for y in range(pc.y - 6, pc.y + 1):
+			g.set_mat(x, y, Cell.AIR)
+			g.set_water(x, y, 0)
+			g.set_sand(x, y, 0)
+		g.set_mat(x, pc.y + 1, Cell.HARD)
+	for y in range(pc.y - 6, pc.y + 2):
+		g.set_mat(pc.x + 2, y, Cell.HARD)
+		g.set_mat(pc.x + 12, y, Cell.HARD)
+	# a pile: three cells, the middle one full, with droplets caught inside it
+	var mid := Vector2i(pc.x + 7, pc.y)
+	g.set_sand(mid.x - 1, mid.y, Balance.SAND_MAX / 2)
+	g.set_sand(mid.x, mid.y, Balance.SAND_MAX)
+	g.set_sand(mid.x + 1, mid.y, Balance.SAND_MAX / 2)
+	await t._frames(2)
+	var vol := 0
+	for c in [mid, Vector2i(mid.x - 1, mid.y), Vector2i(mid.x + 1, mid.y), mid]:
+		w.drop_pos.append(g.cell_center(c) + Vector2(0, -5))
+		w.drop_vel.append(Vector2.ZERO)
+		w.drop_vol.append(Balance.WATER_DROP_UNITS)
+		w.drop_src.append(g.idx(c.x, c.y))
+		vol += Balance.WATER_DROP_UNITS
+	var lost0: int = w.lost
+	for k in 240:
+		await t._frames(1)
+		if w.drop_count() == 0:
+			break
+	t.check(w.drop_count() == 0, "droplets caught in a sand pile do not hang there (%d left)" % w.drop_count())
+	var held := 0
+	for x in range(pc.x + 3, pc.x + 12):
+		for y in range(pc.y - 6, pc.y + 1):
+			held += g.get_water(x, y)
+	t.check(held == vol and w.lost == lost0, "their water runs off the pile and none of it is lost (%d of %d)" % [held, vol])
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

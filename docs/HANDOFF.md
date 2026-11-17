@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.17.0** (Android code 30). **`main` is the
+Last updated at version **0.17.1** (Android code 31). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.17.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|roamers_c|charges`
+`structures` separately. All are green at 0.17.1. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|roamers_c|charges|drops`
 (add more names in `FunPass.run`); loop it to chase an intermittent failure.
 Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
@@ -52,6 +52,16 @@ parse error makes a headless run hang. The screenshot harness is
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.17.1** (fixes from the owner's first phone playtest, which was on an
+  explosives-era build): `Crawler._falls` (a crawler with nothing to cling to
+  drops; long drops hurt, last_hit "fall"), `WaterSim.update_drops` displaces a
+  droplet out of any blocked cell, sand included (it used to check solid rock
+  only), and the drill rocket uses the drill sheet and leaves the arm
+  (`Player.drill_regrow`). **This was pushed without "[skip ci]"**: its APK
+  includes everything up to here.
+- The owner noticed a drill rocket flew over a crawler (the rocket flies at
+  chest height, a crawler is low). They said it may not be a problem and not
+  to worry about it for now.
 - **0.17.0:** Eel and Slag salamander, both on `src/enemies/pool_dweller.gd`
   (a Crawler that swims in cells where `in_pool(c)` holds, crawls outside
   them, and heads home after `dry_limit`). `eel.gd`: pool = water, dries out

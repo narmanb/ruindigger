@@ -49,6 +49,7 @@ var cool_delay := 0.0
 var targets: Array[Vector2i] = []
 var drill_contact := Vector2.ZERO
 var drill_blocked := false
+var drill_regrow := 1.0            # 0 = drill just fired off as a rocket, 1 = fully grown back
 var _shake_t := 0.0
 var _anim_t := 0.0
 var _step_t := 0.0
@@ -448,7 +449,9 @@ func _update_platform_drop(delta: float) -> void:
 # Drill
 func _update_drill(delta: float, ax: float, ay: float) -> void:
 	var overdrive := overheated and Game.has_relic("overdrive")
-	var want := _pressed("drill") and (not overheated or overdrive)
+	drill_regrow = minf(1.0, drill_regrow + delta / Balance.ROCKET_REGROW)
+	# no drilling while the arm is growing a new drill
+	var want := _pressed("drill") and (not overheated or overdrive) and drill_regrow >= 1.0
 	if ay < -0.5:
 		drill_dir = Vector2i(0, -1)
 	elif ay > 0.5:
@@ -669,7 +672,10 @@ func use_explosive(slot: int, ay: float) -> void:
 				dir = Vector2i(0, -1)
 			elif ay > 0.5:
 				dir = Vector2i(0, 1)
+			# the drill itself flies off the arm; a new one grows back
 			mine.spawn_rocket(global_position + Vector2(dir.x * 8, -6 + dir.y * 10), dir)
+			drill_regrow = 0.0
+			drill_dir = dir
 		"mine":
 			mine.spawn_mine(global_position + Vector2(0, HALF.y - 5.0))
 		_:
@@ -807,6 +813,12 @@ func _animate(delta: float, ax: float) -> void:
 		drill_sprite.scale.x = float(facing)
 	if drill_dir.y != 0:
 		drill_sprite.scale.x = 1.0
+	# a fired drill grows back out of the arm: nothing for a moment, then it
+	# pushes out from the shoulder with a little overshoot
+	var grow := clampf((drill_regrow - 0.2) / 0.8, 0.0, 1.0)
+	grow = grow * (1.0 + 0.25 * sin(grow * PI))
+	drill_sprite.visible = drill_regrow > 0.2
+	drill_sprite.scale = Vector2(drill_sprite.scale.x * grow, grow)
 	lamp.position = Vector2(6 * facing, -10)
 	# hurt / invulnerability flicker
 	var fl := 0.0

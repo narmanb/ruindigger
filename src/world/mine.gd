@@ -1612,7 +1612,7 @@ func on_enemy_killed(e: Node) -> void:
 	var src: String = String(e.get("last_hit")) if e.get("last_hit") != null else ""
 	if src in Orders.TERRAIN_SOURCES:
 		Game.run["terrain_kills"] = int(Game.run.get("terrain_kills", 0)) + 1
-		toast("TERRAIN KILL - %s" % {"rubble": "crushed", "gas": "gassed", "lava": "burned", "prop": "flattened", "water": "drowned", "steam": "scalded", "flood": "swept away", "dry": "left high and dry", "quench": "turned to stone"}.get(src, src))
+		toast("TERRAIN KILL - %s" % {"rubble": "crushed", "gas": "gassed", "lava": "burned", "prop": "flattened", "water": "drowned", "steam": "scalded", "flood": "swept away", "dry": "left high and dry", "quench": "turned to stone", "fall": "fell to its death"}.get(src, src))
 	enemies.erase(e)
 
 

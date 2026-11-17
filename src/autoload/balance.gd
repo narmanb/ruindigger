@@ -287,6 +287,7 @@ const CACHE_OVERFILL := 2            # a supply cache may take you this far past
 const ROCKET_LIFE := 1.6             # s before a drill rocket blows on its own
 const ROCKET_SPEED := 170.0          # px/s in open air
 const ROCKET_BORE_SPEED := 100.0     # px/s while cutting rock
+const ROCKET_REGROW := 0.5           # s for a new drill to grow out of the arm after you fire yours
 const REMOTE_MAX_OUT := 1            # remote charges out at once; pressing again sets them off
 const REMOTE_DELAY := 0.15           # s between the press and the blast
 const MINE_ARM := 1.0                # s before a proximity mine can arm
@@ -446,6 +447,9 @@ const CRAWLER_REPATH := 0.45
 const CRAWLER_TUNNEL_TIME := 1.6    # s to chew one sediment cell
 const CRAWLER_PATH_RADIUS := 22
 const CRAWLER_CAP := 20
+const CRAWLER_FALL_STEP := 0.05      # s per cell while falling
+const CRAWLER_FALL_SAFE := 3         # a drop shorter than this many cells does no harm
+const CRAWLER_FALL_DAMAGE := 8.0     # per cell from there on (a long fall can kill)
 
 # --- Shielded Brute: a big, slow walker behind a front plate ---
 const BRUTE_HP := 180.0

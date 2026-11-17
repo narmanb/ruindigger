@@ -119,6 +119,9 @@ func _physics_process(delta: float) -> void:
 	if not walkable(cell) and grid.is_solid(cell.x, cell.y):
 		# terrain changed under us (rubble landed): pop to a free neighbour
 		_unstick()
+	elif _falls(delta):
+		_visual()
+		return
 	match state:
 		S.STUNNED:
 			stun_t -= delta
@@ -201,6 +204,38 @@ func _current(delta: float) -> void:
 	repath_t = 0.0
 	windup = 0.0
 	global_position = grid.cell_center(n)
+
+
+var fall_cells := 0
+var _fall_t := 0.0
+
+
+## Nothing left to cling to (the rock it was on collapsed or was dug away):
+## it drops until it finds a surface again, and a long drop hurts. Returns
+## true while it is falling. Enemies that fly or swim are walkable in open
+## space, so this never applies to them.
+func _falls(delta: float) -> bool:
+	if move_t < 1.0 or walkable(cell) or grid.is_solid(cell.x, cell.y):
+		if fall_cells > 0 and move_t >= 1.0:
+			var n := fall_cells
+			fall_cells = 0
+			if n >= Balance.CRAWLER_FALL_SAFE:
+				last_hit = "fall"
+				mine.fx.dust(global_position + Vector2(0, 6), Color(0.8, 0.7, 0.55), 5)
+				hit(float(n - Balance.CRAWLER_FALL_SAFE + 1) * Balance.CRAWLER_FALL_DAMAGE, global_position + Vector2(0, 8), false)
+		return false
+	if not grid.in_bounds(cell.x, cell.y + 1) or grid.is_solid(cell.x, cell.y + 1):
+		return false
+	path.clear()
+	windup = 0.0
+	_fall_t += delta
+	if _fall_t >= Balance.CRAWLER_FALL_STEP:
+		_fall_t = 0.0
+		cell.y += 1
+		next_cell = cell
+		fall_cells += 1
+		global_position = grid.cell_center(cell)
+	return true
 
 
 func _arrived() -> bool:

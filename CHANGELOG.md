@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.1
+**Fixes from the first phone playtest**
+- **Crawlers no longer hang in the air.** When the rock a crawler was clinging to collapsed or was dug away, it stayed where it was, stuck. It now falls until it finds a surface again. A drop of 3 cells or more hurts it (8 damage for 3 cells, 8 more for each cell after that), so a long fall can kill it, and that counts as a terrain kill ("fell to its death"). This applies to crawlers, breakers, burrowers and bomb-eaters. Enemies that fly or swim are not affected.
+- **Water droplets no longer hang over sand piles.** A droplet that ended up inside a cell more than half full of sand could not soak in and stayed there for good. It now moves to the open space beside the sand and runs off the pile. No water is lost.
+- **The drill rocket is your drill.** It now looks like the digger's own drill bit, with an exhaust flame. Firing one sends the drill off your arm: the arm is bare for a moment and a new drill grows back in half a second. You can't drill until it has.
+
 ## 0.17.0
 **The last two new enemies: the Eel and the Slag Salamander** (the third and final enemy batch)
 - **Eel (water).** A pale eel with a cyan frilled fin and a blue glowing belly.

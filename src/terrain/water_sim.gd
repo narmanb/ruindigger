@@ -179,10 +179,12 @@ func update_drops(delta: float) -> void:
 	while i >= 0:
 		var p := drop_pos[i]
 		var v := drop_vel[i]
-		if grid.solid_at(p):
-			# Falling terrain may overwrite a droplet between frames. Displace
-			# only into an immediate open neighbour, never through solid rock.
-			var origin := grid.world_to_cell(p)
+		var origin := grid.world_to_cell(p)
+		if _blocked(origin.x, origin.y):
+			# Falling terrain may overwrite a droplet between frames, and a sand
+			# pile can rise around one (a cell at least half full of sand holds
+			# no water). Displace only into an immediate open neighbour, never
+			# through solid rock; from there it falls and settles as usual.
 			var displaced := false
 			for d in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
 				var n: Vector2i = origin + d
