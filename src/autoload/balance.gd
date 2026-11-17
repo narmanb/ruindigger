@@ -514,6 +514,30 @@ const SPORE_GAS := 3                 # size of the gas cloud it leaves (as gas s
 const SPORES_PER_MAP := 5
 const SPORE_ZONE := 1
 
+# --- Eel: at home in water, helpless out of it (Drowned Aqueducts) ---
+const EEL_HP := 45.0
+const EEL_SPEED_WET := [2.4, 5.2]    # cells / s in water: patrol, chase
+const EEL_SPEED_DRY := [0.7, 1.1]    # ...and flopping on dry ground
+const EEL_DAMAGE_WET := 18.0
+const EEL_DAMAGE_DRY := 6.0
+const EEL_SIGHT := 10
+const EEL_DRY_LIMIT := 4.0           # s out of water before it turns back and starts to dry out
+const EEL_DRY_DPS := 6.0             # damage per second once it is past that limit
+const EEL_DRY_VULN := 2.0            # damage it takes out of water
+const EELS_PER_MAP := 3              # in the Drowned Aqueducts' pools
+const EELS_ELSEWHERE := 1            # in any other zone's water
+const DEEP_EELS := 2
+# --- Slag salamander: lives in lava; water or cryo turns it to stone (deep stage) ---
+const SLAG_HP := 50.0
+const SLAG_SPEED_WET := [1.8, 3.6]   # in lava
+const SLAG_SPEED_DRY := [1.4, 3.0]   # on rock, while it is still hot
+const SLAG_SPEED_COLD := [0.8, 1.5]  # on rock, once it has cooled
+const SLAG_DAMAGE := 16.0
+const SLAG_SIGHT := 10
+const SLAG_COOL := 8.0               # s out of lava before it cools, slows and heads back
+const SLAG_QUENCH_WATER := 16        # water in its cell that turns it to stone (a quarter cell)
+const DEEP_SLAGS := 4
+
 # --- Ruin Sentry ---
 const SENTRY_HP := 55.0
 const SENTRY_RANGE := 11            # cells

@@ -392,7 +392,7 @@ def gen_flier():
 
 
 # --------------------------------------------------------------------------
-# Burrower and Bomb-eater: both use the crawler's sheet layout (32x20, 4
+# Burrower, Bomb-eater, Eel and Slag salamander: all use the crawler's sheet layout (32x20, 4
 # columns, walk 4 / alert 2 / attack 2 / hurt 1 / stun 2), so the game can
 # swap the texture and reuse the crawler's animation table.
 # --------------------------------------------------------------------------
@@ -483,8 +483,111 @@ def eater_frame(kind, t):
     return c.rgba()
 
 
+def eel_frame(kind, t):
+    """Pale eel: long sinuous body, frilled back fin, blue glowing belly."""
+    c = Canvas(32, 20)
+    a = t * math.tau
+    lunge = 1 if kind == "attack" else 0
+    amp = 2.2 if kind == "walk" else 1.0
+    pts = []
+    for i in range(9):
+        x = 5 + i * 2.4
+        y = 11 + math.sin(a + i * 0.75) * amp * (0.4 + i / 14.0)
+        pts.append((x, y))
+    # frilled back fin (behind the body)
+    for i in range(1, 8):
+        x, y = pts[i]
+        fh = 3 + (1 if i % 2 == 0 else 0)
+        c.line(round(x), round(y) - 2, round(x) + 1, round(y) - 2 - fh, P("cyan1"))
+        c.px(round(x) + 1, round(y) - 2 - fh, P("cyan2"))
+    # body: thick at the head, thin at the tail
+    for i, (x, y) in enumerate(pts):
+        r = 1.6 + i * 0.28
+        c.ellipse(round(x - r), round(y - r), round(r * 2 + 2), round(r * 2 + 1), P("bone2"))
+    for i, (x, y) in enumerate(pts):
+        r = 1.6 + i * 0.28
+        c.ellipse(round(x - r), round(y - r), round(r * 2 + 1), max(1, round(r)), P("bone3"))
+        c.px(round(x), round(y + r - 1), P("cobalt3"))            # glowing belly line
+        if i % 2 == 0:
+            c.px(round(x), round(y + r), P("cobalt2"))
+    # tail fin
+    tx, ty = pts[0]
+    c.poly([(tx, ty), (tx - 3, ty - 3), (tx - 2, ty), (tx - 3, ty + 3)], P("cyan1"))
+    # head
+    hx = round(pts[-1][0]) + 2 + lunge
+    hy = round(pts[-1][1])
+    c.ellipse(hx - 4, hy - 4, 9, 8, P("bone2"))
+    c.ellipse(hx - 3, hy - 4, 7, 3, P("bone3"))
+    gape = 3 if kind == "attack" else 1
+    c.rect(hx + 1, hy, 4, gape, P("flesh0"))
+    c.px(hx + 4, hy - 1, P("white0"))
+    c.px(hx + 4, hy + gape, P("white0"))
+    c.px(hx + 2, hy + gape, P("white0"))
+    # frill behind the head
+    c.line(hx - 4, hy - 3, hx - 6, hy - 6, P("cyan2"))
+    c.line(hx - 4, hy + 2, hx - 6, hy + 5, P("cyan2"))
+    eye = "red" if kind in ("attack", "alert") else "cobalt"
+    c.px(hx + 1, hy - 2, P(eye + "3" if eye == "cobalt" else "red2"))
+    c.px(hx + 2, hy - 2, P("white0"))
+    if kind == "hurt":
+        a2 = c.arr()
+        a2[a2 > 0] = P("white0")
+        c.set_arr(a2)
+    c.outline()
+    return c.rgba()
+
+
+def slag_frame(kind, t):
+    """Slag salamander: dark crusted skin split by glowing orange cracks."""
+    c = Canvas(32, 20)
+    a = t * math.tau
+    lunge = 2 if kind == "attack" else 0
+    base_y = 12
+    sway = math.sin(a) * (1.2 if kind == "walk" else 0.3)
+    # tail
+    for i in range(5):
+        x = 2 + i * 2
+        y = base_y + 1 + round(math.sin(a + i * 0.9) * 1.2)
+        c.ellipse(x, y - 1, 3 + i // 2, 3 + i // 3, P("ink1"))
+        if i % 2 == 0:
+            c.px(x + 1, y, P("shell2"))
+    # legs: splayed, lizard-like
+    for i, lx in enumerate((11, 20)):
+        lp = round(math.sin(a * 1 + i * math.pi) * 2) if kind == "walk" else 0
+        c.line(lx, base_y + 2, lx - 2 + lp, 18, P("ink1"), 2)
+        c.line(lx + 2, base_y + 2, lx + 4 - lp, 18, P("chit1"), 2)
+        c.px(lx - 2 + lp, 18, P("shell3"))
+        c.px(lx + 4 - lp, 18, P("shell3"))
+    # body: a long crusted slab
+    by = base_y + round(sway * 0.5)
+    c.ellipse(8, by - 4, 17, 9, P("ink1"))
+    c.ellipse(9, by - 4, 14, 4, P("chit1"))
+    # the cracks: lava showing through the crust
+    hot = "gold3" if (kind in ("attack", "alert") or t < 0.5) else "shell3"
+    for x0, y0, x1, y1 in ((10, by - 1, 13, by + 1), (13, by + 1, 15, by - 2), (15, by - 2, 18, by), (18, by, 21, by - 1), (12, by + 2, 16, by + 3), (19, by + 2, 22, by + 1)):
+        c.line(x0, y0, x1, y1, P("shell2"))
+    for x0, y0 in ((13, by + 1), (15, by - 2), (18, by), (16, by + 3)):
+        c.px(x0, y0, P(hot))
+    # head: blunt wedge
+    hx = 25 + lunge
+    hy = by - 1
+    c.ellipse(hx - 4, hy - 4, 9, 8, P("ink1"))
+    c.ellipse(hx - 3, hy - 4, 6, 3, P("chit1"))
+    gape = 3 if kind == "attack" else 1
+    c.rect(hx + 1, hy + 1, 4, gape, P("shell3"))
+    c.px(hx + 2, hy + 1, P("gold3"))
+    c.px(hx - 1, hy - 2, P("gold3"))            # eye: a coal
+    c.px(hx, hy - 2, P("gold4"))
+    c.line(hx - 4, hy - 1, hx - 2, hy + 1, P("shell2"))
+    if kind == "hurt":
+        a2 = c.arr()
+        a2[a2 > 0] = P("white0")
+        c.set_arr(a2)
+    c.outline()
+    return c.rgba()
+
 def gen_crawler_kin():
-    for name, fn in (("burrower", burrower_frame), ("eater", eater_frame)):
+    for name, fn in (("burrower", burrower_frame), ("eater", eater_frame), ("eel", eel_frame), ("slag", slag_frame)):
         frames = []
         for anim, n in CRAWLER_ANIMS:
             for i in range(n):

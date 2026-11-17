@@ -30,6 +30,7 @@ var speed_chase := Balance.CRAWLER_SPEED_CHASE
 var bite := Balance.CRAWLER_DAMAGE
 var sight := Balance.CRAWLER_SIGHT
 var bite_name := "burrow crawler"
+var water_hurts := true     # crawlers drown; eels and slag salamanders handle water themselves
 var path: Array[Vector2i] = []
 var repath_t := 0.0
 var target_cell := Vector2i(-1, -1)
@@ -109,7 +110,7 @@ func _physics_process(delta: float) -> void:
 	flash = maxf(0.0, flash - delta * 5.0)
 	attack_cd = maxf(0.0, attack_cd - delta)
 	hitstun = maxf(0.0, hitstun - delta)
-	if grid.get_water(cell.x, cell.y) >= Balance.WATER_MAX / 2:
+	if water_hurts and grid.get_water(cell.x, cell.y) >= Balance.WATER_MAX / 2:
 		last_hit = "water"
 		hit(Balance.WATER_CRAWLER_DPS * delta, global_position, false)
 		if state == S.DEAD:
@@ -267,6 +268,27 @@ func _plan(goal: Vector2i) -> void:
 	path = GridPath.find(grid, cell, goal, Balance.CRAWLER_PATH_RADIUS, walkable)
 
 
+## The pathfinder stops at the first walkable cell near the goal, which can
+## be a cell or two short of it (two cells over your head, for something
+## coming from above): out of biting reach. Enemies that can enter the goal
+## cell itself (fliers, pool dwellers) call this after planning to walk the
+## last steps straight to it.
+func _finish_approach(goal: Vector2i) -> void:
+	if not walkable(goal):
+		return
+	var at: Vector2i = path[path.size() - 1] if not path.is_empty() else cell
+	for guard in 6:
+		if at == goal:
+			break
+		var step := Vector2i(0, signi(goal.y - at.y)) if at.y != goal.y else Vector2i(signi(goal.x - at.x), 0)
+		if not walkable(at + step):
+			step = Vector2i(signi(goal.x - at.x), 0) if step.x == 0 else Vector2i(0, signi(goal.y - at.y))
+			if step == Vector2i.ZERO or not walkable(at + step):
+				break
+		at += step
+		path.append(at)
+
+
 func _begin_tunnel() -> void:
 	var pl: Player = mine.player
 	if pl == null:
@@ -303,7 +325,12 @@ func _step(delta: float) -> void:
 		move_t = minf(1.0, move_t + speed * delta)
 		if move_t >= 1.0:
 			cell = next_cell
-	if move_t >= 1.0 and not path.is_empty() and speed > 0.0:
+	# a chase is re-planned every CRAWLER_REPATH seconds: when a re-plan is
+	# due, wait at this cell for it instead of starting the next step of the
+	# old route (otherwise the route is only renewed once it runs out)
+	if state == S.CHASE and repath_t <= 0.0 and move_t >= 1.0:
+		pass
+	elif move_t >= 1.0 and not path.is_empty() and speed > 0.0:
 		var n: Vector2i = path.pop_front()
 		if n == cell:
 			return

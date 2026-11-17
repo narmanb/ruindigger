@@ -83,6 +83,26 @@ func _process(_d: float) -> void:
 				br.state = int(args["brute_state"])
 				br.state_t = 0.3
 				br._visual()
+		# pooldemo=1: an eel in a small pool and a slag salamander beside it
+		if args.has("pooldemo"):
+			for x in range(pcell.x + 1, pcell.x + 12):
+				for y in range(pcell.y - 4, pcell.y + 1):
+					mine.grid.set_mat(x, y, Cell.AIR)
+				for y in range(pcell.y + 1, pcell.y + 4):
+					mine.grid.set_flag(x, y, Cell.F_PROTECTED, false)
+					mine.grid.set_mat(x, y, Cell.HARD)
+			for x in range(pcell.x + 3, pcell.x + 7):
+				for y in range(pcell.y + 1, pcell.y + 3):
+					mine.grid.set_mat(x, y, Cell.AIR)
+					mine.grid.set_water(x, y, Balance.WATER_MAX)
+			var ee: Crawler = mine.spawn_kin("eel", pcell + Vector2i(5, 1))
+			ee.facing = -1
+			ee.set_physics_process(false)
+			ee._visual()
+			var ss: Crawler = mine.spawn_kin("slag", pcell + Vector2i(9, 0))
+			ss.facing = -1
+			ss.set_physics_process(false)
+			ss._visual()
 		# kin=burrower,eater,spore: line them up to the right of the digger
 		if args.has("kin"):
 			var names: PackedStringArray = String(args["kin"]).split(",")

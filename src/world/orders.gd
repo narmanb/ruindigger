@@ -14,7 +14,7 @@ extends RefCounted
 ## `done` latches for live goals (depth, keepsake, terrain); ore and value are
 ## judged on what the rack holds at extraction.
 
-const TERRAIN_SOURCES := ["rubble", "gas", "lava", "prop", "water", "steam", "flood"]
+const TERRAIN_SOURCES := ["rubble", "gas", "lava", "prop", "water", "steam", "flood", "dry", "quench"]
 
 
 static func generate(data: Dictionary, grid: TerrainGrid, seed_value: int) -> Array:

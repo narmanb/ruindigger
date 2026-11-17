@@ -357,6 +357,8 @@ func spawn_kin(kind: String, cell: Vector2i) -> Crawler:
 		"burrower": cr = Burrower.new()
 		"eater": cr = BombEater.new()
 		"spore": cr = SporePod.new()
+		"eel": cr = Eel.new()
+		"slag": cr = Slag.new()
 		_: cr = Crawler.new()
 	cr.mine = self
 	cr.position = grid.cell_center(cell)
@@ -370,6 +372,19 @@ func walker_fits(x: int, y: int) -> bool:
 	return grid.get_mat(x, y) == Cell.AIR and grid.get_mat(x, y - 1) == Cell.AIR and grid.is_solid(x, y + 1) \
 		and grid.get_water(x, y) == 0 and grid.get_lava(x, y) == 0 and not grid.has_flag(x, y, Cell.F_NO_RUBBLE) \
 		and not (grid.get_mat(x, y + 1) in [Cell.GAS, Cell.LOOSE])
+
+
+## A pool for an eel: three cells of deep water side by side.
+func eel_fits(x: int, y: int) -> bool:
+	for dx in range(-1, 2):
+		if grid.is_solid(x + dx, y) or grid.get_water(x + dx, y) < Balance.WATER_MAX * 3 / 4:
+			return false
+	return true
+
+
+## Lava for a slag salamander.
+func slag_fits(x: int, y: int) -> bool:
+	return not grid.is_solid(x, y) and grid.get_lava(x, y) >= Balance.LAVA_MAX / 2
 
 
 ## Room for a brute standing on (x, y) and (x+1, y): two columns of floor,
@@ -465,7 +480,16 @@ func roamer_cells() -> Array:
 			burrowers.append_array(pick.call(int(Balance.BURROWERS_PER_ZONE[z]), [z], walker_fits))
 		eaters = pick.call(Balance.EATERS_PER_MAP, Balance.EATER_ZONES, walker_fits)
 		spores = pick.call(Balance.SPORES_PER_MAP, [Balance.SPORE_ZONE], flier_fits)
-	return [brutes, fliers, burrowers, eaters, spores]
+	# batch 3 (drawn last): eels where there is water, slag salamanders in lava
+	var eels: Array[Vector2i] = []
+	var slags: Array[Vector2i] = []
+	if stage == "deep":
+		eels = pick.call(Balance.DEEP_EELS, [], eel_fits)
+		slags = pick.call(Balance.DEEP_SLAGS, [], slag_fits)
+	else:
+		eels = pick.call(Balance.EELS_PER_MAP, [Balance.Z_AQUEDUCT], eel_fits)
+		eels.append_array(pick.call(Balance.EELS_ELSEWHERE, [Balance.Z_SPORE, Balance.Z_ENGINE, Balance.Z_CRYSTAL], eel_fits))
+	return [brutes, fliers, burrowers, eaters, spores, eels, slags]
 
 
 func _spawn_roamers() -> void:
@@ -480,6 +504,10 @@ func _spawn_roamers() -> void:
 		spawn_kin("eater", c)
 	for c: Vector2i in cells[4]:
 		spawn_kin("spore", c)
+	for c: Vector2i in cells[5]:
+		spawn_kin("eel", c)
+	for c: Vector2i in cells[6]:
+		spawn_kin("slag", c)
 
 
 func _spawn_water_props() -> void:
@@ -1291,6 +1319,9 @@ func cryo_burst(pos: Vector2) -> void:
 				steam.cells.erase(cc)
 	for e in enemies:
 		if is_instance_valid(e) and e.global_position.distance_to(pos) <= (r + 1.0) * C:
+			if e.has_method("quench"):
+				e.quench()                 # a slag salamander sets into stone
+				continue
 			e.stun(Balance.CRYO_STUN)
 			if e is Crawler:
 				e.flash = 1.0
@@ -1581,7 +1612,7 @@ func on_enemy_killed(e: Node) -> void:
 	var src: String = String(e.get("last_hit")) if e.get("last_hit") != null else ""
 	if src in Orders.TERRAIN_SOURCES:
 		Game.run["terrain_kills"] = int(Game.run.get("terrain_kills", 0)) + 1
-		toast("TERRAIN KILL - %s" % {"rubble": "crushed", "gas": "gassed", "lava": "burned", "prop": "flattened", "water": "drowned", "steam": "scalded", "flood": "swept away"}.get(src, src))
+		toast("TERRAIN KILL - %s" % {"rubble": "crushed", "gas": "gassed", "lava": "burned", "prop": "flattened", "water": "drowned", "steam": "scalded", "flood": "swept away", "dry": "left high and dry", "quench": "turned to stone"}.get(src, src))
 	enemies.erase(e)
 
 

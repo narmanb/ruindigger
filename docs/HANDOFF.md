@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.16.0** (Android code 29). **`main` is the
+Last updated at version **0.17.0** (Android code 30). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.16.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|charges`
+`structures` separately. All are green at 0.17.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|roamers_c|charges`
 (add more names in `FunPass.run`); loop it to chase an intermittent failure.
 Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
@@ -52,6 +52,16 @@ parse error makes a headless run hang. The screenshot harness is
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.17.0:** Eel and Slag salamander, both on `src/enemies/pool_dweller.gd`
+  (a Crawler that swims in cells where `in_pool(c)` holds, crawls outside
+  them, and heads home after `dry_limit`). `eel.gd`: pool = water, dries out
+  (last_hit "dry"). `slag.gd`: pool = lava, `quench()` turns it into a HARD
+  cell with aetherite (last_hit "quench"; called for water in its cell and
+  from `Mine.cryo_burst`). `roamer_cells()` returns 7 lists (…, eels, slags).
+  **Crawler change:** `_step` now waits for a due re-plan while chasing
+  (routes used to be renewed only when they ran out), and
+  `Crawler._finish_approach(goal)` walks the last cells to the goal for
+  enemies that can enter it (Flier, PoolDweller). Screenshot arg: `pooldemo=1`.
 - **0.16.0:** Burrower (`src/enemies/burrower.gd`: a Crawler whose `walkable`
   includes rock it can chew; the chewing is in `_step` / `_chew`), Bomb-eater
   (`bomb_eater.gd`: eats `Mine.mines` / `Mine.remotes`, `eats_bombs` makes
@@ -143,13 +153,11 @@ parse error makes a headless run hang. The screenshot harness is
 ## Enemy plan (agreed with the owner)
 - **Batch 1: done in 0.15.0** (shielded brute, flier).
 - **Batch 2: done in 0.16.0** (burrower, bomb-eater, spore pod).
-- **Batch 3 (next):** water-lover (pale eel, strong in water, flops and dims on dry
-  ground: drain its pool), lava creature (The First Civilization; slag
-  salamander, water or cryo freezes it into a rock statue).
+- **Batch 3: done in 0.17.0** (eel, slag salamander). The enemy plan is complete.
 - Frequencies the owner asked for: brute uncommon but met several times a run;
   flier and bomb-eater rare; the rest tied to their zones.
 - Show the owner a screenshot of each new enemy next to the digger.
-- 0.14.0, 0.15.0 and 0.16.0 were pushed with "[skip ci]" (the owner was still testing
+- 0.14.0 to 0.17.0 were pushed with "[skip ci]" (the owner was still testing
   the 0.13.0 APK). The next push the owner wants a build for must not skip CI.
 
 ## Explosives follow-ups (0.13.0 built the plan; these are what is left)

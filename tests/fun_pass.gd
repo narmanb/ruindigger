@@ -19,6 +19,7 @@ static func run(t: Node) -> void:
 		match String(t.args["only"]):
 			"roamers": await roamers(t)
 			"roamers_b": await roamers_b(t)
+			"roamers_c": await roamers_c(t)
 			"charges": await charges(t)
 		return
 	await economy(t)
@@ -35,6 +36,7 @@ static func run(t: Node) -> void:
 	await charges(t)
 	await roamers(t)
 	await roamers_b(t)
+	await roamers_c(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -1794,7 +1796,7 @@ static func roamers_b(t: Node) -> void:
 	var bur_want := 0
 	for n in Balance.BURROWERS_PER_ZONE:
 		bur_want += int(n)
-	var place_ok := cells.size() == 5 and (cells[2] as Array).size() >= bur_want - 1 and (cells[3] as Array).size() <= Balance.EATERS_PER_MAP and (cells[4] as Array).size() <= Balance.SPORES_PER_MAP
+	var place_ok := cells.size() >= 5 and (cells[2] as Array).size() >= bur_want - 1 and (cells[3] as Array).size() <= Balance.EATERS_PER_MAP and (cells[4] as Array).size() <= Balance.SPORES_PER_MAP
 	for c: Vector2i in cells[2]:
 		if int(Balance.BURROWERS_PER_ZONE[g.get_stratum(c.x, c.y)]) <= 0:
 			place_ok = false
@@ -1962,6 +1964,185 @@ static func roamers_b(t: Node) -> void:
 	await t._frames(3)
 	t.check(sp3.burst == "fire" and mine.gas.vents.is_empty(), "a blast sets its gas alight at once: a fireball, not a cloud")
 	t.check(not is_instance_valid(near) or near.hp < chp or near.state == Crawler.S.DEAD, "the fireball burns the crawler next to it")
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+## 0.17.0 enemies: the eel (water) and the slag salamander (lava).
+static func roamers_c(t: Node) -> void:
+	t.section("eel and slag salamander")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(5)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	var cells: Array = mine.roamer_cells()
+	var eels_ok := cells.size() == 7 and (cells[5] as Array).size() >= 1 and (cells[5] as Array).size() <= Balance.EELS_PER_MAP + Balance.EELS_ELSEWHERE
+	for c: Vector2i in cells[5]:
+		if g.get_water(c.x, c.y) < Balance.WATER_MAX / 2:
+			eels_ok = false
+	t.check(eels_ok, "eels start in deep water (%d on this map)" % (cells[5] as Array).size())
+	t.check((cells[6] as Array).is_empty(), "no slag salamanders in the main mine (it has no lava)")
+	for e in mine.enemies.duplicate():
+		if is_instance_valid(e):
+			e.queue_free()
+	mine.enemies.clear()
+	pl.invuln = 1e9
+	var pc: Vector2i = g.world_to_cell(pl.global_position)
+	# a flat floor with a walled basin: x+5..x+10, three cells deep
+	var pool: Array[Vector2i] = []
+	var stage_it := func(fill: bool) -> void:
+		pool.clear()
+		for x in range(pc.x - 10, pc.x + 26):
+			for y in range(pc.y - 8, pc.y + 6):
+				if g.in_bounds(x, y):
+					g.set_flag(x, y, Cell.F_PROTECTED, false)
+					g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.HARD)
+					g.ore[g.idx(x, y)] = 0
+					g.set_water(x, y, 0)
+					g.set_lava(x, y, 0)
+		for x in range(pc.x + 5, pc.x + 11):
+			for y in range(pc.y + 1, pc.y + 4):
+				g.set_mat(x, y, Cell.AIR)
+				pool.append(Vector2i(x, y))
+				if fill:
+					g.set_water(x, y, Balance.WATER_MAX)
+	stage_it.call(true)
+	await t._frames(5)
+	var home := pl.global_position
+	# --- eel ---
+	var mid := Vector2i(pc.x + 7, pc.y + 2)
+	var eel: Eel = mine.spawn_kin("eel", mid)
+	var cr: Crawler = mine.spawn_crawler(Vector2i(pc.x + 9, pc.y + 3))
+	await t._frames(3)
+	t.check(eel.wet() and eel.walkable(mid) and not cr.walkable(mid), "an eel swims through open water where a crawler cannot go")
+	t.check(is_equal_approx(eel.speed_chase, float(Balance.EEL_SPEED_WET[1])) and is_equal_approx(eel.bite, Balance.EEL_DAMAGE_WET), "in water it is fast and bites hard")
+	var ehp := eel.hp
+	var chp := cr.hp
+	await t._frames(90)
+	t.check(is_equal_approx(eel.hp, ehp) and (not is_instance_valid(cr) or cr.hp < chp), "water does not hurt it (a crawler in the same pool is drowning)")
+	if is_instance_valid(cr):
+		cr.queue_free()
+		mine.enemies.erase(cr)
+	# it bites you in its pool
+	pl.global_position = g.cell_center(Vector2i(pc.x + 9, pc.y + 2))
+	pl.velocity = Vector2.ZERO
+	pl.set_physics_process(false)
+	pl.invuln = 0.0
+	var php := pl.hp
+	for k in 600:
+		await t._frames(1)
+		if pl.hp < php:
+			break
+	t.check(is_equal_approx(php - pl.hp, Balance.EEL_DAMAGE_WET), "it comes for you through the water and bites (%.0f)" % (php - pl.hp))
+	pl.invuln = 1e9
+	pl.hp = pl.max_hp
+	pl.set_physics_process(true)
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	# drain the pool: it is stranded
+	for c in pool:
+		g.set_water(c.x, c.y, 0)
+	await t._frames(20)
+	t.check(not eel.wet() and is_equal_approx(eel.speed_chase, float(Balance.EEL_SPEED_DRY[1])) and is_equal_approx(eel.bite, Balance.EEL_DAMAGE_DRY), "with its pool drained it is slow and bites weakly")
+	ehp = eel.hp
+	eel.last_hit = "drill"
+	eel.hit(5.0, home)
+	t.check(is_equal_approx(ehp - eel.hp, 5.0 * Balance.EEL_DRY_VULN), "out of water it takes double damage")
+	var kills0 := int(Game.run.get("terrain_kills", 0))
+	for k in int((Balance.EEL_DRY_LIMIT + Balance.EEL_HP / Balance.EEL_DRY_DPS + 3.0) * 60.0):
+		await t._frames(1)
+		if not is_instance_valid(eel) or eel.state == Crawler.S.DEAD:
+			break
+	t.check(not is_instance_valid(eel) or eel.state == Crawler.S.DEAD, "left dry, it dries out and dies")
+	t.check(int(Game.run.get("terrain_kills", 0)) == kills0 + 1, "draining its pool counts as a terrain kill")
+	# it turns back for its pool when it has been out too long
+	stage_it.call(true)
+	await t._frames(5)
+	var eel2: Eel = mine.spawn_kin("eel", mid)
+	await t._frames(3)
+	eel2.cell = Vector2i(pc.x + 14, pc.y)
+	eel2.next_cell = eel2.cell
+	eel2.move_t = 1.0
+	eel2.global_position = g.cell_center(eel2.cell)
+	eel2.path.clear()
+	eel2.dry_t = Balance.EEL_DRY_LIMIT + 0.1
+	for k in 900:
+		await t._frames(1)
+		if not is_instance_valid(eel2) or eel2.wet():
+			break
+	t.check(is_instance_valid(eel2) and eel2.wet() and eel2.state != Crawler.S.DEAD, "out too long, it turns back and makes it to its pool")
+	if is_instance_valid(eel2):
+		eel2.queue_free()
+		mine.enemies.erase(eel2)
+	# --- slag salamander (lava set up by hand: the main mine has no lava sim) ---
+	stage_it.call(false)
+	mine.steam = SteamField.new(g)
+	mine.lava = LavaSim.new(g, mine.water, mine.steam)
+	mine.lava.occupied = mine._cell_occupied
+	for c in pool:
+		g.set_lava(c.x, c.y, Balance.LAVA_MAX)
+	await t._frames(3)
+	var sl: Slag = mine.spawn_kin("slag", mid)
+	await t._frames(3)
+	t.check(sl.wet() and sl.walkable(mid), "a slag salamander swims in lava")
+	var shp := sl.hp
+	await t._frames(90)
+	sl.last_hit = "lava"
+	sl.hit(30.0, sl.global_position, false)
+	t.check(is_equal_approx(sl.hp, shp), "lava does not hurt it")
+	sl.set_physics_process(false)
+	sl.cell = Vector2i(pc.x + 14, pc.y)
+	sl.next_cell = sl.cell
+	sl.global_position = g.cell_center(sl.cell)
+	sl.dry_t = Balance.SLAG_COOL + 1.0
+	sl._tune()
+	t.check(is_equal_approx(sl.speed_chase, float(Balance.SLAG_SPEED_COLD[1])) and sl.parched(), "out of lava for %d seconds it cools and slows" % int(Balance.SLAG_COOL))
+	# water sets it into stone, with aetherite in it
+	var sc := sl.cell
+	g.set_water(sc.x, sc.y, Balance.SLAG_QUENCH_WATER)
+	kills0 = int(Game.run.get("terrain_kills", 0))
+	sl.set_physics_process(true)
+	await t._frames(3)
+	t.check(sl.quenched and g.get_mat(sc.x, sc.y) == Cell.HARD and g.get_ore(sc.x, sc.y) == Cell.ORE_AETHER, "a puddle sets it into a block of rock with aetherite in it")
+	t.check(int(Game.run.get("terrain_kills", 0)) == kills0 + 1, "quenching it counts as a terrain kill")
+	var res: Dictionary = mine.damage_cell(sc, 999.0, 3, true, "drill")
+	t.check(res["broken"] and int(res["ore"]) == Cell.ORE_AETHER, "drilling the block pays out the aetherite")
+	# cryo does the same
+	g.set_water(sc.x, sc.y, 0)
+	var sl2: Slag = mine.spawn_kin("slag", Vector2i(pc.x + 16, pc.y))
+	sl2.set_physics_process(false)
+	mine.cryo_burst(sl2.global_position)
+	t.check(sl2.quenched and g.get_mat(pc.x + 16, pc.y) == Cell.HARD, "a cryo canister sets it into stone too")
+	# never a block on top of the digger
+	var sl3: Slag = mine.spawn_kin("slag", g.world_to_cell(pl.global_position))
+	sl3.set_physics_process(false)
+	var here := sl3.cell
+	t.check(not sl3.quench() and not g.is_solid(here.x, here.y) and sl3.state == Crawler.S.DEAD, "quenched in your own cell it crumbles instead of walling you in")
+	for c in pool:
+		g.set_lava(c.x, c.y, 0)
+	mine.lava = null
+	mine.steam = null
+	# --- in The First Civilization ---
+	Game.descend(100.0, Balance.MAP_H)
+	await _settle(t)
+	await t._frames(10)
+	var deep: Node = Game.current
+	var dcells: Array = deep.roamer_cells()
+	var slag_ok: bool = deep.stage == "deep" and (dcells[6] as Array).size() >= 1 and (dcells[6] as Array).size() <= Balance.DEEP_SLAGS
+	for c: Vector2i in dcells[6]:
+		if deep.grid.get_lava(c.x, c.y) < Balance.LAVA_MAX / 2:
+			slag_ok = false
+	var live := 0
+	for e in deep.enemies:
+		if e is Slag:
+			live += 1
+	t.check(slag_ok and live == (dcells[6] as Array).size(), "The First Civilization has slag salamanders, each starting in lava (%d)" % live)
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

@@ -53,6 +53,13 @@ func _find_bomb() -> Node2D:
 	return best
 
 
+## A bomb comes first: while it is going for one, it does not react to you.
+func _sees_player() -> bool:
+	if not carrying and _bomb != null and is_instance_valid(_bomb):
+		return false
+	return super._sees_player()
+
+
 func _physics_process(delta: float) -> void:
 	if state == S.DEAD:
 		return

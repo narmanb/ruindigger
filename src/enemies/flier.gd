@@ -32,24 +32,10 @@ func walkable(c: Vector2i) -> bool:
 	return grid.in_bounds(c.x, c.y) and not grid.is_solid(c.x, c.y)
 
 
-## The shared pathfinder stops at the first open cell near the goal, which for
-## something arriving from above is two cells over your head: out of biting
-## reach. A flier finishes the approach itself, straight to the goal cell.
+## Fliers finish their approach right to the goal cell (see Crawler).
 func _plan(goal: Vector2i) -> void:
 	super._plan(goal)
-	if not walkable(goal):
-		return
-	var at: Vector2i = path[path.size() - 1] if not path.is_empty() else cell
-	for guard in 6:
-		if at == goal:
-			break
-		var step := Vector2i(0, signi(goal.y - at.y)) if at.y != goal.y else Vector2i(signi(goal.x - at.x), 0)
-		if not walkable(at + step):
-			step = Vector2i(signi(goal.x - at.x), 0) if step.x == 0 else Vector2i(0, signi(goal.y - at.y))
-			if step == Vector2i.ZERO or not walkable(at + step):
-				break
-		at += step
-		path.append(at)
+	_finish_approach(goal)
 
 
 func _begin_tunnel() -> void:

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.17.0
+**The last two new enemies: the Eel and the Slag Salamander** (the third and final enemy batch)
+- **Eel (water).** A pale eel with a cyan frilled fin and a blue glowing belly.
+  - **In water it is dangerous:** fast (you are slow in water), and it bites for 18. It swims freely through deep water, and water does not hurt it.
+  - **Out of water it is helpless:** it flops along slowly, bites for 6, and takes double damage. After 4 seconds out it turns back for its pool and starts to dry out; its belly light gutters.
+  - **Drain its pool and it is stranded:** breach the wall or drill the floor. It dries out and dies, and that counts as a terrain kill ("left high and dry").
+  - 45 hull. Up to three in the Drowned Aqueducts' pools, one in another zone's water, two in The First Civilization. Maps with less water have fewer.
+- **Slag salamander (The First Civilization).** A lizard of dark crusted slag, split by glowing orange cracks.
+  - It lives in lava and climbs out to hunt. Lava and steam do not hurt it. Bites for 16.
+  - Out of lava for 8 seconds it cools: it slows, its cracks go dark, and it heads back.
+  - **Water or a cryo canister sets it into stone.** A quarter-cell of water in its cell is enough: lure it through a puddle, or open a tank over it. It leaves a block of rock where it stood, **with aetherite in it** (drill it out). That counts as a terrain kill ("turned to stone"). It never sets into a block on top of you.
+  - 50 hull. Up to four, each starting in lava.
+- **All seven planned enemies are now in:** shielded brute, flier, burrower, bomb-eater, spore pod, eel and slag salamander.
+- **Crawlers track you better.** A chasing crawler was meant to re-plan its route every 0.45 seconds, but it only re-planned once its current route ran out, so it would run to where you had been. It now re-plans on schedule. This applies to crawlers and breakers as well as the new enemies, so expect chases to be a little sharper.
+- Fixed before release: a bomb-eater going for a bomb could freeze when it caught sight of you. It now ignores you until it has eaten.
+
 ## 0.16.0
 **Three more enemies: the Burrower, the Bomb-eater and the Spore Pod** (the second of three enemy batches)
 - **Burrower.** A blunt, armoured mole-worm with a steel grinding head and no eyes.
