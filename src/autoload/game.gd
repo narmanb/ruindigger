@@ -115,7 +115,7 @@ func goto(screen: String, instant: bool = false) -> void:
 	_busy = false
 
 
-func start_run() -> void:
+func start_run(go: bool = true) -> void:
 	# the two explosive slots: what was bought (plus the main slot's free
 	# units) goes down with you; stock of other types waits at the outpost
 	var slots: Array = Progress.slots.duplicate()
@@ -154,7 +154,8 @@ func start_run() -> void:
 		"depth_offset": 0,        # cells already descended in earlier stages
 		"deep_exit": false,
 	}
-	goto("mine")
+	if go:
+		goto("mine")
 
 
 ## Start a mission from the outpost's MISSIONS terminal: a fixed map with its
@@ -164,7 +165,7 @@ func start_mission(id: String) -> bool:
 	var m := Balance.mission(id)
 	if m.is_empty() or not Progress.mission_open(id):
 		return false
-	start_run()
+	start_run(false)
 	run["stage"] = "mission"
 	run["mission"] = id
 	run["seed"] = int(m["seed"])
@@ -173,7 +174,8 @@ func start_mission(id: String) -> bool:
 	run["no_pressure"] = not bool(m.get("pressure", true))
 	run["mission_fill"] = 0
 	run["orders"] = [{"kind": "mission", "goal": m["goal"], "text": m["goal"], "need": int(round(float(m["target"]) * 100.0)),
-		"have": 0, "done": false, "reward": int(m["reward"])}]
+		"have": 0, "done": false, "reward": int(m["reward"]) / (2 if Progress.mission_done(id) else 1)}]
+	goto("mine")
 	return true
 
 

@@ -27,7 +27,9 @@ func _ready() -> void:
 		for k: String in Progress.slots:
 			if k != "":
 				Progress.explosives[k] = 3
-	if screen == "mine":
+	if screen == "mission":
+		Game.start_mission.call_deferred(String(args.get("mission", "lake")))
+	elif screen == "mine":
 		Game.contract = Game.contract_offers[0]
 		Game.contract["seed"] = int(args.get("seed", "7"))
 		Game.start_run.call_deferred()
@@ -121,6 +123,22 @@ func _process(_d: float) -> void:
 				kn.queue_redraw()
 		if args.has("flier"):
 			mine.spawn_flier(pcell + Vector2i(int(args["flier"]), -3)).set_physics_process(false)
+	# at_green=N: stand by the Nth greenery patch; at_bed=1: on the lift ledge
+	if frame == 20 and mine and mine.get("player") != null and (args.has("at_green") or args.has("at_bed")):
+		var spot := Vector2.ZERO
+		if args.has("at_bed"):
+			spot = mine.grid.cell_center(mine.data["mission_lift"]) + Vector2(-4, 0)
+		else:
+			var k := 0
+			for e in mine.data.get("entities", []):
+				if e["type"] == "greenery":
+					if k == int(args["at_green"]):
+						spot = mine.grid.cell_center(e["cell"])
+					k += 1
+		if spot != Vector2.ZERO:
+			mine.player.global_position = spot + (Vector2(-20, 0) if args.has("at_green") else Vector2.ZERO)
+			mine.camera.global_position = mine.player.global_position
+			mine.camera.reset_smoothing()
 	if frame == 20 and mine and mine.get("player") != null and args.has("teleport"):
 		var p: PackedStringArray = args["teleport"].split(",")
 		mine.player.global_position = Vector2(float(p[0]) * 16 + 8, float(p[1]) * 16)

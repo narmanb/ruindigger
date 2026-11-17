@@ -2301,3 +2301,81 @@ static func missions(t: Node) -> void:
 		var d2: Dictionary = LakeGenerator.new().generate(m)
 		t.check(hash((d2["grid"] as TerrainGrid).mat) == hash(g.mat) and hash((d2["grid"] as TerrainGrid).water) == hash(g.water), "%s: the map is the same every time" % m["id"])
 		t.check(ms < 4000, "%s: it builds quickly (%d ms)" % [m["id"], ms])
+
+	# --- the mission, live ---
+	t.section("missions: playing the sunken lake")
+	var saved := Progress.to_dict()
+	Progress.reset()
+	t.check(Progress.mission_open("lake") and not Progress.mission_open("lake2"), "the first mission is open; the second is locked")
+	t.check(Progress.mission_locks("lake2").size() == 2, "the second needs the first done and a depth reached (%s)" % str(Progress.mission_locks("lake2")))
+	await _settle(t)
+	t.check(Game.start_mission("lake"), "a mission starts from the terminal, free")
+	await _settle(t)
+	await t._frames(20)
+	var mine: Node = Game.current
+	t.check(mine.stage == "mission" and mine.data.has("bed") and Game.in_mission(), "it runs on the mission's own map")
+	t.check(mine.relic == null and mine.descent == null, "no relic and no way down to The First Civilization")
+	var eels := 0
+	var others := 0
+	for e in mine.enemies:
+		if e is Eel:
+			eels += 1
+		else:
+			others += 1
+	t.check(eels >= 1 and others == 0, "only the mission's own inhabitants: %d eels, nothing else" % eels)
+	var greens := 0
+	for n in mine.entity_root.get_children():
+		if n is Entities.Greenery:
+			greens += 1
+	t.check(greens >= 4, "there is greenery by the water (%d patches)" % greens)
+	var locked: Entities.Lift = null
+	for l in mine.lifts:
+		if l.locked:
+			locked = l
+	t.check(locked != null and not locked.active, "the lift by the lake bed has no power yet")
+	var pv: float = mine.pressure.value
+	mine.noise(mine.player.global_position, 20.0)
+	await t._frames(120)
+	t.check(is_equal_approx(mine.pressure.value, pv) and is_zero_approx(pv), "the mine stays calm: no pressure in this mission")
+	# wading through the film of water splashes
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	var fc := pl.feet_cell()
+	for x in range(fc.x - 3, fc.x + 4):
+		g.set_water(x, fc.y, 10)
+	var w0 := pl.wade_steps
+	pl.input_override = {"x": 1.0}
+	await t._frames(60)
+	pl.input_override = {"x": -1.0}
+	await t._frames(60)
+	pl.input_override = {}
+	t.check(pl.wade_steps > w0, "walking through shallow water splashes (%d splashing steps)" % (pl.wade_steps - w0))
+	# fill the bed: the goal is met and the lift powers up
+	var bed: Rect2i = mine.data["bed"]
+	for y in range(bed.position.y, bed.end.y):
+		for x in range(bed.position.x, bed.end.x):
+			if not g.is_solid(x, y) and y >= bed.end.y - int(bed.size.y * 0.75):
+				g.set_water(x, y, Balance.WATER_MAX)
+	await t._frames(30)
+	t.check(int(Game.run.get("mission_fill", 0)) >= int(round(float(mine.data["bed_target"]) * 100.0)), "the lake bed is measured as it fills (%d%%)" % int(Game.run.get("mission_fill", 0)))
+	t.check(Game.mission_goal_met() and not locked.locked and locked.active, "filling it to the mark powers up the lift")
+	var cr0 := Progress.credits
+	pl.global_position = locked.global_position + Vector2(0, -14)
+	mine.extract(locked)
+	for k in 300:
+		await t._frames(1)
+		if Game.current_name == "results":
+			break
+	await _settle(t)
+	t.check(Game.last_result.get("mission_won", false) and Progress.mission_done("lake"), "riding it out completes the mission")
+	t.check(Progress.credits >= cr0 + int(Balance.mission("lake")["reward"]), "and pays its reward (+%d CR)" % (Progress.credits - cr0))
+	t.check(Progress.mission_locks("lake2").size() == 1, "completing it opens the way to the next one (depth still needed)")
+	Progress.stats["best_depth"] = 200
+	t.check(Progress.mission_open("lake2"), "with the depth reached, the next mission opens")
+	var d := Progress.to_dict()
+	Progress.reset()
+	Progress.from_dict(d)
+	t.check(Progress.mission_done("lake"), "completed missions are saved")
+	Progress.from_dict(saved)
+	Game.goto("title", true)
+	await _settle(t)

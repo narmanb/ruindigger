@@ -624,8 +624,8 @@ class Greenery extends Node2D:
 		rng.seed = seed_v
 		z_index = -1
 		for c: Vector2i in cells:
-			for k in rng.randi_range(3, 5):
-				tufts.append([c, rng.randf_range(1.0, 15.0), rng.randf_range(3.0, 9.0), rng.randi_range(0, 3), rng.randf()])
+			for k in rng.randi_range(7, 10):
+				tufts.append([c, rng.randf_range(0.0, 16.0), rng.randf_range(5.0, 13.0), rng.randi_range(0, 5), rng.randf()])
 		_t = rng.randf() * 10.0
 
 	func _process(delta: float) -> void:
@@ -651,20 +651,33 @@ class Greenery extends Node2D:
 
 	func _draw() -> void:
 		var base := (cells[0] as Vector2i) if not cells.is_empty() else Vector2i.ZERO
+		# a mossy strip over the ground under each living tuft's cell
+		var drawn: Dictionary = {}
 		for tf: Array in tufts:
 			var c: Vector2i = tf[0]
-			var o := Vector2((c.x - base.x) * 16.0 + float(tf[1]) - 8.0, (c.y - base.y) * 16.0 + 8.0)
+			if drawn.has(c):
+				continue
+			drawn[c] = true
+			var o := Vector2((c.x - base.x) * 16.0 - 8.0, (c.y - base.y) * 16.0 + 8.0)
+			draw_rect(Rect2(o + Vector2(0, -1), Vector2(16, 3)), Color("3f7a3a"))
+			draw_rect(Rect2(o + Vector2(0, -1), Vector2(16, 1)), Color("7fc25a"))
+		for tf: Array in tufts:
+			var c: Vector2i = tf[0]
+			var o := Vector2((c.x - base.x) * 16.0 + float(tf[1]) - 8.0, (c.y - base.y) * 16.0 + 7.0)
 			var h: float = tf[2]
 			var sway := sin(_t * 1.6 + float(tf[1]) * 0.7) * (1.0 + h * 0.12)
-			var green := Color("3f6e3a").lerp(Color("6c9b4d"), float(tf[4]))
+			var green := Color("4f8f3e").lerp(Color("9fd96a"), float(tf[4]))
 			match int(tf[3]):
-				0, 1:      # a grass blade
+				0, 1, 2:   # a clump of grass blades
 					draw_line(o, o + Vector2(sway, -h), green, 1.0)
-					draw_line(o + Vector2(1, 0), o + Vector2(1.0 + sway * 0.6, -h * 0.7), green.darkened(0.25), 1.0)
-				2:         # a reed with a seed head
-					var top := o + Vector2(sway * 1.3, -h - 4.0)
-					draw_line(o, top, green.darkened(0.15), 1.0)
-					draw_rect(Rect2(top + Vector2(-1, -2), Vector2(2, 3)), Color("8a7a5c"))
-				3:         # a cushion of moss
-					draw_rect(Rect2(o + Vector2(-2, -2), Vector2(5, 2)), green.darkened(0.3))
-					draw_rect(Rect2(o + Vector2(-1, -3), Vector2(3, 1)), green)
+					draw_line(o + Vector2(1, 0), o + Vector2(1.0 + sway * 0.6, -h * 0.7), green.darkened(0.2), 1.0)
+					draw_line(o + Vector2(-1, 0), o + Vector2(-1.5 + sway * 0.8, -h * 0.55), green.lightened(0.15), 1.0)
+				3:         # a reed with a seed head
+					var top := o + Vector2(sway * 1.3, -h - 5.0)
+					draw_line(o, top, green.darkened(0.1), 1.0)
+					draw_rect(Rect2(top + Vector2(-1, -3), Vector2(2, 4)), Color("a0825a"))
+				4:         # a broad leaf
+					draw_colored_polygon(PackedVector2Array([o, o + Vector2(sway - 3.0, -h * 0.6), o + Vector2(sway, -h * 0.8), o + Vector2(2, 0)]), green)
+				5:         # a cushion of moss
+					draw_rect(Rect2(o + Vector2(-3, -3), Vector2(6, 3)), green.darkened(0.25))
+					draw_rect(Rect2(o + Vector2(-2, -4), Vector2(4, 1)), green.lightened(0.1))

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.18.0
+**Missions, the Sunken Lake, and a performance recorder**
+- **A MISSIONS terminal at the outpost** (the far left, beside where you start). Missions are separate from contracts: fixed maps with their own goal, free to start, and the same map every time. Your explosives, gadgets and upgrades come with you. If you die, you lose what you were carrying, as on a contract. Each pays a reward the first time and half that on repeats.
+- **Missions unlock as you go.** A mission can need earlier missions done, a depth reached on a contract dive, or a number of upgrade levels bought. The terminal shows what is still needed.
+- **Mission 1: The Sunken Lake.** A Dustworks cavern, wide at the top and full of trapped water: great lakes, pools, pockets and puddles, some sealed in rock and some open like ponds. Even the dry galleries have a film of water you splash through. Below it, the cavern narrows in bedrock steps to a dry lake bed centred at the bottom, so released water runs to the middle.
+  - **Goal: fill the lake bed to 60%.** Drill and blast channels so the water runs down. The HUD points to the bed and shows how full it is ("LAKE 37%").
+  - When it is full enough, the lift on a ledge beside the bed powers up. Ride it out to complete the mission (300 CR).
+  - The mine stays calm: no pressure in this mission. Two eels live in the biggest pools.
+  - Patches of grass, reeds and moss grow on the damp floors, most of all beside the water.
+- **Mission 2: The Sunken Lake: High Water** (locked). A different cavern, less water to spare, a fill mark of 75%, four eels, and the mine wakes while you work. It opens once you have completed the first and reached 130 m on a contract dive. 650 CR.
+- **Splashing.** Walking through shallow water now splashes with every step, everywhere in the game.
+- **Performance recorder** (Settings > Record performance; off by default). While it is on, each dive is measured: frame times, the slowest frames and what was happening at each one, how long the water, sand and lava take, and how many droplets, sand cells, enemies and falling rocks there are, every 2 seconds. It also notes your phone model, screen and settings. It only watches; it changes nothing in the game.
+  - To send me a report: tap **COPY PERFORMANCE REPORT** on the results screen (or in Pause during a dive, or in Settings) and paste it into our chat. Each report is also saved as a text file on the phone.
+  - A long dive's report stays small enough to paste (rows are merged after about 20 minutes).
+
 ## 0.17.1
 **Fixes from the first phone playtest**
 - **Crawlers no longer hang in the air.** When the rock a crawler was clinging to collapsed or was dug away, it stayed where it was, stuck. It now falls until it finds a surface again. A drop of 3 cells or more hurts it (8 damage for 3 cells, 8 more for each cell after that), so a long fall can kill it, and that counts as a terrain kill ("fell to its death"). This applies to crawlers, breakers, burrowers and bomb-eaters. Enemies that fly or swim are not affected.

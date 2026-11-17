@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.17.1** (Android code 31). **`main` is the
+Last updated at version **0.18.0** (Android code 32). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.17.1. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|roamers_c|charges|drops`
+`structures` separately. All are green at 0.18.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|roamers_c|charges|drops|perf|missions`
 (add more names in `FunPass.run`); loop it to chase an intermittent failure.
 Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
@@ -52,6 +52,28 @@ parse error makes a headless run hang. The screenshot harness is
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.18.0:** missions and the performance recorder.
+  - Missions: `Balance.MISSIONS` (id, map, seed, goal, target, reward,
+    pressure, needs), `Progress.missions_done` / `mission_locks` /
+    `mission_open`, `Game.start_mission(id)` (a run with `stage` "mission",
+    one order of kind "mission"), outpost `_missions_panel`.
+    `Mine.generate_stage("mission")` builds `LakeGenerator` (the only map so
+    far; a mission's "map" names it). The goal is checked in
+    `Mine._update_orders` via `Mine.lake_fill()`; the locked lift
+    (`Lift.locked`) unlocks when it is met. `run["no_pressure"]` turns the
+    pressure meter off. Mission maps place their own enemies ("kin" entities)
+    and skip the runtime roamers. New entity: `Entities.Greenery`.
+  - The lake map is pinned: `LakeGenerator` seeds the global random stream
+    (the water model uses it while settling) so the map is identical every
+    time. The test checks this.
+  - `Perf` autoload (`src/autoload/perf.gd`), setting `perf_record`. Mine
+    times water, sand and lava through `Perf.add_time`. Reports are pasted
+    into chat by the owner: read the SUMMARY, the SLOW FRAMES list (what was
+    going on at each), and the per-system times.
+  - Screenshot args: `screen=mission [mission=lake] at_green=N | at_bed=1`,
+    `screen=outpost panel=missions`.
+- **Mission ideas the owner liked:** harder versions of earlier missions;
+  failure might cost something later (missions are free for now).
 - **0.17.1** (fixes from the owner's first phone playtest, which was on an
   explosives-era build): `Crawler._falls` (a crawler with nothing to cling to
   drops; long drops hurt, last_hit "fall"), `WaterSim.update_drops` displaces a

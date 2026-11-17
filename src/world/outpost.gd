@@ -127,7 +127,9 @@ func _build() -> void:
 	_terminal(Vector2(13 * C, GROUND * C), "UPGRADES")
 	_terminal(Vector2(20 * C, GROUND * C), "CONTRACTS")
 	_terminal(Vector2(23.5 * C, GROUND * C), "DEMO")
+	_terminal(Vector2(4 * C, (GROUND - 1) * C), "MISSIONS")
 	stations = [
+		{"name": "missions", "x": 4 * C, "label": "MISSIONS"},
 		{"name": "upgrades", "x": 13 * C, "label": "UPGRADE TERMINAL"},
 		{"name": "contracts", "x": 20 * C, "label": "CONTRACT BOARD"},
 		{"name": "demolitions", "x": 23.5 * C, "label": "DEMOLITIONS"},
@@ -137,7 +139,7 @@ func _build() -> void:
 	player = Player.new()
 	player.mine = self
 	player.grid = grid
-	player.position = Vector2(4 * C, (GROUND - 1) * C - Player.HALF.y - 1)
+	player.position = Vector2(8 * C, GROUND * C - Player.HALF.y - 1)
 	add_child(player)
 	player.setup_stats()
 	player.lamp.energy = 0.6
@@ -344,6 +346,8 @@ func player_interact(pl: Player) -> void:
 			_open_panel(_supply_panel())
 		"demolitions":
 			_open_panel(_demolitions_panel())
+		"missions":
+			_open_panel(_missions_panel())
 		"lift":
 			_open_panel(_launch_panel())
 
@@ -597,6 +601,53 @@ func _demolitions_panel() -> Control:
 		row.add_child(ub)
 		list.add_child(row)
 	v.add_child(UIKit.button("CLOSE", _close_panel))
+	return fr[0]
+
+
+var _mission_pick := ""
+
+
+## Missions terminal: fixed maps with their own goal. Free to start, and
+## separate from contracts. A mission opens when the ones before it are done,
+## or when you have gone deep enough or upgraded enough.
+func _missions_panel() -> Control:
+	var fr := _frame("MISSIONS")
+	var v: VBoxContainer = fr[1]
+	if _mission_pick == "" or Balance.mission(_mission_pick).is_empty():
+		_mission_pick = String(Balance.MISSIONS[0]["id"])
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	v.add_child(row)
+	for m: Dictionary in Balance.MISSIONS:
+		var id: String = m["id"]
+		var mark := "[DONE] " if Progress.mission_done(id) else ("" if Progress.mission_open(id) else "[LOCKED] ")
+		var b := UIKit.button(("> " if id == _mission_pick else "") + mark + String(m["name"]), func() -> void:
+			_mission_pick = id
+			Audio.play("ui_click")
+			_open_panel(_missions_panel()), 200)
+		row.add_child(b)
+	var m: Dictionary = Balance.mission(_mission_pick)
+	v.add_child(UIKit.label(String(m["name"]), 12, UIKit.AMBER, true))
+	var d := UIKit.label(String(m["desc"]), 10, UIKit.TEXT)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size.x = 410
+	v.add_child(d)
+	v.add_child(UIKit.label("GOAL: %s     REWARD: %d CR%s" % [m["goal"], int(m["reward"]), "  (first time)" if not Progress.mission_done(_mission_pick) else "  (done: half on repeats)"], 10, UIKit.TEAL))
+	v.add_child(UIKit.label("Free to start. Your explosives, gadgets and upgrades go with you. Cargo is lost if you die." + ("" if bool(m.get("pressure", true)) else " The mine stays calm here."), 9, UIKit.MUTED))
+	var locks := Progress.mission_locks(_mission_pick)
+	for l: String in locks:
+		v.add_child(UIKit.label("LOCKED: " + l, 10, UIKit.RED))
+	var go := HBoxContainer.new()
+	go.add_theme_constant_override("separation", 8)
+	v.add_child(go)
+	var start := UIKit.button("START MISSION", func() -> void:
+		if Game.start_mission(_mission_pick):
+			Audio.play("lift_ding")
+		else:
+			Audio.play("ui_deny"), 160)
+	start.disabled = not locks.is_empty()
+	go.add_child(start)
+	go.add_child(UIKit.button("CLOSE", _close_panel, 110))
 	return fr[0]
 
 
