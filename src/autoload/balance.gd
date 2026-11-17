@@ -482,6 +482,38 @@ const FLIERS_PER_MAP := 2            # rare: this many in the whole main mine
 const FLIER_ZONES := [1, 2, 3, 4]
 const DEEP_FLIERS := 1
 
+# --- Burrower: blind, digs through rock toward noise ---
+const BURROWER_HP := 60.0
+const BURROWER_SPEED_PATROL := 1.2   # cells / s in the open
+const BURROWER_SPEED_CHASE := 2.6
+const BURROWER_DAMAGE := 16.0
+const BURROWER_HEARING := 2.0        # it hears drilling and blasts this many times further than a crawler
+const BURROWER_SENSE := 4            # cells: this close it feels you through rock (it has no eyes)
+const BURROWER_DIG := {1: 0.35, 2: 0.9, 3: 0.25, 7: 0.4}   # s to chew one cell, by material (sediment, basalt, rubble, cracked)
+const BURROWERS_PER_ZONE := [0, 1, 0, 1, 2]    # Spore Veins, Aqueducts, Crystal Hollows (hard rock is no shelter there)
+const DEEP_BURROWERS := 2
+# --- Bomb-eater: a rare scavenger that swallows your planted explosives ---
+const EATER_HP := 30.0
+const EATER_DAMAGE := 6.0
+const EATER_SENSE := 14              # cells: it smells a mine or a waiting remote charge this far off
+const EATER_GULP := 26.0             # px: it swallows a bomb from the next cell over
+const EATER_RUSH := 4.4              # cells / s once it has swallowed one
+const EATER_FUSE := 0.7              # s of beeping beside you before it blows
+const EATER_REACH := 26.0            # px: this close to you it starts its fuse
+const EATERS_PER_MAP := 1
+const EATER_ZONES := [1, 2, 3, 4]
+const DEEP_EATERS := 1
+# --- Spore pod: drifts at you and bursts into gas (Spore Veins) ---
+const SPORE_HP := 12.0
+const SPORE_SPEED_PATROL := 0.8
+const SPORE_SPEED_CHASE := 1.5
+const SPORE_SIGHT := 9
+const SPORE_REACH := 30.0            # px: this close it starts to swell
+const SPORE_SWELL := 0.9             # s of swelling before it bursts
+const SPORE_GAS := 3                 # size of the gas cloud it leaves (as gas sacs)
+const SPORES_PER_MAP := 5
+const SPORE_ZONE := 1
+
 # --- Ruin Sentry ---
 const SENTRY_HP := 55.0
 const SENTRY_RANGE := 11            # cells

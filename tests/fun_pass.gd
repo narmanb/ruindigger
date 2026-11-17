@@ -27,6 +27,7 @@ static func run(t: Node) -> void:
 	await feet(t)
 	await charges(t)
 	await roamers(t)
+	await roamers_b(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -1608,7 +1609,7 @@ static func roamers(t: Node) -> void:
 		for e in m0.enemies:
 			if e is Brute:
 				live_b += 1
-			elif e is Flier:
+			elif e is Flier and not (e is SporePod):
 				live_f += 1
 		t.check(live_b == (cells[0] as Array).size() and live_f == (cells[1] as Array).size(), "seed %d: they are in the mine" % seed_v)
 	var mine: Node = Game.current
@@ -1765,6 +1766,186 @@ static func roamers(t: Node) -> void:
 	fl.last_hit = "drill"
 	fl.hit(Balance.FLIER_HP + 1.0, pl.global_position)
 	t.check(fl.state == Crawler.S.DEAD, "one good drill hit kills a flier")
+	await _settle(t)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+## 0.16.0 enemies: the burrower, the bomb-eater and the spore pod.
+static func roamers_b(t: Node) -> void:
+	t.section("burrower, bomb-eater and spore pod")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(5)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	var cells: Array = mine.roamer_cells()
+	var bur_want := 0
+	for n in Balance.BURROWERS_PER_ZONE:
+		bur_want += int(n)
+	var place_ok := cells.size() == 5 and (cells[2] as Array).size() >= bur_want - 1 and (cells[3] as Array).size() <= Balance.EATERS_PER_MAP and (cells[4] as Array).size() <= Balance.SPORES_PER_MAP
+	for c: Vector2i in cells[2]:
+		if int(Balance.BURROWERS_PER_ZONE[g.get_stratum(c.x, c.y)]) <= 0:
+			place_ok = false
+	for c: Vector2i in cells[4]:
+		if g.get_stratum(c.x, c.y) != Balance.SPORE_ZONE:
+			place_ok = false
+	t.check(place_ok, "burrowers keep to their zones (%d), the bomb-eater is rare (%d), spore pods live in the Spore Veins (%d)" % [(cells[2] as Array).size(), (cells[3] as Array).size(), (cells[4] as Array).size()])
+	var kinds := {"b": 0, "e": 0, "s": 0}
+	for e in mine.enemies:
+		if e is Burrower:
+			kinds["b"] += 1
+		elif e is BombEater:
+			kinds["e"] += 1
+		elif e is SporePod:
+			kinds["s"] += 1
+	t.check(kinds["b"] == (cells[2] as Array).size() and kinds["e"] == (cells[3] as Array).size() and kinds["s"] == (cells[4] as Array).size(), "they are in the mine")
+	# clear the stage: only the enemies this test makes
+	for e in mine.enemies.duplicate():
+		if is_instance_valid(e):
+			e.queue_free()
+	mine.enemies.clear()
+	pl.invuln = 1e9
+	var pc: Vector2i = g.world_to_cell(pl.global_position)
+	var floor_it := func() -> void:
+		for x in range(pc.x - 10, pc.x + 26):
+			for y in range(pc.y - 8, pc.y + 4):
+				if g.in_bounds(x, y):
+					g.set_flag(x, y, Cell.F_PROTECTED, false)
+					g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.HARD)
+					g.ore[g.idx(x, y)] = 0
+					g.set_water(x, y, 0)
+	floor_it.call()
+	await t._frames(3)
+	var home := pl.global_position
+	# --- burrower ---
+	for x in range(pc.x + 6, pc.x + 11):
+		for y in range(pc.y - 8, pc.y + 1):
+			g.set_mat(x, y, Cell.HARD)          # a basalt wall, five cells thick
+	var bw: Burrower = mine.spawn_kin("burrower", Vector2i(pc.x + 13, pc.y))
+	var cw: Crawler = mine.spawn_crawler(Vector2i(pc.x + 15, pc.y))
+	await t._frames(2)
+	t.check(bw.diggable(Vector2i(pc.x + 10, pc.y)) and bw.walkable(Vector2i(pc.x + 10, pc.y)) and not cw.walkable(Vector2i(pc.x + 10, pc.y)), "basalt is a way through for a burrower, not for a crawler")
+	g.set_mat(pc.x + 20, pc.y - 3, Cell.ALLOY)
+	g.set_mat(pc.x + 21, pc.y - 3, Cell.SOFT)
+	g.ore[g.idx(pc.x + 21, pc.y - 3)] = Cell.ORE_COBALT
+	g.set_mat(pc.x + 22, pc.y - 3, Cell.SOFT)
+	g.set_flag(pc.x + 22, pc.y - 3, Cell.F_PROTECTED)
+	g.set_mat(pc.x + 23, pc.y - 5, Cell.SOFT)
+	g.set_mat(pc.x + 24, pc.y - 5, Cell.AIR)
+	g.set_water(pc.x + 24, pc.y - 5, Balance.WATER_MAX)
+	t.check(not bw.diggable(Vector2i(pc.x + 20, pc.y - 3)) and not bw.diggable(Vector2i(pc.x + 21, pc.y - 3)) and not bw.diggable(Vector2i(pc.x + 22, pc.y - 3)), "it never digs alloy, ore or protected rock")
+	t.check(not bw.diggable(Vector2i(pc.x + 23, pc.y - 5)), "it never digs rock that is holding back water")
+	g.set_water(pc.x + 24, pc.y - 5, 0)
+	t.check(not bw._sees_player() and bw.state == Crawler.S.PATROL, "it is blind: it does not notice you 13 cells away")
+	mine.noise(home, 10.0)
+	t.check(bw.state == Crawler.S.INVESTIGATE and cw.state == Crawler.S.PATROL, "it hears drilling from twice as far as a crawler")
+	cw.queue_free()
+	mine.enemies.erase(cw)
+	pl.invuln = 0.0
+	var php := pl.hp
+	for k in 1500:
+		await t._frames(1)
+		if k % 30 == 0:
+			mine.noise(home, 10.0)              # you keep drilling
+		if pl.hp < php:
+			break
+	var tunnel := 0
+	for x in range(pc.x + 6, pc.x + 11):
+		if not g.is_solid(x, pc.y):
+			tunnel += 1
+	t.check(bw.dug >= 5 and tunnel == 5, "it chews straight through the basalt wall toward the noise (%d cells)" % bw.dug)
+	t.check(is_equal_approx(php - pl.hp, Balance.BURROWER_DAMAGE), "and bites when it gets to you (%.0f)" % (php - pl.hp))
+	pl.invuln = 1e9
+	pl.hp = pl.max_hp
+	t.check(bw._sees_player(), "this close it feels you without eyes")
+	bw.queue_free()
+	mine.enemies.erase(bw)
+	floor_it.call()
+	await t._frames(3)
+	# --- bomb-eater ---
+	var pm: Hazards.ProxMine = mine.spawn_mine(home + Vector2(6 * 16, Player.HALF.y - 5.0))
+	await t._frames(int((Balance.MINE_ARM + 0.3) * 60.0))
+	t.check(pm.armed, "a mine is armed and waiting")
+	var be: BombEater = mine.spawn_kin("eater", Vector2i(pc.x + 12, pc.y))
+	for k in 900:
+		await t._frames(1)
+		if be.carrying:
+			break
+	t.check(be.carrying and be.eaten == 1 and not is_instance_valid(pm), "a bomb-eater walks to the mine and swallows it; the mine does not go off")
+	pl.invuln = 0.0
+	php = pl.hp
+	for k in 900:
+		await t._frames(1)
+		if not is_instance_valid(be) or be.state == Crawler.S.DEAD:
+			break
+	await t._frames(4)
+	t.check(pl.hp < php - Balance.EATER_DAMAGE - 1.0, "then it runs at you and blows beside you (%.0f damage)" % (php - pl.hp))
+	pl.invuln = 1e9
+	pl.hp = pl.max_hp
+	floor_it.call()
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	await t._frames(3)
+	# a waiting remote charge is food too; killed with a bomb inside, it blows where it falls
+	var rc: Hazards.Charge = mine.spawn_charge(home + Vector2(7 * 16, -8), Vector2.ZERO, "remote")
+	await t._frames(40)
+	var be2: BombEater = mine.spawn_kin("eater", Vector2i(pc.x + 12, pc.y))
+	for k in 900:
+		await t._frames(1)
+		if be2.carrying:
+			break
+	t.check(be2.carrying and not is_instance_valid(rc) and mine.remotes_out() == 0, "it eats a waiting remote charge as well")
+	be2.set_physics_process(false)
+	var bc: Vector2i = g.world_to_cell(be2.global_position)
+	g.set_mat(bc.x + 1, bc.y - 2, Cell.SOFT)
+	be2.last_hit = "rubble"
+	be2.hit(999.0, be2.global_position, false)
+	await t._frames(4)
+	t.check(be2.state == Crawler.S.DEAD and not g.is_solid(bc.x + 1, bc.y - 2), "killed with a bomb inside, it blows where it falls")
+	floor_it.call()
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	await t._frames(3)
+	# --- spore pod ---
+	var sp: SporePod = mine.spawn_kin("spore", Vector2i(pc.x + 6, pc.y - 4))
+	await t._frames(2)
+	t.check(is_zero_approx(sp.bite) and sp.walkable(Vector2i(pc.x + 6, pc.y - 4)), "a spore pod floats in open air and has no bite")
+	var vents0: int = mine.gas.vents.size() + mine.gas.clouds.size()
+	pl.invuln = 0.0
+	php = pl.hp
+	var swelled := false
+	for k in 1200:
+		await t._frames(1)
+		if is_instance_valid(sp) and sp.swell_t >= 0.0:
+			swelled = true
+		if not is_instance_valid(sp) or sp.state == Crawler.S.DEAD:
+			break
+	t.check(swelled and sp.burst == "gas" and mine.gas.vents.size() + mine.gas.clouds.size() == vents0 + 1, "it drifts to you, swells and bursts into gas")
+	t.check(is_equal_approx(pl.hp, php), "the burst itself does not hurt: the gas does, if you stay")
+	pl.invuln = 1e9
+	mine.gas.vents.clear()
+	mine.gas.clouds.clear()
+	var sp2: SporePod = mine.spawn_kin("spore", Vector2i(pc.x + 12, pc.y - 4))
+	sp2.set_physics_process(false)
+	sp2.last_hit = "drill"
+	sp2.hit(99.0, home)
+	t.check(sp2.burst == "gas" and mine.gas.vents.size() == 1, "drilling one bursts it into gas too")
+	mine.gas.vents.clear()
+	var sp3: SporePod = mine.spawn_kin("spore", Vector2i(pc.x + 14, pc.y - 4))
+	var near: Crawler = mine.spawn_crawler(Vector2i(pc.x + 15, pc.y - 4))
+	sp3.set_physics_process(false)
+	near.set_physics_process(false)
+	var chp := near.hp
+	sp3.last_hit = "charge"
+	sp3.hit(99.0, sp3.global_position + Vector2(20, 0))
+	await t._frames(3)
+	t.check(sp3.burst == "fire" and mine.gas.vents.is_empty(), "a blast sets its gas alight at once: a fireball, not a cloud")
+	t.check(not is_instance_valid(near) or near.hp < chp or near.state == Crawler.S.DEAD, "the fireball burns the crawler next to it")
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

@@ -83,6 +83,22 @@ func _process(_d: float) -> void:
 				br.state = int(args["brute_state"])
 				br.state_t = 0.3
 				br._visual()
+		# kin=burrower,eater,spore: line them up to the right of the digger
+		if args.has("kin"):
+			var names: PackedStringArray = String(args["kin"]).split(",")
+			for x in range(pcell.x + 1, pcell.x + 3 + names.size() * 3):
+				for y in range(pcell.y - 4, pcell.y + 1):
+					mine.grid.set_mat(x, y, Cell.AIR)
+				mine.grid.set_mat(x, pcell.y + 1, Cell.HARD)
+			for i in names.size():
+				var kc := pcell + Vector2i(3 + i * 3, -2 if names[i] == "spore" else 0)
+				var kn: Crawler = mine.spawn_kin(names[i], kc)
+				kn.facing = -1
+				kn.set_physics_process(false)
+				if names[i] == "eater":
+					kn.carrying = true
+				kn._visual()
+				kn.queue_redraw()
 		if args.has("flier"):
 			mine.spawn_flier(pcell + Vector2i(int(args["flier"]), -3)).set_physics_process(false)
 	if frame == 20 and mine and mine.get("player") != null and args.has("teleport"):

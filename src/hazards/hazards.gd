@@ -246,8 +246,8 @@ class ProxMine extends Node2D:
 
 	func _foe_near() -> bool:
 		for e in mine.enemies:
-			if is_instance_valid(e) and e.has_method("hit_rect") and _near(e.hit_rect().get_center()):
-				return true
+			if is_instance_valid(e) and e.has_method("hit_rect") and e.get("eats_bombs") != true and _near(e.hit_rect().get_center()):
+				return true          # (a bomb-eater does not set mines off: it eats them)
 		return false
 
 	## Set it off now (after the warning beep).

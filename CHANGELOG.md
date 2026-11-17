@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.16.0
+**Three more enemies: the Burrower, the Bomb-eater and the Spore Pod** (the second of three enemy batches)
+- **Burrower.** A blunt, armoured mole-worm with a steel grinding head and no eyes.
+  - **It comes for noise.** It hears drilling and blasts from twice as far as a crawler. It is blind: it only notices you directly within 4 cells, through rock or not. Stop making noise and it loses you.
+  - **Rock is no shelter.** Where a crawler needs an open path, a burrower chews straight through sediment, rubble, cracked rock and basalt, and leaves a tunnel behind. You see the rock crack and spill dust before it breaks through. Basalt takes it about a second per cell, sediment a third of that.
+  - It never digs alloy, bedrock, protected rock, ore, gas sacs, bolted rock, or rock that is holding back water or lava.
+  - 60 hull, bites for 16. One in the Spore Veins, one in the Drowned Aqueducts, two in the Crystal Hollows, two in The First Civilization.
+- **Bomb-eater (rare).** A squat green scavenger with a pot belly and a huge jaw.
+  - It smells a proximity mine, or a remote charge waiting for its signal, from 14 cells away. It walks to it and swallows it. Mines do not go off for it.
+  - Then its belly blinks with the bomb's light and it runs at you. Beside you it beeps for 0.7 seconds and blows.
+  - Killed with a bomb inside, it blows where it falls: kill it from a distance, or set your remote charge off before it gets there.
+  - Without a bomb it is a weak crawler (30 hull, bites for 6). One per main mine, one in The First Civilization.
+- **Spore pod (Spore Veins).** A drifting purple puffball with trailing roots and a green glow inside.
+  - It floats slowly toward you and, beside you, swells for 0.9 seconds and bursts into a gas cloud. It has no bite; the burst itself does not hurt, the gas does if you stay.
+  - Drilling one bursts it into gas as well.
+  - **A blast or a fireball sets its gas alight at once**: a fireball instead of a cloud. That burns whatever is next to it, crawlers and other pods included, and you if you are close.
+  - 12 hull. Five in the Spore Veins.
+- Like the brute and the flier, all three are placed on the finished map from a seeded stream after the brutes and fliers, so world generation is unchanged and existing brute and flier positions did not move.
+
 ## 0.15.0
 **Two new enemies: the Shielded Brute and the Flier** (the first of three enemy batches)
 - **Shielded Brute.** A hunched beetle, a little taller than you and more than twice as wide, behind a scarred steel plate that covers its whole front. Its back is soft and pale, with glowing vents.

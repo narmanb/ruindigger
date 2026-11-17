@@ -350,6 +350,28 @@ func spawn_flier(cell: Vector2i) -> Flier:
 	return f
 
 
+## Spawn one of the crawler's kin ("burrower", "eater") or a spore pod.
+func spawn_kin(kind: String, cell: Vector2i) -> Crawler:
+	var cr: Crawler
+	match kind:
+		"burrower": cr = Burrower.new()
+		"eater": cr = BombEater.new()
+		"spore": cr = SporePod.new()
+		_: cr = Crawler.new()
+	cr.mine = self
+	cr.position = grid.cell_center(cell)
+	entity_root.add_child(cr)
+	enemies.append(cr)
+	return cr
+
+
+## A dry, open floor cell a crawler-sized enemy can stand in.
+func walker_fits(x: int, y: int) -> bool:
+	return grid.get_mat(x, y) == Cell.AIR and grid.get_mat(x, y - 1) == Cell.AIR and grid.is_solid(x, y + 1) \
+		and grid.get_water(x, y) == 0 and grid.get_lava(x, y) == 0 and not grid.has_flag(x, y, Cell.F_NO_RUBBLE) \
+		and not (grid.get_mat(x, y + 1) in [Cell.GAS, Cell.LOOSE])
+
+
 ## Room for a brute standing on (x, y) and (x+1, y): two columns of floor,
 ## three rows of dry air.
 func brute_fits(x: int, y: int) -> bool:
@@ -418,7 +440,32 @@ func roamer_cells() -> Array:
 		if flier_fits(c.x, c.y) and far.call(c):
 			fliers.append(c)
 			taken.append(c)
-	return [brutes, fliers]
+	# batch 2 (drawn after the brutes and fliers, so those never move):
+	# burrowers per zone, a rare bomb-eater, spore pods in the Spore Veins
+	var pick := func(count: int, zones: Array, fits: Callable) -> Array[Vector2i]:
+		var out: Array[Vector2i] = []
+		var n := 0
+		while out.size() < count and n < 2500:
+			n += 1
+			var c := Vector2i(rng.randi_range(5, grid.w - 6), rng.randi_range(8, grid.h - 6))
+			if not zones.is_empty() and not (grid.get_stratum(c.x, c.y) in zones):
+				continue
+			if fits.call(c.x, c.y) and far.call(c):
+				out.append(c)
+				taken.append(c)
+		return out
+	var burrowers: Array[Vector2i] = []
+	var eaters: Array[Vector2i] = []
+	var spores: Array[Vector2i] = []
+	if stage == "deep":
+		burrowers = pick.call(Balance.DEEP_BURROWERS, [], walker_fits)
+		eaters = pick.call(Balance.DEEP_EATERS, [], walker_fits)
+	else:
+		for z in Balance.BURROWERS_PER_ZONE.size():
+			burrowers.append_array(pick.call(int(Balance.BURROWERS_PER_ZONE[z]), [z], walker_fits))
+		eaters = pick.call(Balance.EATERS_PER_MAP, Balance.EATER_ZONES, walker_fits)
+		spores = pick.call(Balance.SPORES_PER_MAP, [Balance.SPORE_ZONE], flier_fits)
+	return [brutes, fliers, burrowers, eaters, spores]
 
 
 func _spawn_roamers() -> void:
@@ -427,6 +474,12 @@ func _spawn_roamers() -> void:
 		spawn_brute(c)
 	for c: Vector2i in cells[1]:
 		spawn_flier(c)
+	for c: Vector2i in cells[2]:
+		spawn_kin("burrower", c)
+	for c: Vector2i in cells[3]:
+		spawn_kin("eater", c)
+	for c: Vector2i in cells[4]:
+		spawn_kin("spore", c)
 
 
 func _spawn_water_props() -> void:

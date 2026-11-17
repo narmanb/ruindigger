@@ -392,6 +392,158 @@ def gen_flier():
 
 
 # --------------------------------------------------------------------------
+# Burrower and Bomb-eater: both use the crawler's sheet layout (32x20, 4
+# columns, walk 4 / alert 2 / attack 2 / hurt 1 / stun 2), so the game can
+# swap the texture and reuse the crawler's animation table.
+# --------------------------------------------------------------------------
+CRAWLER_ANIMS = [("walk", 4), ("alert", 2), ("attack", 2), ("hurt", 1), ("stun", 2)]
+
+
+def burrower_frame(kind, t):
+    """Blunt armoured mole-worm: wide grinding head plate, no eyes, two pale sensor pits."""
+    c = Canvas(32, 20)
+    a = t * math.tau
+    lunge = 2 if kind == "attack" else 0
+    base_y = 13
+    # thick segmented body, tapering to the tail
+    for i in range(4):
+        x = 4 + i * 5
+        wave = math.sin(a + i * 1.3) * (1.0 if kind == "walk" else 0.3)
+        y = base_y + round(wave)
+        r = 3 + (1 if i >= 2 else 0)
+        c.ellipse(x - r, y - r, r * 2 + 3, r * 2 + 1, P("boot2"))
+        c.ellipse(x - r + 1, y - r, r * 2, r, P("boot3"))
+        c.line(x + r + 1, y - r + 1, x + r + 1, y + r - 1, P("boot0"))      # segment seam
+        c.px(x, y + r, P("rust1"))
+        lp = math.sin(a * 2 + i * 1.9)
+        c.px(x + round(lp), 18, P("boot0"))                                 # stub claws
+    # head: a wide, flat plate with a ring of grinding teeth
+    hx = 23 + lunge
+    hy = base_y - 1 + round(math.sin(a + 5.0) * 0.4)
+    c.ellipse(hx - 5, hy - 6, 11, 13, P("steel1"))
+    c.ellipse(hx - 4, hy - 6, 8, 5, P("steel3"))
+    c.ellipse(hx - 4, hy - 5, 5, 2, P("steel4"))
+    spin = int(t * 4) % 2 if kind in ("walk", "attack") else 0
+    gape = 2 if kind == "attack" else 1
+    c.ellipse(hx + 2, hy - 2 - gape + 1, 4, 3 + gape, P("flesh0"))
+    for k in range(4):
+        ty = hy - 4 + k * 3 + (spin if k % 2 == 0 else 0)
+        c.px(hx + 5, ty, P("bone3"))
+        c.px(hx + 6, ty, P("bone2"))
+    # no eyes: two pale sensor pits on the plate
+    pit = "red2" if kind in ("attack", "alert") else "bone3"
+    c.px(hx - 1, hy - 3, P(pit))
+    c.px(hx + 1, hy - 4, P(pit))
+    c.px(hx - 1, hy - 2, P("steel0"))
+    if kind == "hurt":
+        a2 = c.arr()
+        a2[a2 > 0] = P("white0")
+        c.set_arr(a2)
+    c.outline()
+    return c.rgba()
+
+
+def eater_frame(kind, t):
+    """Squat round scavenger: pot belly, stubby legs, a huge hinged jaw."""
+    c = Canvas(32, 20)
+    a = t * math.tau
+    bob = round(math.sin(a) * 1) if kind == "walk" else 0
+    cx = 14
+    # stubby legs
+    for i, lx in enumerate((8, 13, 18)):
+        lift = round(max(0.0, math.sin(a + i * 2.1)) * 2) if kind == "walk" else 0
+        c.rect(lx, 15 - lift, 3, 4, P("leaf0"))
+        c.px(lx + 3, 18 - lift, P("leaf0"))
+    # pot belly
+    c.ellipse(cx - 9, 5 + bob, 19, 13, P("leaf1"))
+    c.ellipse(cx - 8, 5 + bob, 15, 6, P("leaf2"))
+    c.ellipse(cx - 6, 6 + bob, 8, 2, P("leaf3"))
+    c.ellipse(cx - 6, 11 + bob, 11, 6, P("bone1"))        # pale underbelly (it glows when fed)
+    c.ellipse(cx - 5, 12 + bob, 8, 3, P("bone2"))
+    for k in range(3):
+        c.px(cx - 6 + k * 4, 6 + bob, P("leaf0"))         # warts
+    # the jaw: a big hinged scoop
+    open_ = 4 if kind == "attack" else (2 if kind == "alert" or t >= 0.5 else 1)
+    jx = cx + 7
+    c.poly([(jx - 2, 7 + bob), (jx + 8, 8 + bob - open_ // 2), (jx + 8, 10 + bob - open_ // 2), (jx - 2, 11 + bob)], P("leaf2"))
+    c.poly([(jx - 2, 12 + bob), (jx + 7, 12 + bob + open_), (jx + 7, 14 + bob + open_), (jx - 3, 15 + bob)], P("leaf1"))
+    c.rect(jx, 10 + bob - open_ // 2 + 1, 6, max(1, open_), P("flesh0"))
+    for k in range(3):
+        c.px(jx + 1 + k * 2, 10 + bob - open_ // 2 + 1, P("bone3"))
+        c.px(jx + 2 + k * 2, 12 + bob + open_ - 1, P("bone3"))
+    # one small greedy eye
+    eye = "red" if kind in ("attack", "alert") else "eye"
+    c.px(jx, 6 + bob, P(eye + "2"))
+    c.px(jx + 1, 6 + bob, P(eye + "1"))
+    if kind == "hurt":
+        a2 = c.arr()
+        a2[a2 > 0] = P("white0")
+        c.set_arr(a2)
+    c.outline()
+    return c.rgba()
+
+
+def gen_crawler_kin():
+    for name, fn in (("burrower", burrower_frame), ("eater", eater_frame)):
+        frames = []
+        for anim, n in CRAWLER_ANIMS:
+            for i in range(n):
+                frames.append(fn("idle" if anim == "stun" else anim, i / n))
+        save(to_image(sheet(frames, 32, 20, 4)), name + ".png")
+
+
+# --------------------------------------------------------------------------
+# Spore pod: 24x26 drifting puffball with trailing roots, lit from inside.
+# --------------------------------------------------------------------------
+def spore_frame(kind, t):
+    c = Canvas(24, 26)
+    a = t * math.tau
+    pulse = math.sin(a)
+    swell = {"swell": 2 + round(t * 2), "stun": -1}.get(kind, round(pulse))
+    cx, cy = 12, 10
+    rx = 7 + swell
+    ry = 7 + swell
+    # trailing roots
+    for i, ox in enumerate((-4, -1, 2, 5)):
+        sway = round(math.sin(a + i * 1.4) * 1.5)
+        ln = 6 + (i % 2) * 3
+        c.line(cx + ox, cy + ry - 2, cx + ox + sway, cy + ry + ln - 2, P("fung1"))
+        c.px(cx + ox + sway, cy + ry + ln - 2, P("fung3"))
+    # the pod
+    c.ellipse(cx - rx, cy - ry, rx * 2 + 1, ry * 2 + 1, P("fung1"))
+    c.ellipse(cx - rx + 1, cy - ry, rx * 2 - 1, ry + 1, P("fung2"))
+    c.ellipse(cx - rx + 3, cy - ry + 1, rx, 3, P("fung3"))
+    # the glow inside: brighter as it swells
+    core = "gas4" if kind == "swell" else ("gas3" if pulse > 0 else "gas2")
+    if kind != "stun":
+        c.ellipse(cx - 3 - swell // 2, cy - 2, 7 + swell, 6 + swell, P("gas1"))
+        c.ellipse(cx - 2 - swell // 2, cy - 1, 5 + swell, 4 + swell, P("gas2"))
+        c.ellipse(cx - 1, cy, 3, 2, P(core))
+    # pores
+    for k, (ox, oy) in enumerate(((-4, -3), (3, -4), (5, 1), (-5, 2))):
+        c.px(cx + ox, cy + oy, P("fung0"))
+        if kind == "swell" and k % 2 == int(t * 2) % 2:
+            c.px(cx + ox, cy + oy - 1, P("gas3"))
+    if kind == "hurt":
+        a2 = c.arr()
+        a2[a2 > 0] = P("white0")
+        c.set_arr(a2)
+    c.outline()
+    return c.rgba()
+
+
+def gen_spore():
+    frames = []
+    meta = {}
+    for name, n in [("float", 4), ("swell", 2), ("stun", 2), ("hurt", 1)]:
+        meta[name] = [len(frames), n]
+        for i in range(n):
+            frames.append(spore_frame(name, i / n))
+    save(to_image(sheet(frames, 24, 26, 4)), "spore.png")
+    META["spore"] = {"fw": 24, "fh": 26, "cols": 4, "anims": meta}
+
+
+# --------------------------------------------------------------------------
 # Ruin Sentry: 24x24 base (mounted on floor), separate head with eye states.
 # --------------------------------------------------------------------------
 def gen_sentry():
@@ -849,6 +1001,8 @@ def main():
     gen_crawler()
     gen_brute()
     gen_flier()
+    gen_crawler_kin()
+    gen_spore()
     gen_sentry()
     gen_items()
     gen_fx()
