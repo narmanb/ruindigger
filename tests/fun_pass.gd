@@ -22,6 +22,8 @@ static func run(t: Node) -> void:
 			"roamers_c": await roamers_c(t)
 			"charges": await charges(t)
 			"drops": await drops_on_sand(t)
+			"perf": await perf(t)
+			"missions": await missions(t)
 		return
 	await economy(t)
 	await orders(t)
@@ -39,6 +41,8 @@ static func run(t: Node) -> void:
 	await roamers_b(t)
 	await roamers_c(t)
 	await drops_on_sand(t)
+	await perf(t)
+	await missions(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -2229,3 +2233,71 @@ static func drops_on_sand(t: Node) -> void:
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)
+
+
+## 0.18.0: the performance recorder.
+static func perf(t: Node) -> void:
+	t.section("performance recorder")
+	var keep: bool = bool(Settings.get_value("perf_record"))
+	Settings.values["perf_record"] = false
+	Perf.last_report = ""
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(30)
+	t.check(not Perf.active and not Perf.has_report(), "nothing is recorded unless the setting is on")
+	Game.goto("title", true)
+	await _settle(t)
+	Settings.values["perf_record"] = true
+	Game.start_run()
+	await _settle(t)
+	t.check(Perf.active, "with the setting on, a dive is recorded")
+	var mine: Node = Game.current
+	for k in 2000:
+		await t._frames(1)
+		if Perf.frames >= 200 and Perf.seconds >= Perf.INTERVAL * 2.0 + 0.2:
+			break
+	t.check(Perf.rows.size() >= 2 and Perf.frames >= 200, "it keeps a timeline (%d rows in %.1f s)" % [Perf.rows.size(), Perf.seconds])
+	t.check(float(Perf._sys_total["water"]) > 0.0, "it times the water update")
+	t.check(Perf.copy_report(), "a report can be copied in the middle of a dive")
+	t.check(is_instance_valid(mine) and mine.grid != null, "recording does not disturb the dive")
+	Game.goto("title", true)
+	await _settle(t)
+	var rep: String = Perf.last_report
+	var ok := not Perf.active and rep.begins_with("RUIN DIGGER PERFORMANCE REPORT") and rep.ends_with("END OF REPORT")
+	for part in ["device:", "SUMMARY", "fps: average", "SLOW FRAMES", "TIMELINE", "t_s,zone,fps", str(ProjectSettings.get_setting("application/config/version"))]:
+		if not rep.contains(part):
+			ok = false
+	t.check(ok, "leaving the dive finishes the report: device, summary, slow frames and timeline (%d characters)" % rep.length())
+	t.check(Perf.last_path != "" and FileAccess.file_exists(Perf.last_path), "the report is also saved as a text file")
+	t.check(rep.length() < 120000, "the report is small enough to paste")
+	Settings.values["perf_record"] = keep
+
+
+## 0.19.0: missions and The Sunken Lake.
+static func missions(t: Node) -> void:
+	t.section("missions: the sunken lake map")
+	for m: Dictionary in Balance.MISSIONS:
+		var t0 := Time.get_ticks_msec()
+		var d: Dictionary = LakeGenerator.new().generate(m)
+		var ms := Time.get_ticks_msec() - t0
+		var g: TerrainGrid = d["grid"]
+		var need := float(d["bed_capacity"]) * float(d["bed_target"])
+		if OS.has_environment("RD_DBG"):
+			print("LAKE %s gen %d ms settle %d dig %.0f cap %d start %d above %d (x%.2f) eels %d green %d ore %d" % [m["id"], ms, d["settle_steps"], d["dig_to_lift_s"], d["bed_capacity"], d["bed_start"], d["water_above"], float(d["water_above"]) / need, d["eels"], d["greenery"], d["ore_cells"]])
+			if m["id"] == "lake":
+				for y in g.h:
+					var row := ""
+					for x in g.w:
+						var mt := g.get_mat(x, y)
+						var w := g.get_water(x, y)
+						row += "B" if mt == Cell.BEDROCK else ("#" if mt == Cell.HARD else ("+" if mt == Cell.SOFT else ("H" if mt == Cell.LADDER else ("~" if w >= 32 else ("," if w > 0 else " ")))))
+					print(row)
+		t.check(bool(d["valid"]) and float(d["dig_to_lift_s"]) >= 0.0, "%s: the lift by the lake bed can be reached with starting gear (%.0f s of digging)" % [m["id"], d["dig_to_lift_s"]])
+		t.check(float(d["water_above"]) >= need * 1.3, "%s: there is water to spare above the bed (%.1f times what the goal needs)" % [m["id"], float(d["water_above"]) / need])
+		t.check(float(d["bed_start"]) < need * 0.25, "%s: the bed starts nearly dry (%d%% full)" % [m["id"], int(100.0 * float(d["bed_start"]) / float(d["bed_capacity"]))])
+		var d2: Dictionary = LakeGenerator.new().generate(m)
+		t.check(hash((d2["grid"] as TerrainGrid).mat) == hash(g.mat) and hash((d2["grid"] as TerrainGrid).water) == hash(g.water), "%s: the map is the same every time" % m["id"])
+		t.check(ms < 4000, "%s: it builds quickly (%d ms)" % [m["id"], ms])

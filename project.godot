@@ -22,6 +22,7 @@ Progress="*res://src/autoload/progress.gd"
 Audio="*res://src/autoload/audio.gd"
 InputSetup="*res://src/autoload/input_setup.gd"
 Game="*res://src/autoload/game.gd"
+Perf="*res://src/autoload/perf.gd"
 
 [display]
 

@@ -73,6 +73,7 @@ func _ready() -> void:
 	compass.mine = self
 	glow_root.add_child(compass)
 	grid.cell_changed.connect(_on_cell_changed)
+	Perf.begin(self)
 	pressure = Pressure.new()
 	pressure.mine = self
 	add_child(pressure)
@@ -82,6 +83,10 @@ func _ready() -> void:
 		Audio.play("rumble")
 		toast("THE FIRST CIVILIZATION - no way back. Find the Transit Gate.")
 		shake(0.5)
+	elif stage == "mission":
+		var mi := Balance.mission(String(Game.run.get("mission", "")))
+		Audio.play("lift_ding")
+		toast("MISSION: %s - %s" % [mi.get("name", ""), mi.get("goal", "")])
 	else:
 		Audio.play("lift_ding")
 		toast("CONTRACT: %s - recover the relic, then ride a lift out" % Game.run.get("contract", {}).get("name", "SURVEY"))
@@ -92,10 +97,14 @@ func _ready() -> void:
 static func generate_stage(stage_name: String, seed_in: int, contract: Dictionary) -> Dictionary:
 	if stage_name == "deep":
 		return FirstCivGenerator.new().generate(FirstCivGenerator.deep_seed(seed_in), contract)
+	if stage_name == "mission":
+		# a mission's map is built from its own fixed seed
+		return LakeGenerator.new().generate(Balance.mission(String(Game.run.get("mission", ""))))
 	return MineGenerator.new().generate(seed_in, contract)
 
 
 func _exit_tree() -> void:
+	Perf.finish()
 	Audio.stop_all_loops()
 	if player:
 		player.stop_sounds()
@@ -237,10 +246,20 @@ func _spawn_entities() -> void:
 				var l := Entities.Lift.new()
 				l.mine = self
 				l.id = e["id"]
+				l.locked = bool(e.get("locked", false))
 				l.cell = cell
 				l.position = pos
 				entity_root.add_child(l)
 				lifts.append(l)
+			"kin":
+				spawn_kin(String(e["kind"]), cell)
+			"greenery":
+				var gr := Entities.Greenery.new()
+				gr.mine = self
+				gr.cells = e.get("cells", [cell])
+				gr.seed_v = int(e.get("seed", 1))
+				gr.position = grid.cell_center(cell)
+				entity_root.add_child(gr)
 			"ancient_descent":
 				descent = Entities.AncientDescent.new()
 				descent.mine = self
@@ -493,6 +512,8 @@ func roamer_cells() -> Array:
 
 
 func _spawn_roamers() -> void:
+	if stage == "mission":
+		return                    # a mission's map names its own inhabitants
 	var cells := roamer_cells()
 	for c: Vector2i in cells[0]:
 		spawn_brute(c)
@@ -553,9 +574,12 @@ func _physics_process(delta: float) -> void:
 	_dust_cloak(delta)
 	_dowse(delta)
 	_greedy_light()
+	Perf.physics_tick()
+	var t0 := Time.get_ticks_usec()
 	if lava:
 		lava.update(delta)
 		steam.update(delta)
+		Perf.add_time("lava", Time.get_ticks_usec() - t0)
 		for c in lava.formed_cells:
 			var p := grid.cell_center(c)
 			# under water the steam shows the reaction; a dust puff there reads as mud
@@ -566,10 +590,14 @@ func _physics_process(delta: float) -> void:
 		lava.formed_cells.clear()
 		_heat_feedback(delta)
 	if sand:
+		t0 = Time.get_ticks_usec()
 		sand.update(delta)
+		Perf.add_time("sand", Time.get_ticks_usec() - t0)
 	if water:
+		t0 = Time.get_ticks_usec()
 		water.update(delta)
 		erosion.update(delta)
+		Perf.add_time("water", Time.get_ticks_usec() - t0)
 		_water_feedback(delta)
 		for sp in water.splashes:
 			fx.splash(sp)
@@ -1663,9 +1691,38 @@ func _update_orders(delta: float) -> void:
 	if _orders_t > 0.0:
 		return
 	_orders_t = 0.25
+	if stage == "mission":
+		Game.run["mission_fill"] = lake_fill()
 	for o: Dictionary in Orders.update(Game.run):
+		if String(o["kind"]) == "mission":
+			_mission_goal_met(o)
+			continue
 		toast("ORDER DONE: %s  +%d CR on extraction" % [o["text"], int(o["reward"])])
 		Audio.play("lift_ding", -4.0)
+
+
+## How full the mission's lake bed is, in whole percent (0..100).
+func lake_fill() -> int:
+	if not data.has("bed") or int(data.get("bed_capacity", 0)) <= 0:
+		return 0
+	var bed: Rect2i = data["bed"]
+	var held := 0
+	for y in range(bed.position.y, bed.end.y):
+		for x in range(bed.position.x, bed.end.x):
+			held += grid.get_water(x, y)
+	return clampi(int(floor(100.0 * float(held) / float(data["bed_capacity"]))), 0, 100)
+
+
+## The mission's goal is met: the lift by the lake bed powers up.
+func _mission_goal_met(o: Dictionary) -> void:
+	for l in lifts:
+		if l.locked:
+			l.unlock()
+	Audio.play("relic")
+	shake(0.3)
+	if hud:
+		hud.banner("LAKE FILLED")
+	toast("THE LAKE IS FULL ENOUGH - the lift beside it is online. Ride it out for +%d CR" % int(o["reward"]))
 
 
 func toast(text: String) -> void:
@@ -1684,7 +1741,7 @@ func nearest_interactable(pl: Player) -> Dictionary:
 	var pc := pl.global_position
 	for l in lifts:
 		if l.global_position.distance_to(pc + Vector2(0, 13)) < 26.0:
-			return {"kind": "lift", "node": l, "label": "EXTRACT" if l.active else "ACTIVATE"}
+			return {"kind": "lift", "node": l, "label": "EXTRACT" if l.active else ("NO POWER" if l.locked else "ACTIVATE")}
 	if relic and not relic.taken and relic.global_position.distance_to(pc) < 28.0:
 		return {"kind": "relic", "node": relic, "label": "TAKE RELIC"}
 	for c in caches:
@@ -1731,7 +1788,10 @@ func player_interact(pl: Player) -> void:
 				toast(gate.status_text())
 		"lift":
 			var l: Entities.Lift = it["node"]
-			if not l.active:
+			if l.locked:
+				toast("NO POWER - fill the lake bed to %d%% first (now %d%%)" % [int(round(float(data.get("bed_target", 0.6)) * 100.0)), lake_fill()])
+				Audio.play("ui_deny")
+			elif not l.active:
 				l.activate()
 			else:
 				extract(l)

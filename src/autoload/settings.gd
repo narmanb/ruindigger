@@ -17,6 +17,7 @@ const DEFAULTS := {
 	"touch_scale": 1.0,
 	"touch_opacity": 0.65,
 	"show_fps": false,
+	"perf_record": false,   # keep a performance report of each dive (see Perf)
 	"camera_zoom": 1.4,
 	"move_control": 1,      # 0 fixed stick, 1 floating stick, 2 d-pad
 	"stick_size": 1.0,

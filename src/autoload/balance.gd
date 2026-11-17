@@ -724,6 +724,25 @@ const GEN_CORRIDOR_PLUG_SPACING := 9   # corridor cells per plug opportunity
 const FAIR_DIG_BUDGET_DOWN := 150.0
 const FAIR_DIG_BUDGET_UP := 200.0     # way out, using Rubble Ladders
 
+# --- Missions: fixed maps with their own goal, picked at the outpost's
+# MISSIONS terminal. They are free, separate from contracts, and the same
+# every time (a fixed seed). "needs": what unlocks one: other missions
+# ("after"), the deepest you have ever been in metres ("depth"), and upgrade
+# levels bought in total ("upgrades").
+#   water   scales the number of pools, pockets and puddles
+#   target  share of the lake bed that must be filled (0..1)
+#   pressure  false: the mine does not wake during this mission
+const MISSIONS := [
+	{"id": "lake", "name": "THE SUNKEN LAKE", "map": "lake", "seed": 4107, "reward": 300,
+		"desc": "A dry lake bed lies under a cavern full of trapped water. Drill and blast channels so the water runs down into the bed. Fill it to the mark and the lift beside it powers up.",
+		"goal": "Fill the lake bed to 60%", "target": 0.6, "water": 1.0, "eels": 2, "pressure": false, "needs": {}},
+	{"id": "lake2", "name": "THE SUNKEN LAKE: HIGH WATER", "map": "lake", "seed": 9263, "reward": 650,
+		"desc": "A different cavern over a deeper bed, with less water to spare and more eels in it. This time the mine wakes while you work.",
+		"goal": "Fill the lake bed to 75%", "target": 0.75, "water": 0.9, "eels": 4, "pressure": true,
+		"needs": {"after": ["lake"], "depth": 130}},
+]
+const MISSION_FILL_TICK := 0.25      # s between measurements of the lake bed
+
 const CONTRACTS := [
 	{"id": "survey", "name": "STANDARD SURVEY", "desc": "Recover the relic. Balanced seams and threats.",
 		"ore": 1.0, "crawlers": 1.0, "gas": 1.0, "bonus": 1.0},
@@ -774,6 +793,13 @@ func cargo_capacity(level: int) -> int:
 
 func hull(level: int) -> float:
 	return HULL[clampi(level, 0, HULL.size() - 1)]
+
+
+func mission(id: String) -> Dictionary:
+	for m: Dictionary in MISSIONS:
+		if m["id"] == id:
+			return m
+	return {}
 
 
 func modifier(id: String) -> Dictionary:

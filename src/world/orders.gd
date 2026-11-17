@@ -95,6 +95,8 @@ static func describe(o: Dictionary) -> String:
 			return "Take a run relic"
 		"terrain":
 			return "%d terrain kills" % int(o["need"])
+		"mission":
+			return String(o.get("goal", "Complete the mission"))
 	return "?"
 
 
@@ -118,6 +120,8 @@ static func progress(o: Dictionary, run: Dictionary) -> int:
 			return (run.get("relics", []) as Array).size()
 		"terrain":
 			return int(run.get("terrain_kills", 0))
+		"mission":
+			return int(run.get("mission_fill", 0))      # percent of the lake bed filled
 	return 0
 
 
@@ -129,11 +133,13 @@ static func progress_text(o: Dictionary, run: Dictionary) -> String:
 			return "%d/%d m" % [maxi(0, int((progress(o, run) - 9) * Balance.METERS_PER_CELL)), int((int(o["need"]) - 9) * Balance.METERS_PER_CELL)]
 		"keepsake", "relic":
 			return "0/1"
+		"mission":
+			return "%d/%d%%" % [progress(o, run), int(o["need"])]
 	return "%d/%d" % [progress(o, run), int(o["need"])]
 
 
 static func latches(o: Dictionary) -> bool:
-	return String(o["kind"]) in ["depth", "keepsake", "terrain", "relic"]
+	return String(o["kind"]) in ["depth", "keepsake", "terrain", "relic", "mission"]
 
 
 ## Update progress; returns orders that were just completed (live kinds only).

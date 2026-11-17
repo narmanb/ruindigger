@@ -41,6 +41,12 @@ func _ready() -> void:
 	resume_btn = UIKit.button("RESUME", close)
 	v.add_child(resume_btn)
 	v.add_child(UIKit.button("CARGO MANIFEST", func() -> void: mine.hud.cargo_screen.open()))
+	if Perf.active:
+		var pb := UIKit.button("COPY PERFORMANCE REPORT", func() -> void: pass)
+		pb.pressed.connect(func() -> void:
+			pb.text = "COPIED - PASTE IT ANYWHERE" if Perf.copy_report() else "TOO SOON - PLAY A LITTLE FIRST"
+			Audio.play("ui_confirm"))
+		v.add_child(pb)
 	v.add_child(UIKit.button("SETTINGS", _settings))
 	v.add_child(UIKit.button("ABANDON RUN", _abandon))
 	var c: Dictionary = Game.run.get("contract", {})

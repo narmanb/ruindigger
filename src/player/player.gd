@@ -49,6 +49,7 @@ var cool_delay := 0.0
 var targets: Array[Vector2i] = []
 var drill_contact := Vector2.ZERO
 var drill_blocked := false
+var wade_steps := 0                # steps taken through shallow water (splashes)
 var drill_regrow := 1.0            # 0 = drill just fired off as a rocket, 1 = fully grown back
 var _shake_t := 0.0
 var _anim_t := 0.0
@@ -777,6 +778,12 @@ func _animate(delta: float, ax: float) -> void:
 		if _step_t <= 0.0:
 			_step_t = 0.28
 			Audio.play_at("step", global_position + Vector2(0, 12), -10.0, 0.15, 0.1)
+			# wading: every step through shallow water splashes
+			var fc := feet_cell()
+			if mine and not in_water and grid.get_water(fc.x, fc.y) > 0:
+				mine.fx.splash(global_position + Vector2(facing * 3, HALF.y - 2.0))
+				Audio.play_at("step", global_position + Vector2(0, 12), -6.0, 0.5, 0.05)
+				wade_steps += 1
 	var a: Array = anims.get(anim, [0, 1])
 	var frame_i: int = int(a[0]) + (int(_anim_t * speed) % int(a[1]) if speed > 0.0 else 0)
 	body_sprite.frame = frame_i

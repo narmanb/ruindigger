@@ -24,7 +24,10 @@ func _ready() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 4)
 	panel.add_child(v)
-	v.add_child(UIKit.label("EXTRACTION COMPLETE" if ok else "SIGNAL LOST", 20, UIKit.AMBER if ok else UIKit.RED, true))
+	var title := "EXTRACTION COMPLETE" if ok else "SIGNAL LOST"
+	if bool(r.get("mission_won", false)):
+		title = "MISSION COMPLETE"
+	v.add_child(UIKit.label(title, 20, UIKit.AMBER if ok else UIKit.RED, true))
 	v.add_child(UIKit.label(str(r.get("contract", "")), 10, UIKit.MUTED, true))
 	v.add_child(UIKit.Scanline.new())
 	var scroll := ScrollContainer.new()
@@ -62,9 +65,11 @@ func _ready() -> void:
 		list.add_child(UIKit.label("Modifiers (%s): %s" % [", ".join(names), ("+%d CR" % int(r.get("mod_pay", 0))) if ok else "no pay"], 11, UIKit.TEAL if ok else UIKit.MUTED))
 	if r.get("bargain", false):
 		list.add_child(UIKit.label("Blood Bargain: +%d CR" % int(r.get("bargain_pay", 0)), 11, Color("e05a5a")))
+	if String(r.get("mission", "")) != "" and ok and not bool(r.get("mission_won", false)):
+		list.add_child(UIKit.label("You left before the goal was met: the mission is still open.", 11, UIKit.MUTED))
 	for o: Dictionary in r.get("orders", []):
 		var met: bool = o.get("met", false)
-		var txt := "ORDER %s: %s" % ["MET" if met else "MISSED", o.get("text", "")]
+		var txt := "%s %s: %s" % ["MISSION" if String(r.get("mission", "")) != "" else "ORDER", ("COMPLETE" if String(r.get("mission", "")) != "" else "MET") if met else ("NOT DONE" if String(r.get("mission", "")) != "" else "MISSED"), o.get("text", "")]
 		if met:
 			txt += "  +%d CR" % int(o.get("reward", 0)) if ok else "  (lost)"
 		list.add_child(UIKit.label(txt, 11, UIKit.AMBER if met and ok else UIKit.MUTED))
@@ -77,6 +82,13 @@ func _ready() -> void:
 	list.add_child(UIKit.label("Seed %d" % r.get("seed", 0), 9, UIKit.MUTED))
 	var total: int = int(r.get("credits", 0)) + int(r.get("relic_bonus", 0)) + int(r.get("finds_bonus", 0)) + int(r.get("deep_bonus", 0)) + int(r.get("orders_bonus", 0)) + int(r.get("mod_pay", 0)) + int(r.get("bargain_pay", 0))
 	v.add_child(UIKit.label("EARNED: %d CR    BALANCE: %d CR" % [total, Progress.credits], 12, UIKit.TEAL, true))
+	if Perf.last_report != "":
+		var pb := UIKit.button("COPY PERFORMANCE REPORT", func() -> void: pass, 240)
+		pb.pressed.connect(func() -> void:
+			Perf.copy_report()
+			pb.text = "COPIED - PASTE IT ANYWHERE"
+			Audio.play("ui_confirm"))
+		v.add_child(pb)
 	var b := UIKit.button("RETURN TO OUTPOST", func() -> void: Game.goto("outpost"), 200)
 	v.add_child(b)
 	await get_tree().process_frame

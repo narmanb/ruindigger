@@ -50,6 +50,17 @@ func _ready() -> void:
 	_toggle(list, "Low effects mode", "low_effects")
 	_toggle(list, "30 FPS cap (battery)", "fps_30")
 	_toggle(list, "Show FPS", "show_fps")
+	_toggle(list, "Record performance", "perf_record")
+	var perf_btn := UIKit.button("COPY PERFORMANCE REPORT", func() -> void: pass, 240.0)
+	perf_btn.disabled = not Perf.has_report()
+	perf_btn.pressed.connect(func() -> void:
+		if Perf.copy_report():
+			perf_btn.text = "COPIED - PASTE IT ANYWHERE"
+			Audio.play("ui_confirm")
+		else:
+			perf_btn.text = "NO REPORT YET - PLAY A DIVE"
+			Audio.play("ui_deny"))
+	list.add_child(perf_btn)
 	var row := HBoxContainer.new()
 	row.add_child(_name("Touch controls"))
 	var ob := OptionButton.new()

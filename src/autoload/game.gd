@@ -157,6 +157,38 @@ func start_run() -> void:
 	goto("mine")
 
 
+## Start a mission from the outpost's MISSIONS terminal: a fixed map with its
+## own goal. It is a dive like any other (explosives, gadgets, hull, cargo),
+## but it has no contract, no orders besides its goal, and no relic.
+func start_mission(id: String) -> bool:
+	var m := Balance.mission(id)
+	if m.is_empty() or not Progress.mission_open(id):
+		return false
+	start_run()
+	run["stage"] = "mission"
+	run["mission"] = id
+	run["seed"] = int(m["seed"])
+	run["contract"] = {"id": "mission", "name": m["name"]}
+	run["modifiers"] = []
+	run["no_pressure"] = not bool(m.get("pressure", true))
+	run["mission_fill"] = 0
+	run["orders"] = [{"kind": "mission", "goal": m["goal"], "text": m["goal"], "need": int(round(float(m["target"]) * 100.0)),
+		"have": 0, "done": false, "reward": int(m["reward"])}]
+	return true
+
+
+func in_mission() -> bool:
+	return run.get("stage", "mine") == "mission"
+
+
+## Has this run's mission goal been met?
+func mission_goal_met() -> bool:
+	for o: Dictionary in run.get("orders", []):
+		if String(o["kind"]) == "mission":
+			return bool(o["done"])
+	return false
+
+
 ## One-way descent into The First Civilization. The SAME run continues: cargo,
 ## relic, finds, charges, scaffold, hull and the contract all carry over.
 func descend(hull_now: float, from_depth_cells: int) -> void:
@@ -295,7 +327,13 @@ func end_run(extracted: bool, cause: String = "") -> void:
 	else:
 		Progress.stats["deaths"] = int(Progress.stats.get("deaths", 0)) + 1
 	var depth_m := int(run.get("max_depth", 0) * Balance.METERS_PER_CELL)
-	Progress.stats["best_depth"] = maxi(int(Progress.stats.get("best_depth", 0)), depth_m)
+	var mission_id := String(run.get("mission", ""))
+	var mission_won := mission_id != "" and extracted and mission_goal_met()
+	if mission_id == "":
+		# a mission's map has its own depths: they do not count as how deep
+		# you have been in the mine
+		Progress.stats["best_depth"] = maxi(int(Progress.stats.get("best_depth", 0)), depth_m)
+	var mission_first := Progress.complete_mission(mission_id) if mission_won else false
 	Progress.add_credits(credits + relic_bonus + finds_bonus + deep_bonus + orders_bonus + mod_pay + bargain_pay)
 	Progress.tutorial_done = true
 	Progress.save_progress()
@@ -307,7 +345,8 @@ func end_run(extracted: bool, cause: String = "") -> void:
 		"bargain": has_relic("bargain") and extracted, "bargain_pay": bargain_pay,
 		"deep": deep, "deep_exit": extracted and deep and run.get("deep_exit", false), "deep_bonus": deep_bonus,
 		"kills": run.get("kills", 0), "time": run.get("time", 0.0), "seed": run.get("seed", 0),
-		"contract": contract.get("name", ""),
+		"contract": String(run.get("contract", {}).get("name", contract.get("name", ""))) if mission_id != "" else contract.get("name", ""),
+		"mission": mission_id, "mission_won": mission_won, "mission_first": mission_first,
 	}
 	roll_contracts()
 	goto("results")

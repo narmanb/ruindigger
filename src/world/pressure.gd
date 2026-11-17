@@ -46,14 +46,16 @@ func zone() -> int:
 
 ## Drilling and blasts make the mine restless.
 func on_noise(radius_cells: float) -> void:
+	if bool(Game.run.get("no_pressure", false)):
+		return
 	var k: float = Balance.PRESSURE_NOISE_MULT[zone()] * _mult()
 	value += (Balance.PRESSURE_BLAST if radius_cells >= 14.0 else Balance.PRESSURE_DRILL) * k
 
 
 func _physics_process(delta: float) -> void:
 	var pl: Player = mine.player
-	if pl == null or pl.dead or mine.ending:
-		return
+	if pl == null or pl.dead or mine.ending or bool(Game.run.get("no_pressure", false)):
+		return                    # (some missions are calm: the mine does not wake)
 	var z := zone()
 	var rank: int = Balance.PRESSURE_ZONE_RANK[z]
 	_deepest_rank = maxi(_deepest_rank, rank)

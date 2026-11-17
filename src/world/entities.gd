@@ -77,6 +77,7 @@ class Lift extends Node2D:
 	var mine: Node
 	var id := "surface"
 	var active := true
+	var locked := false           # a mission lift: stays dead until the goal is met
 	var cell := Vector2i.ZERO
 	var light: PointLight2D
 	var cage: Sprite2D
@@ -117,11 +118,17 @@ class Lift extends Node2D:
 		light.energy = (1.0 if active else 0.3) + 0.08 * sin(t * 7.0)
 
 	func activate() -> void:
-		if active:
+		if active or locked:
 			return
 		active = true
 		Audio.play("lift_ding")
 		mine.toast("RELAY LIFT ONLINE - extraction available here")
+
+	## The mission's goal was met: the lift powers up.
+	func unlock() -> void:
+		locked = false
+		active = true
+		Audio.play("lift_ding")
 
 
 ## The relic: the contract objective.
@@ -599,3 +606,65 @@ class ThermalEngine extends Node2D:
 		for k in 3:
 			var on: bool = lamps[k][0]
 			draw_rect(Rect2(-18 + k * 14, -5, 8, 3), lamps[k][1] if on else Color(0.15, 0.1, 0.1))
+
+
+## A patch of greenery on a damp floor: grass, reeds and a little moss, drawn
+## in code. Each tuft stands on one floor cell and goes when that floor does
+## or when deep water covers it.
+class Greenery extends Node2D:
+	var mine: Node
+	var cells: Array = []          # floor-standing cells of the patch
+	var seed_v := 1
+	var tufts: Array = []          # [cell, x offset, height, kind, hue]
+	var _t := 0.0
+	var _check := 0.0
+
+	func _ready() -> void:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = seed_v
+		z_index = -1
+		for c: Vector2i in cells:
+			for k in rng.randi_range(3, 5):
+				tufts.append([c, rng.randf_range(1.0, 15.0), rng.randf_range(3.0, 9.0), rng.randi_range(0, 3), rng.randf()])
+		_t = rng.randf() * 10.0
+
+	func _process(delta: float) -> void:
+		_t += delta
+		_check -= delta
+		if _check <= 0.0:
+			_check = 0.6
+			var g: TerrainGrid = mine.grid
+			var keep: Array = []
+			for tf: Array in tufts:
+				var c: Vector2i = tf[0]
+				if g.is_solid(c.x, c.y + 1) and not g.is_solid(c.x, c.y) and g.get_water(c.x, c.y) < Balance.WATER_MAX * 3 / 4 and g.get_sand(c.x, c.y) < Balance.SAND_MAX / 2:
+					keep.append(tf)
+			if keep.size() != tufts.size():
+				tufts = keep
+				if tufts.is_empty():
+					queue_free()
+					return
+		# only patches near the screen animate
+		var pl: Player = mine.player
+		if pl and absf(pl.global_position.x - global_position.x) < 460.0 and absf(pl.global_position.y - global_position.y) < 300.0:
+			queue_redraw()
+
+	func _draw() -> void:
+		var base := (cells[0] as Vector2i) if not cells.is_empty() else Vector2i.ZERO
+		for tf: Array in tufts:
+			var c: Vector2i = tf[0]
+			var o := Vector2((c.x - base.x) * 16.0 + float(tf[1]) - 8.0, (c.y - base.y) * 16.0 + 8.0)
+			var h: float = tf[2]
+			var sway := sin(_t * 1.6 + float(tf[1]) * 0.7) * (1.0 + h * 0.12)
+			var green := Color("3f6e3a").lerp(Color("6c9b4d"), float(tf[4]))
+			match int(tf[3]):
+				0, 1:      # a grass blade
+					draw_line(o, o + Vector2(sway, -h), green, 1.0)
+					draw_line(o + Vector2(1, 0), o + Vector2(1.0 + sway * 0.6, -h * 0.7), green.darkened(0.25), 1.0)
+				2:         # a reed with a seed head
+					var top := o + Vector2(sway * 1.3, -h - 4.0)
+					draw_line(o, top, green.darkened(0.15), 1.0)
+					draw_rect(Rect2(top + Vector2(-1, -2), Vector2(2, 3)), Color("8a7a5c"))
+				3:         # a cushion of moss
+					draw_rect(Rect2(o + Vector2(-2, -2), Vector2(5, 2)), green.darkened(0.3))
+					draw_rect(Rect2(o + Vector2(-1, -3), Vector2(3, 1)), green)

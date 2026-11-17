@@ -15,6 +15,7 @@ var upgrades: Dictionary = {"drill": 0, "heat": 0, "cargo": 0, "hull": 0}
 var explosives: Dictionary = {}
 var demo: Dictionary = {}          # Demolitions upgrade levels: capacity, power, radius
 var slots: Array = Balance.EXPLOSIVE_DEFAULT.duplicate()   # [main, backup]; "" = empty
+var missions_done: Array = []      # ids of the missions you have completed
 ## Demo charges waiting for the next run (kept as a shortcut to explosives).
 var charges: int:
 	get:
@@ -39,6 +40,7 @@ func reset() -> void:
 	upgrades = {"drill": 0, "heat": 0, "cargo": 0, "hull": 0}
 	explosives = {}
 	demo = {}
+	missions_done = []
 	slots = Balance.EXPLOSIVE_DEFAULT.duplicate()
 	stats = default_stats()
 	tutorial_done = false
@@ -146,6 +148,51 @@ func set_slot(i: int, kind: String) -> bool:
 	return true
 
 
+# --- missions ------------------------------------------------------------------
+func mission_done(id: String) -> bool:
+	return missions_done.has(id)
+
+
+## Upgrade levels bought in total (the outpost terminal and Demolitions).
+func upgrade_total() -> int:
+	var n := 0
+	for t in TRACKS:
+		n += level(t)
+	for t in Balance.DEMO_TRACKS:
+		n += demo_level(t)
+	return n
+
+
+## What a mission still needs before it opens, as short lines for the
+## terminal. Empty when it is available.
+func mission_locks(id: String) -> Array:
+	var out: Array = []
+	var needs: Dictionary = Balance.mission(id).get("needs", {})
+	for other: String in needs.get("after", []):
+		if not mission_done(other):
+			out.append("Complete %s" % String(Balance.mission(other).get("name", other)))
+	var depth := int(needs.get("depth", 0))
+	if depth > 0 and int(stats.get("best_depth", 0)) < depth:
+		out.append("Reach %d m on a contract dive (best: %d m)" % [depth, int(stats.get("best_depth", 0))])
+	var ups := int(needs.get("upgrades", 0))
+	if ups > 0 and upgrade_total() < ups:
+		out.append("Buy %d upgrade levels (have %d)" % [ups, upgrade_total()])
+	return out
+
+
+func mission_open(id: String) -> bool:
+	return not Balance.mission(id).is_empty() and mission_locks(id).is_empty()
+
+
+func complete_mission(id: String) -> bool:
+	if Balance.mission(id).is_empty() or missions_done.has(id):
+		return false
+	missions_done.append(id)
+	save_progress()
+	changed.emit()
+	return true
+
+
 func charges_max() -> int:
 	return carry("charge")
 
@@ -159,6 +206,7 @@ func add_credits(n: int) -> void:
 func to_dict() -> Dictionary:
 	return {"version": VERSION, "credits": credits, "upgrades": upgrades.duplicate(),
 		"explosives": explosives.duplicate(), "demo": demo.duplicate(), "slots": slots.duplicate(),
+		"missions_done": missions_done.duplicate(),
 		"stats": stats.duplicate(), "tutorial_done": tutorial_done}
 
 
@@ -173,6 +221,11 @@ func from_dict(d: Variant) -> void:
 		for t in TRACKS:
 			var maxlv: int = Balance.UPGRADES[t]["costs"].size()
 			upgrades[t] = _int(up.get(t), 0, 0, maxlv)
+	var md: Variant = d.get("missions_done")
+	if typeof(md) == TYPE_ARRAY:
+		for id in md:
+			if typeof(id) == TYPE_STRING and not Balance.mission(id).is_empty() and not missions_done.has(id):
+				missions_done.append(id)
 	var dm: Variant = d.get("demo")
 	if typeof(dm) == TYPE_DICTIONARY:
 		for t in Balance.DEMO_TRACKS:
