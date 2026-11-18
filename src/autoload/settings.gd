@@ -25,6 +25,7 @@ const DEFAULTS := {
 	"touch_stick_vertical_assist": false,
 	"jump_grabs_ladders": false,
 	"sand_physics": 2,
+	"touch_diag": false,     # show the DIAG (diagonal drill) touch button
 	"gadget_bar_open": true,  # touch gadget toolbar expanded (remembered)      # 0 off, 1 low, 2 normal, 3 high (see Balance.SAND_LEVELS)
 	# layout offsets (viewport px) dragged in the layout editor
 	"pos_move_x": 0.0, "pos_move_y": 0.0,
@@ -34,9 +35,10 @@ const DEFAULTS := {
 	"pos_interact_x": 0.0, "pos_interact_y": 0.0,
 	"pos_ladder_x": 0.0, "pos_ladder_y": 0.0,
 	"pos_gadget_x": 0.0, "pos_gadget_y": 0.0,
+	"pos_drill_diag_x": 0.0, "pos_drill_diag_y": 0.0,
 }
 
-const LAYOUT_KEYS := ["move", "drill", "jump", "charge", "interact", "ladder", "gadget"]
+const LAYOUT_KEYS := ["move", "drill", "jump", "charge", "interact", "ladder", "gadget", "drill_diag"]
 
 const RANGES := {
 	"master_volume": [0.0, 1.0],

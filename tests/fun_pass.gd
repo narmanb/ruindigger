@@ -24,6 +24,7 @@ static func run(t: Node) -> void:
 			"drops": await drops_on_sand(t)
 			"perf": await perf(t)
 			"missions": await missions(t)
+			"diag": await diagonal(t)
 		return
 	await economy(t)
 	await orders(t)
@@ -43,6 +44,7 @@ static func run(t: Node) -> void:
 	await drops_on_sand(t)
 	await perf(t)
 	await missions(t)
+	await diagonal(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -2380,5 +2382,87 @@ static func missions(t: Node) -> void:
 	Progress.from_dict(d)
 	t.check(Progress.mission_done("lake"), "completed missions are saved")
 	Progress.from_dict(saved)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+## 0.19.0: diagonal drilling climbs a staircase.
+static func diagonal(t: Node) -> void:
+	t.section("diagonal drilling")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	pl.invuln = 1e9
+	for e in mine.enemies.duplicate():
+		if is_instance_valid(e):
+			e.queue_free()
+	mine.enemies.clear()
+	for mode in ["button", "aim"]:
+		var pc: Vector2i = g.world_to_cell(pl.global_position)
+		var f := pl.feet_cell()
+		# an open strip to stand in, then a solid wall of rock to climb into
+		for x in range(f.x - 3, f.x + 16):
+			for y in range(f.y - 14, f.y + 3):
+				if g.in_bounds(x, y):
+					g.set_flag(x, y, Cell.F_PROTECTED, false)
+					g.ore[g.idx(x, y)] = 0
+					g.set_water(x, y, 0)
+					g.set_sand(x, y, 0)
+					var m := Cell.AIR
+					if y > f.y or x > f.x:
+						m = Cell.SOFT if mode == "button" else Cell.HARD
+					g.set_mat(x, y, m)
+		pl.global_position = Vector2(f.x * 16 + 8, (f.y + 1) * 16 - Player.HALF.y - 0.5)
+		pl.velocity = Vector2.ZERO
+		pl.facing = 1
+		pl.heat = 0.0
+		pl.overheated = false
+		await t._frames(4)
+		var y0 := pl.feet_cell().y
+		var x0 := pl.feet_cell().x
+		var hops0 := pl.diag_hops
+		if mode == "button":
+			pl.input_override = {"drill_diag": true}
+		else:
+			pl.input_override = {"drill": true, "x": 1.0, "y": -1.0}
+		for k in 900:
+			await t._frames(1)
+			pl.heat = 0.0                   # (heat is not what this tests)
+			if pl.diag_hops - hops0 >= 4:
+				break
+		pl.input_override = {}
+		await t._frames(30)
+		var rise := y0 - pl.feet_cell().y
+		var ahead := pl.feet_cell().x - x0
+		var what := "sediment with the DIAG button" if mode == "button" else "basalt by aiming up and forward"
+		t.check(pl.diag_hops - hops0 >= 4 and rise >= 4 and ahead >= 4, "diagonal drilling climbs a staircase into %s (%d up, %d along, %d steps)" % [what, rise, ahead, pl.diag_hops - hops0])
+	# the touch button is optional and lays out cleanly
+	var plain: Array = TouchControls.default_buttons(false, false)
+	var withd: Array = TouchControls.default_buttons(true, true)
+	var has := false
+	for b in plain:
+		has = has or b["action"] == "drill_diag"
+	t.check(not has and not bool(Settings.DEFAULTS["touch_diag"]), "the DIAG button is off unless you turn it on")
+	var ok := true
+	for aspect in [Vector2(640, 360), Vector2(853, 360), Vector2(576, 360), Vector2(640, 400)]:
+		for sc in [0.7, 1.0, 1.5]:
+			var sr := Rect2(Vector2.ZERO, aspect)
+			var rects: Array[Rect2] = []
+			for b in withd:
+				rects.append(TouchControls.button_rect(b, sr, sc, Vector2.ZERO))
+			for i in rects.size():
+				for j in range(i + 1, rects.size()):
+					if rects[i].grow(-2.0).intersects(rects[j].grow(-2.0)):
+						ok = false
+				if not sr.encloses(rects[i]):
+					ok = false
+	t.check(ok, "with DIAG and two explosive buttons on, no touch buttons overlap or leave the screen")
+	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)

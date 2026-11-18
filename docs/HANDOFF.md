@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.18.1** (Android code 33). **`main` is the
+Last updated at version **0.19.0** (Android code 34). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.18.1. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|roamers_c|charges|drops|perf|missions`
+`structures` separately. All are green at 0.19.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|roamers_c|charges|drops|perf|missions|diag`
 (add more names in `FunPass.run`); loop it to chase an intermittent failure.
 Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
@@ -52,15 +52,19 @@ parse error makes a headless run hang. The screenshot harness is
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.19.0:** diagonal drilling, default for everyone (the owner chose no
+  upgrade "for now"). `drill_dir` (facing, -1) when aiming up + sideways or
+  holding the `drill_diag` action; `Player.compute_targets` cuts the step,
+  the room above it and the headroom; `Player._diag_climb` hops onto the step
+  (`Balance.DIAG_HOP`, `DIAG_HOP_PUSH`). Optional touch button DIAG
+  (Settings `touch_diag`, off by default; `default_buttons(two, diag)`).
+  Screenshot arg: `diagdemo=N touch_diag=1`.
 - **0.18.1:** lake missions fill to the top (`Balance.MISSION_FULL` = 0.98
   counts as full), less water (mission `water` / `lakes`), High Water's bed is
   deeper (`bed_depth`), the lift is in a dry alcove above the bed's rim. The
   missions test now bounds the water: between 1.3 and 2.4 times what the goal
   needs. Owner's notes: likes lots of water but wanted "a little" less; wants
   the harder version deeper.
-- **Open question from the owner: climbing back up is too hard** (they bored
-  up with a drill rocket and a Rubble Ladder). They floated diagonal drilling
-  and may change their mind. Not built; options were put to them.
 - **0.18.0:** missions and the performance recorder.
   - Missions: `Balance.MISSIONS` (id, map, seed, goal, target, reward,
     pressure, needs), `Progress.missions_done` / `mission_locks` /

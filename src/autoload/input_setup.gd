@@ -14,6 +14,7 @@ const KEYS := {
 	"drill": [KEY_J, KEY_X, KEY_SHIFT],
 	"charge": [KEY_K, KEY_C],
 	"charge2": [KEY_H, KEY_N],
+	"drill_diag": [KEY_U],
 	"interact": [KEY_E, KEY_F],
 	"pause": [KEY_ESCAPE, KEY_P],
 	"map": [KEY_M, KEY_TAB],

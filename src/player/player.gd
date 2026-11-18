@@ -49,6 +49,8 @@ var cool_delay := 0.0
 var targets: Array[Vector2i] = []
 var drill_contact := Vector2.ZERO
 var drill_blocked := false
+var _diag_push := 0.0              # s left of the hop onto a step cut by diagonal drilling
+var diag_hops := 0                 # steps climbed by diagonal drilling (tests)
 var wade_steps := 0                # steps taken through shallow water (splashes)
 var drill_regrow := 1.0            # 0 = drill just fired off as a rocket, 1 = fully grown back
 var _shake_t := 0.0
@@ -180,8 +182,11 @@ func _physics_process(delta: float) -> void:
 		ax = 0.0
 	if ax != 0.0 and wall_lock <= 0.0 and not drilling:
 		facing = 1 if ax > 0 else -1
-	elif ax != 0.0 and drilling and absf(ay) < 0.5:
-		facing = 1 if ax > 0 else -1
+	elif ax != 0.0 and drilling and (absf(ay) < 0.5 or absf(ax) > 0.5):
+		facing = 1 if ax > 0 else -1       # (a diagonal aim turns you too)
+	if _diag_push > 0.0:
+		_diag_push -= delta
+		ax = float(facing) * 0.7           # carried forward onto the step just cut
 
 	var on_floor := is_on_floor()
 	if on_floor:
@@ -452,8 +457,11 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 	var overdrive := overheated and Game.has_relic("overdrive")
 	drill_regrow = minf(1.0, drill_regrow + delta / Balance.ROCKET_REGROW)
 	# no drilling while the arm is growing a new drill
-	var want := _pressed("drill") and (not overheated or overdrive) and drill_regrow >= 1.0
-	if ay < -0.5:
+	var diag_btn := _pressed("drill_diag")
+	var want := (_pressed("drill") or diag_btn) and (not overheated or overdrive) and drill_regrow >= 1.0
+	if diag_btn or (ay < -0.5 and absf(ax) > 0.5):
+		drill_dir = Vector2i(facing, -1)   # diagonal: up and forward
+	elif ay < -0.5:
 		drill_dir = Vector2i(0, -1)
 	elif ay > 0.5:
 		drill_dir = Vector2i(0, 1)
@@ -467,9 +475,11 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 		return
 	cool_delay = Balance.HEAT_COOL_DELAY
 	# aim assist: when drilling vertically, slide onto the target column
-	if drill_dir.y != 0 and targets.size() > 0 and absf(ax) < 0.2:
+	if drill_dir.x == 0 and drill_dir.y != 0 and targets.size() > 0 and absf(ax) < 0.2:
 		var cx := (targets[0].x + 0.5) * C
 		global_position.x = move_toward(global_position.x, cx, 70.0 * delta)
+	elif drill_dir.x != 0 and drill_dir.y < 0:
+		_diag_climb(delta)
 	drill_tick -= delta
 	var heat_mult := 0.25
 	for t0 in targets:
@@ -524,6 +534,26 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 		mine.fx.steam(global_position + Vector2(facing * 10, -6))   # still venting while it works
 
 
+## Diagonal drilling: stay centred in your column, and once the step ahead
+## is cut (the cell in front is solid with two open cells above it, and you
+## have headroom), hop up onto it.
+func _diag_climb(delta: float) -> void:
+	var f := feet_cell()
+	var cxp := (f.x + 0.5) * C
+	if _diag_push <= 0.0:
+		global_position.x = move_toward(global_position.x, cxp, 60.0 * delta)
+	if not is_on_floor() or _diag_push > 0.0:
+		return
+	var fx := f.x + facing
+	var step := grid.is_solid(fx, f.y) or grid.get_mat(fx, f.y) == Cell.PLATFORM
+	var room := not grid.is_solid(fx, f.y - 1) and not grid.is_solid(fx, f.y - 2)
+	var head := not grid.is_solid(f.x, f.y - 2)
+	if step and room and head:
+		velocity.y = -Balance.DIAG_HOP
+		_diag_push = Balance.DIAG_HOP_PUSH
+		diag_hops += 1
+
+
 func _touching_solid() -> bool:
 	for t in targets:
 		if grid.is_solid(t.x, t.y):
@@ -538,6 +568,14 @@ func compute_targets(dir: Vector2i) -> Array[Vector2i]:
 	if not grid:
 		return out
 	var p := global_position
+	if dir.x != 0 and dir.y < 0:
+		# diagonal: the cell ahead at chest height, the one above it (the
+		# room over the step), and the headroom over you (for the hop)
+		var f := feet_cell()
+		var fx := f.x + dir.x
+		for c in [Vector2i(fx, f.y - 1), Vector2i(fx, f.y - 2), Vector2i(f.x, f.y - 2)]:
+			out.append(c)
+		return out
 	if dir.x != 0:
 		var x := p.x + dir.x * (HALF.x + 5.0)
 		for oy in [-HALF.y + 5.0, HALF.y - 5.0]:
@@ -561,6 +599,8 @@ func compute_targets(dir: Vector2i) -> Array[Vector2i]:
 
 func drill_hit_rect() -> Rect2:
 	var p := global_position
+	if drill_dir.x != 0 and drill_dir.y < 0:
+		return Rect2(p.x + (HALF.x - 4.0 if drill_dir.x > 0 else -HALF.x - 14.0), p.y - HALF.y - 12.0, 18, 22)
 	if drill_dir.x != 0:
 		return Rect2(p.x + (HALF.x if drill_dir.x > 0 else -HALF.x - 18), p.y - 10, 18, 20)
 	if drill_dir.y > 0:
@@ -805,7 +845,13 @@ func _animate(delta: float, ax: float) -> void:
 	drill_sprite.position = local + vib
 	var spin := int(_anim_t * 30.0) % 4 if drilling else 0
 	drill_sprite.frame = spin + (4 if drilling else 0)
-	if drill_dir.y < 0:
+	if drill_dir.y < 0 and drill_dir.x != 0:
+		# diagonal: the arm points up and forward
+		drill_sprite.rotation = -PI / 4 * float(facing)
+		drill_sprite.flip_h = false
+		drill_sprite.flip_v = false
+		drill_sprite.scale.x = float(facing)
+	elif drill_dir.y < 0:
 		drill_sprite.rotation = -PI / 2
 		drill_sprite.flip_v = facing < 0
 		drill_sprite.flip_h = false
@@ -818,7 +864,7 @@ func _animate(delta: float, ax: float) -> void:
 		drill_sprite.flip_h = false
 		drill_sprite.flip_v = false
 		drill_sprite.scale.x = float(facing)
-	if drill_dir.y != 0:
+	if drill_dir.y != 0 and drill_dir.x == 0:
 		drill_sprite.scale.x = 1.0
 	# a fired drill grows back out of the arm: nothing for a moment, then it
 	# pushes out from the shoulder with a little overshoot

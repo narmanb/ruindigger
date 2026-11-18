@@ -139,6 +139,22 @@ func _process(_d: float) -> void:
 			mine.player.global_position = spot + (Vector2(-20, 0) if args.has("at_green") else Vector2.ZERO)
 			mine.camera.global_position = mine.player.global_position
 			mine.camera.reset_smoothing()
+	# diagdemo=N: a sediment wall ahead of the digger, climbed with the DIAG
+	# drill from frame 25 to frame N
+	if mine and mine.get("player") != null and args.has("diagdemo"):
+		var dp: Player = mine.player
+		if frame == 22:
+			var f := dp.feet_cell()
+			for x in range(f.x - 3, f.x + 14):
+				for y in range(f.y - 12, f.y + 3):
+					mine.grid.set_flag(x, y, Cell.F_PROTECTED, false)
+					mine.grid.set_mat(x, y, Cell.AIR if (y <= f.y and x <= f.x) else Cell.SOFT)
+			dp.facing = 1
+		if frame >= 25 and frame < int(args["diagdemo"]):
+			dp.input_override = {"drill_diag": true}
+			dp.heat = 0.0
+		elif frame >= int(args["diagdemo"]):
+			dp.input_override = {"drill_diag": true}
 	if frame == 20 and mine and mine.get("player") != null and args.has("teleport"):
 		var p: PackedStringArray = args["teleport"].split(",")
 		mine.player.global_position = Vector2(float(p[0]) * 16 + 8, float(p[1]) * 16)
@@ -248,7 +264,7 @@ func _process(_d: float) -> void:
 	if mine and args.has("charge") and frame == 40:
 		mine.player.input_override = {"charge_just": true, "x": 0.0}
 	if frame == 2:
-		for k in ["move_control", "touch_mode", "camera_zoom", "stick_size", "gadget_bar_open", "touch_scale"]:
+		for k in ["move_control", "touch_mode", "camera_zoom", "stick_size", "gadget_bar_open", "touch_scale", "touch_diag"]:
 			if args.has(k):
 				Settings.values[k] = Settings._sanitize(k, float(args[k]) if k in ["camera_zoom", "stick_size", "touch_scale"] else int(args[k]))
 		Settings.changed.emit()

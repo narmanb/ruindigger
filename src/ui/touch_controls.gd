@@ -57,7 +57,8 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_two = _two_slots()
-	buttons = default_buttons(_two)
+	_diag = bool(Settings.get_value("touch_diag"))
+	buttons = default_buttons(_two, _diag)
 	bar_open = bool(Settings.get_value("gadget_bar_open"))
 	bar_t = 1.0 if bar_open else 0.0
 	Settings.changed.connect(func() -> void:
@@ -75,7 +76,7 @@ func _ready() -> void:
 ## `two`: a backup explosive is packed, so CHARGE becomes two half-width
 ## buttons (slot 1 left, slot 2 right) inside the same footprint. Both follow
 ## the "charge" layout offset, so they always move together.
-static func default_buttons(two: bool = false) -> Array:
+static func default_buttons(two: bool = false, diag: bool = false) -> Array:
 	var out: Array = [
 		{"name": "DRILL", "action": "drill", "off": Vector2(-41, -86), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "drill", "accent": HudSkin.ORANGE},
 		{"name": "JUMP", "action": "jump", "off": Vector2(-41, -32), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "jump", "accent": HudSkin.CYAN},
@@ -89,10 +90,14 @@ static func default_buttons(two: bool = false) -> Array:
 		{"name": "LADDER", "action": "ladder", "off": Vector2(-112, -86), "hw": 33.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "ladder", "accent": HudSkin.ORANGE},
 		{"name": "USE", "action": "interact", "off": Vector2(-180, -59), "hw": 31.0, "hh": 20.0, "r": 20.0, "finger": -1, "icon": "use", "accent": HudSkin.TEAL},
 	])
+	if diag:
+		# optional (Settings): hold to drill diagonally up the way you face
+		out.append({"name": "DIAG", "action": "drill_diag", "off": Vector2(-248, -32), "hw": 28.0, "hh": 24.0, "r": 24.0, "finger": -1, "icon": "drill", "accent": HudSkin.ORANGE})
 	return out
 
 
 var _two := false
+var _diag := false
 
 
 func _two_slots() -> bool:
@@ -376,11 +381,12 @@ func _notification(what: int) -> void:
 
 
 func _process(delta: float) -> void:
-	if _two_slots() != _two:
-		# a backup explosive was packed or unpacked: swap the CHARGE layout
+	if _two_slots() != _two or bool(Settings.get_value("touch_diag")) != _diag:
+		# a backup explosive was packed or unpacked, or DIAG switched: rebuild
 		_release_all()
 		_two = _two_slots()
-		buttons = default_buttons(_two)
+		_diag = bool(Settings.get_value("touch_diag"))
+		buttons = default_buttons(_two, _diag)
 		queue_redraw()
 	if mine and mine.player:
 		var it: Dictionary = mine.nearest_interactable(mine.player)

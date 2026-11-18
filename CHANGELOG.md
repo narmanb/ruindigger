@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.0
+**Diagonal drilling**
+- **Aim up and forward while drilling to dig diagonally.** The drill cuts a step: the cell ahead of you at chest height, the space above it, and the headroom over you. Once the step is clear it hops you up onto it. Keep holding and you climb a staircase at 45 degrees, through sediment, rubble or basalt. It is built in, no upgrade needed.
+  - Keyboard: hold the drill key with up and left or right (W + D / A, or the arrow keys). Gamepad: drill with the left stick pushed up and to one side. Touch: drill with the stick pushed up and to one side.
+  - You still need ladders for sheer shafts and long climbs: a staircase needs rock to cut into, and it moves you sideways as you go up.
+  - Each tick it drills three cells, so it heats the drill a little faster than drilling straight ahead.
+- **Optional DIAG touch button** (Settings > Diagonal drill button; off by default). Hold it to drill diagonally up in whichever direction you are facing, with no stick needed. It sits in the bottom row of the touch controls and can be moved in the layout editor. Keyboard: U.
+
 ## 0.18.1
 **Sunken Lake tuning**
 - **Both lake missions now ask you to fill the bed to the top** (it was 60% and 75%). The top row of water never lies perfectly level, so 98% of the bed counts as full and shows as 100%.

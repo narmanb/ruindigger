@@ -36,6 +36,11 @@ const DRILL_POWER := [4.2, 5.8, 7.8, 10.5]   # hp per second by drill level
 const DRILL_ENEMY_DPS := 75.0
 const DRILL_HITSTUN := 0.3          # enemies hit by the drill can't attack for this long
 const DRILL_KNOCKBACK := true
+# Diagonal drilling (aim up and forward, or the touch DIAG button): cuts a
+# step ahead of you, the room above it and the headroom over you, then hops
+# you up onto the step. Holding it climbs a staircase.
+const DIAG_HOP := 215.0              # px/s upward: just over one cell
+const DIAG_HOP_PUSH := 0.35          # s of forward push that carries you onto the step
 const HEAT_CAPACITY := [100.0, 145.0, 200.0, 270.0]
 const HEAT_PER_SEC := 8.5          # while drilling soft material
 const HEAT_COOL_PER_SEC := [30.0, 36.0, 44.0, 55.0]
