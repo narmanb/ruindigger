@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.18.1
+**Sunken Lake tuning**
+- **Both lake missions now ask you to fill the bed to the top** (it was 60% and 75%). The top row of water never lies perfectly level, so 98% of the bed counts as full and shows as 100%.
+- **Less water above.** The Sunken Lake had about 2.7 bed-fulls of water in the cavern; it now has about 2 (you can still skip a good half). High Water has about 1.5, so you have to drain most of it.
+- **High Water's bed is deeper:** 18 rows instead of 14, so it holds about a third more.
+- **The powered lift moved** out of the bed, which would now drown it, into a dry alcove cut into the east wall just above the bed's rim. A ladder climbs to it from the bed.
+
 ## 0.18.0
 **Missions, the Sunken Lake, and a performance recorder**
 - **A MISSIONS terminal at the outpost** (the far left, beside where you start). Missions are separate from contracts: fixed maps with their own goal, free to start, and the same map every time. Your explosives, gadgets and upgrades come with you. If you die, you lose what you were carrying, as on a contract. Each pays a reward the first time and half that on repeats.

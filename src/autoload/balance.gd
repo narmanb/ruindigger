@@ -734,14 +734,15 @@ const FAIR_DIG_BUDGET_UP := 200.0     # way out, using Rubble Ladders
 #   pressure  false: the mine does not wake during this mission
 const MISSIONS := [
 	{"id": "lake", "name": "THE SUNKEN LAKE", "map": "lake", "seed": 4107, "reward": 300,
-		"desc": "A dry lake bed lies under a cavern full of trapped water. Drill and blast channels so the water runs down into the bed. Fill it to the mark and the lift beside it powers up.",
-		"goal": "Fill the lake bed to 60%", "target": 0.6, "water": 1.0, "eels": 2, "pressure": false, "needs": {}},
+		"desc": "A dry lake bed lies under a cavern full of trapped water. Drill and blast channels so the water runs down into the bed. Fill it to the top and the lift beside it powers up.",
+		"goal": "Fill the lake bed to the top", "target": 1.0, "water": 0.5, "lakes": 2, "bed_depth": 14, "eels": 2, "pressure": false, "needs": {}},
 	{"id": "lake2", "name": "THE SUNKEN LAKE: HIGH WATER", "map": "lake", "seed": 9263, "reward": 650,
 		"desc": "A different cavern over a deeper bed, with less water to spare and more eels in it. This time the mine wakes while you work.",
-		"goal": "Fill the lake bed to 75%", "target": 0.75, "water": 0.9, "eels": 4, "pressure": true,
+		"goal": "Fill the deep lake bed to the top", "target": 1.0, "water": 0.6, "lakes": 2, "bed_depth": 18, "eels": 4, "pressure": true,
 		"needs": {"after": ["lake"], "depth": 130}},
 ]
 const MISSION_FILL_TICK := 0.25      # s between measurements of the lake bed
+const MISSION_FULL := 0.98           # share of a lake bed that counts as full (the top row never lies quite level)
 
 const CONTRACTS := [
 	{"id": "survey", "name": "STANDARD SURVEY", "desc": "Recover the relic. Balanced seams and threats.",

@@ -1710,7 +1710,7 @@ func lake_fill() -> int:
 	for y in range(bed.position.y, bed.end.y):
 		for x in range(bed.position.x, bed.end.x):
 			held += grid.get_water(x, y)
-	return clampi(int(floor(100.0 * float(held) / float(data["bed_capacity"]))), 0, 100)
+	return clampi(int(floor(100.0 * float(held) / (float(data["bed_capacity"]) * Balance.MISSION_FULL))), 0, 100)
 
 
 ## The mission's goal is met: the lift by the lake bed powers up.

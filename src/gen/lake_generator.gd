@@ -26,10 +26,8 @@ const W := 96
 const H := 104
 const FIELD_Y0 := 13          # first row of the pocket field
 const FUNNEL_Y0 := 64         # bedrock starts closing in here
-const BED_Y0 := 82            # lake bed interior rows BED_Y0 .. BED_Y1
-const BED_Y1 := 95
+const BED_Y1 := 95            # lake bed interior rows bed_y0 .. BED_Y1 (bed_y0 from the mission's depth)
 const BED_HALF := 17          # the bed spans centre +/- this
-const LEDGE_Y := 85           # the lift ledge's floor row
 
 var g: TerrainGrid
 var data: Dictionary
@@ -37,11 +35,13 @@ var rng := RandomNumberGenerator.new()
 var keep: Dictionary = {}     # cells later passes must leave alone
 var pockets: Array = []       # [{c: Vector2i, rx, ry, size}]
 var cx := W / 2
+var bed_y0 := 82
 
 
 func generate(mission: Dictionary) -> Dictionary:
 	var seed_value := int(mission.get("seed", 1))
 	rng.seed = seed_value
+	bed_y0 = BED_Y1 - int(mission.get("bed_depth", 14)) + 1
 	# the water model draws from the global random stream while it settles:
 	# pin it, so the mission really is the same map every time
 	seed(seed_value)
@@ -54,7 +54,7 @@ func generate(mission: Dictionary) -> Dictionary:
 	_funnel()
 	_bed()
 	_arrival()
-	_pockets(float(mission.get("water", 1.0)))
+	_pockets(float(mission.get("water", 1.0)), int(mission.get("lakes", 2)))
 	data["settle_steps"] = _settle(450)
 	_film()
 	_settle(200)
@@ -129,7 +129,7 @@ func _caves(seed_value: int) -> void:
 ## so released water runs toward the centre.
 func _funnel() -> void:
 	for y in range(FUNNEL_Y0, H - 3):
-		var t := clampf(float(y - FUNNEL_Y0) / float(BED_Y0 - FUNNEL_Y0), 0.0, 1.0)
+		var t := clampf(float(y - FUNNEL_Y0) / float(bed_y0 - FUNNEL_Y0), 0.0, 1.0)
 		var half := int(round(lerpf(float(W / 2 - 2), float(BED_HALF), t)))
 		for x in range(2, W - 2):
 			if absi(x - cx) > half:
@@ -140,7 +140,7 @@ func _funnel() -> void:
 func _bed() -> void:
 	var x0 := cx - BED_HALF
 	var x1 := cx + BED_HALF
-	for y in range(BED_Y0, BED_Y1 + 1):
+	for y in range(bed_y0, BED_Y1 + 1):
 		for x in range(x0, x1 + 1):
 			g.put(x, y, Cell.AIR)
 			keep[Vector2i(x, y)] = true
@@ -152,22 +152,30 @@ func _bed() -> void:
 		for k in clampi(hump, 0, 3):
 			if absi(x - cx) > 2:
 				_bedrock(x, BED_Y1 - k)
-	# the lift ledge on the east wall, with a ladder down to the bed
-	for x in range(x1 - 5, x1 + 1):
-		_bedrock(x, LEDGE_Y)
-		for y in range(LEDGE_Y - 3, LEDGE_Y):
-			g.put(x, y, Cell.AIR)
-			g.set_flag(x, y, Cell.F_NO_RUBBLE)
-	var lx := x1 - 6
-	for y in range(LEDGE_Y - 1, BED_Y1 + 1):
-		if not g.is_solid(lx, y):
-			g.put(lx, y, Cell.LADDER)
-			g.set_flag(lx, y, Cell.F_NO_RUBBLE)
-	var lift := Vector2i(x1 - 2, LEDGE_Y - 1)
+	# the lift: in a dry alcove cut into the east wall just above the bed's
+	# rim, so a full bed never drowns it; a ladder climbs to it from the bed
+	var floor_y := bed_y0 - 1
+	for x in range(x1 + 1, x1 + 7):
+		for y in range(floor_y - 4, floor_y + 1):
+			var inside := x <= x1 + 5 and y >= floor_y - 3 and y < floor_y
+			if inside:
+				g.set_flag(x, y, Cell.F_PROTECTED, false)
+				g.put(x, y, Cell.AIR)
+				g.set_flag(x, y, Cell.F_NO_RUBBLE)
+				keep[Vector2i(x, y)] = true
+			else:
+				_bedrock(x, y)
+	for y in range(floor_y - 2, BED_Y1 + 1):
+		if not g.is_solid(x1, y) or y < bed_y0:
+			g.set_flag(x1, y, Cell.F_PROTECTED, false)
+			g.put(x1, y, Cell.LADDER)
+			g.set_flag(x1, y, Cell.F_NO_RUBBLE)
+			keep[Vector2i(x1, y)] = true
+	var lift := Vector2i(x1 + 3, floor_y - 1)
 	data["entities"].append({"type": "lift", "id": "mission", "cell": lift, "locked": true})
-	data["entities"].append({"type": "lamp", "cell": Vector2i(x1 - 4, LEDGE_Y - 3), "color": "6ff3d0"})
+	data["entities"].append({"type": "lamp", "cell": Vector2i(x1 + 2, floor_y - 3), "color": "6ff3d0"})
 	data["mission_lift"] = lift
-	data["bed"] = Rect2i(x0, BED_Y0, x1 - x0 + 1, BED_Y1 - BED_Y0 + 1)
+	data["bed"] = Rect2i(x0, bed_y0, x1 - x0 + 1, BED_Y1 - bed_y0 + 1)
 	data["landmarks"].append({"kind": "lake_bed", "rect": data["bed"]})
 
 
@@ -206,8 +214,8 @@ func _arrival() -> void:
 ## Pockets of every size, kept apart from each other. A pocket is an ellipse
 ## of open space, filled with water to near its top. Where a cave cuts into
 ## one it becomes an open pond; the rest stay sealed in rock.
-func _pockets(mult: float) -> void:
-	var plan: Array = [[2, 13, 5, "lake"], [4, 7, 3, "pool"], [6, 4, 2, "pocket"], [8, 2, 1, "puddle"]]
+func _pockets(mult: float, lakes: int) -> void:
+	var plan: Array = [[lakes, 13, 5, "lake"], [4, 7, 3, "pool"], [6, 4, 2, "pocket"], [8, 2, 1, "puddle"]]
 	for entry: Array in plan:
 		var made := 0
 		var tries := 0
@@ -285,7 +293,7 @@ func _ore() -> void:
 	while made < 34 and tries < 4000:
 		tries += 1
 		var x := rng.randi_range(5, W - 6)
-		var y := rng.randi_range(FIELD_Y0, BED_Y0 - 2)
+		var y := rng.randi_range(FIELD_Y0, bed_y0 - 2)
 		if not _free(x, y) or not (g.get_mat(x, y) in [Cell.SOFT, Cell.HARD]) or g.get_ore(x, y) != 0:
 			continue
 		var open := false
@@ -314,7 +322,7 @@ func _stabilize() -> void:
 func _greenery() -> void:
 	var patches := 0
 	var used: Dictionary = {}
-	for y in range(FIELD_Y0, BED_Y0):
+	for y in range(FIELD_Y0, bed_y0):
 		for x in range(4, W - 4):
 			if patches >= 26:
 				break

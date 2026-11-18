@@ -2296,7 +2296,7 @@ static func missions(t: Node) -> void:
 						row += "B" if mt == Cell.BEDROCK else ("#" if mt == Cell.HARD else ("+" if mt == Cell.SOFT else ("H" if mt == Cell.LADDER else ("~" if w >= 32 else ("," if w > 0 else " ")))))
 					print(row)
 		t.check(bool(d["valid"]) and float(d["dig_to_lift_s"]) >= 0.0, "%s: the lift by the lake bed can be reached with starting gear (%.0f s of digging)" % [m["id"], d["dig_to_lift_s"]])
-		t.check(float(d["water_above"]) >= need * 1.3, "%s: there is water to spare above the bed (%.1f times what the goal needs)" % [m["id"], float(d["water_above"]) / need])
+		t.check(float(d["water_above"]) >= need * 1.3 and float(d["water_above"]) <= need * 2.4, "%s: there is water to spare above the bed, but not endless (%.1f times what the goal needs)" % [m["id"], float(d["water_above"]) / need])
 		t.check(float(d["bed_start"]) < need * 0.25, "%s: the bed starts nearly dry (%d%% full)" % [m["id"], int(100.0 * float(d["bed_start"]) / float(d["bed_capacity"]))])
 		var d2: Dictionary = LakeGenerator.new().generate(m)
 		t.check(hash((d2["grid"] as TerrainGrid).mat) == hash(g.mat) and hash((d2["grid"] as TerrainGrid).water) == hash(g.water), "%s: the map is the same every time" % m["id"])
@@ -2354,11 +2354,14 @@ static func missions(t: Node) -> void:
 	var bed: Rect2i = mine.data["bed"]
 	for y in range(bed.position.y, bed.end.y):
 		for x in range(bed.position.x, bed.end.x):
-			if not g.is_solid(x, y) and y >= bed.end.y - int(bed.size.y * 0.75):
+			if not g.is_solid(x, y):
 				g.set_water(x, y, Balance.WATER_MAX)
 	await t._frames(30)
 	t.check(int(Game.run.get("mission_fill", 0)) >= int(round(float(mine.data["bed_target"]) * 100.0)), "the lake bed is measured as it fills (%d%%)" % int(Game.run.get("mission_fill", 0)))
-	t.check(Game.mission_goal_met() and not locked.locked and locked.active, "filling it to the mark powers up the lift")
+	t.check(Game.mission_goal_met() and not locked.locked and locked.active, "filling it to the top powers up the lift")
+	var lc: Vector2i = mine.data["mission_lift"]
+	await t._frames(60)
+	t.check(g.get_water(lc.x, lc.y) == 0 and g.get_water(lc.x, lc.y - 1) == 0, "with the bed full to the top, the lift stands dry in its alcove")
 	var cr0 := Progress.credits
 	pl.global_position = locked.global_position + Vector2(0, -14)
 	mine.extract(locked)
