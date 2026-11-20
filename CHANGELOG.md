@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.20.0
+**The codex, hints, a run summary, the Dry Dock mission, a meaner bomb-eater, and ladders that break**
+- **CODEX** (title screen and the pause menu). Tabs for Creatures, Hazards, Explosives, Relics, Zones, Records and Hints.
+  - A creature's page only opens once you have killed one (a kill by falling rock, gas, water or a fall counts). Everything else opens the first time you run into it: a zone when you enter it, a hazard when you meet it, an explosive when you use it, a relic when you take it. A short "CODEX: Eel added" notice says so.
+  - **Records:** dives, extractions, deaths, best depth, best haul, credits earned, kills, terrain kills, most kills in one dive, ore broken, ladders built, explosives used, longest dive, missions done with your fastest time, and pages found.
+  - **Hints:** every hint you have seen, to read again.
+- **Contextual hints.** Short lines for new diggers: how to drill, that ore goes in your rack, what a full rack does (better ore swaps in for your cheapest; no need to leave), drill heat, diagonal steps, rock you can't dig, sand, water, lava, gas, collapses, your explosive button, the lift, relics, and the outpost counters.
+  - Each one shows **once per save**, one at a time, with about 15 seconds between them, and they wait while you are being hurt or chased.
+  - They sit in a small strip under the top of the screen, away from the player and the touch buttons. If the camera is zoomed in so far that the player is up there, the strip moves to the gap between the stick and the buttons.
+  - Settings: **Hints** on/off, and **RESET HINTS**. The old timed tips on your first dives are gone (the hints replace them).
+  - The one-off creature messages ("THE BRUTE STUNNED ITSELF", "A SPORE POD BURST", ...) now show once per save instead of every time the game starts.
+  - Enemies are not explained when you first see them: find out, then read the codex after the kill.
+- **Run summary** on the results screen. After a death: what killed you, where and when ("Killed by toxic gas in Spore Veins, 3:12 in."), what hurt you in the last 10 seconds, and your damage taken by cause. After an extraction: how long it took and the damage you took. New records are called out ("NEW RECORD: BEST HAUL").
+- **Mission: The Dry Dock** (opens after The Sunken Lake, 400 CR). An old dockyard: a bedrock pit cuts the dock hall's floor in two and the lift is on the far rim, with no power.
+  - Three sealed sand hoppers sit above the dock. A service tunnel runs right under them; each hopper's plug is the sediment in the tunnel ceiling over a grate. Drill up into a plug (or blast it), step off the grate, and the hopper pours down its chute into the pit.
+  - **Goal: fill the pit with sand.** The HUD points to it ("DOCK 37%"). One hopper is not enough. When it is full the lift powers up, and the sand is your bridge: walk across.
+  - Watch where you dig: a sealed pocket of sand over the tunnel buries it if you open it. Four crawlers roam the galleries; the mine stays calm.
+  - Sand keeps moving in this mission even if Sand physics is Off in Settings.
+- **The bomb-eater got meaner.** It now eats any explosive you have placed that hasn't gone off: charges and sticky charges (while their fuse burns), remote charges and mines. Drill rockets are safe.
+  - After swallowing one it looks normal for a second. Then its belly pulses red, faster as the end nears, and it comes for you (a bit faster than before: 5.4 cells a second; you run about 9.5). After 7 seconds it blows, **wherever it is**, near you or not.
+  - Its blast is a fixed size, bigger than a charge (4.5 cells; an un-upgraded charge is 3.2), and your Demolitions upgrades don't change it.
+  - Kill it before it eats, or get away: outrun it, or cut it off with water, lava or a collapse. Killed with a bomb inside, it still blows where it falls.
+  - **It climbs ladders** (no other enemy does on a bare ladder): body along the ladder, head the way it is going.
+- **Blasts break ladders.** Any blast (yours, gas, a bomb-eater) destroys the ladder cells it reaches, even the mine's own ladders. The part of the ladder above the blast loses its footing and tumbles down in pieces, which are gone when they land. The part below stays. If you are on the part that falls, you fall too. Drilling still leaves ladders alone.
+- **Sand fixes (everywhere):**
+  - Sand resting on rock now falls when you dig the rock out from under it (it used to stay hanging).
+  - Sand that landed on you and stopped now carries on falling once you step away (it used to stay stuck above you).
+  - Walking up a pile more than one cell tall no longer catches on a little invisible ledge between its rows.
+
 ## 0.19.0
 **Diagonal drilling**
 - **Aim up and forward while drilling to dig diagonally.** The drill cuts a step: the cell ahead of you at chest height, the space above it, and the headroom over you. Once the step is clear it hops you up onto it. Keep holding and you climb a staircase at 45 degrees, through sediment, rubble or basalt. It is built in, no upgrade needed.

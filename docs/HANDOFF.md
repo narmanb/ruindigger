@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.19.0** (Android code 34). **`main` is the
+Last updated at version **0.20.0** (Android code 35). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.19.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|roamers_c|charges|drops|perf|missions|diag`
+`structures` separately. All are green at 0.20.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|eater|roamers_c|charges|drops|perf|missions|diag|codex|ladders|dock`
 (add more names in `FunPass.run`); loop it to chase an intermittent failure.
 Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
@@ -48,10 +48,44 @@ parse error makes a headless run hang. The screenshot harness is
 `tests/shot.gd`; useful args include `deep=1`, `at=lm:<kind or NAME>`,
 `decor=<kind>`, `sandtest=1`, `kitdemo=1`, `pourtest=1|2`,
 `drill_left=1 stopat=N back=N`, `touch_mode=1`, `gadget_bar_open=0`,
-`allrelics=1`, `cargo_open=1 [cargo_end=1]`,
+`allrelics=1`, `cargo_open=1 [cargo_end=1]`, `hintdemo=1`, `codex=1 [tab=records]`,
+`eaterdemo=1 [fuse=N]`, `ladderblast=1 [boom=N]`, `screen=mission mission=dock [dockpour=0|1 px=N]`,
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.20.0:** codex, records, contextual hints, run summary, The Dry Dock,
+  bomb-eater rework, blasts break ladders, sand fixes.
+  - Codex/hints text lives in `src/world/codex_data.gd` (`CodexData`): creature
+    and hazard pages, explosive text, zone text, `HINTS` (id -> line). Relic and
+    zone pages are built from `Balance`. Codex keys are `"cat:id"`.
+    `Progress.codex` / `hints_seen` / `mission_best` (validated on load), plus new
+    `stats` keys. `CodexPanel` (title + pause). Creature pages open on a kill
+    (`Mine.on_enemy_killed` -> `codex_kind`); others via `Mine.codex_unlock`,
+    `Mine.discover(id)` (hint + hazard page), zone change, explosive use, relic.
+  - `HintStrip` (`src/ui/hint_strip.gd`), in the HUD and the outpost: queue,
+    `HINT_GAP`, waits on `Mine.hints_busy`, moves low when `Mine.player_screen_rect`
+    overlaps it. Hints are marked seen only once shown. `Mine.hint(id)`;
+    `Mine.tell_once(id, text)` for one-off toasts (ids `t_*`, also in HINTS so they
+    show in the Hints tab). The old `_tutorial` timer is gone.
+  - Run summary: `Game.note_damage` (from `Player.take_damage` and the gas
+    burn) -> `run["hurt_log"]`; `Game.run_summary` -> `last_result["summary"]`,
+    `last_result["records"]`.
+  - The Dry Dock: `src/gen/dock_generator.gd` (fixed map, no simulation; sand
+    is placed at rest by construction and a test proves nothing moves at start).
+    Missions now pick a generator by `map` (`Mine.mission_map`); a mission entry
+    can set `fill` ("water"/"sand"), `full`, `short`, `done_banner`,
+    `done_toast`, `locked_toast`. `Mine.mission_fill()` replaced `lake_fill()`.
+    `SandSim.min_level` keeps sand on in sand missions (reset on exit). The live
+    test drills a plug with real input, opens all three, and walks across.
+  - Bomb-eater: `BombEater.edible` (mines, remotes waiting, charges with fuse
+    left; never rockets or shear charges), `mine.charges` list, `EATER_CALM`,
+    `EATER_COUNTDOWN`, `EATER_RUSH`, `EATER_BLAST_CELLS` (`Mine.eater_blast`,
+    cause "eater"), ladder climbing via `walkable` + `Crawler.move_speed()` hook.
+  - Ladders: `Mine.explode` collects ladder cells -> `break_ladders` (above the
+    topmost broken cell of each column falls as `Hazards.LadderBit`).
+  - Sand engine fixes: `_on_cell_changed` wakes sand when rock opens; `SandSim.step`
+    keeps actor-blocked sand active; `TerrainView.sand_base` sits a row's surface
+    on the sand below (no ledge between rows).
 - **0.19.0:** diagonal drilling, default for everyone (the owner chose no
   upgrade "for now"). `drill_dir` (facing, -1) when aiming up + sideways or
   holding the `drill_diag` action; `Player.compute_targets` cuts the step,
@@ -220,6 +254,12 @@ parse error makes a headless run hang. The screenshot harness is
   full name and description appear once a type is in a slot).
 
 ## Open items and ideas the owner liked
+- **Roadmap:** `docs/ROADMAP.md` (encounter chunks, economy retune, touch
+  simplification, more missions: Bull in a China Shop, The Long Fuse).
+- **Untested on a phone:** everything in 0.20.0. Watch whether hints feel too
+  frequent or too rare, the bomb-eater numbers (calm 1 s, countdown 7 s, rush
+  5.4, blast 4.5), and how fast the Dry Dock hoppers pour (a big hopper dumps in
+  a couple of seconds because the sand engine settles large moves at once).
 - **Zone guardians:** one optional boss arena per zone, beaten by using that zone's terrain against it. Proposed: start with Dustworks and Spore Veins. This was my top recommendation. The owner asked for details, then chose breakers first.
 - **Physics puzzle vaults:** templates checked by a solver, guarding rare relics.
 - **Choice rooms and a trader.**

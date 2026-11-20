@@ -5,6 +5,12 @@ committed to a release -- items move into CHANGELOG.md when they ship.
 
 ---
 
+## Built in 0.20.0
+Contextual hints, the codex with records, the run summary, and The Dry Dock.
+The sections below for those are kept for reference.
+
+---
+
 ## Contextual Hints (non-intrusive onboarding)
 
 Small text lines that fade in the first time a player encounters something,
@@ -80,11 +86,9 @@ Each mission makes one system the whole point of the map. Free to start,
 failure loses what you carry (for now). Harder variants later (tighter budget,
 pressure on, extra enemy type), like "High Water" for the lake.
 
+Built: **The Dry Dock (sand)**, 0.20.0.
+
 Picked for building:
-- **The Dry Dock (sand):** a pit blocks the route to the lift. Move sand from
-  the dunes into it until the pile is high enough to cross. Lake in reverse;
-  digging out the wrong support can bury the route. Easiest to build (sand
-  sim and locked lift already exist).
 - **Bull in a China Shop (brute):** a sealed vault the player cannot open.
   Lure a Shielded Brute into charging the wall. The enemy is the tool.
 - **The Long Fuse (explosives):** fixed loadout of charges, remotes and mines.
