@@ -467,7 +467,7 @@ class DepthPanel extends Control:
 		elif Game.in_mission() and not Game.mission_goal_met() and mine.data.has("bed"):
 			# the mission's goal: the lake bed, and how full it is
 			target = Vector2((mine.data["bed"] as Rect2i).get_center()) * Balance.CELL
-			label = "LAKE %d%%" % int(Game.run.get("mission_fill", 0))
+			label = "%s %d%%" % [String(Balance.mission(String(Game.run.get("mission", ""))).get("short", "LAKE")), int(Game.run.get("mission_fill", 0))]
 			col = Color(0.35, 0.75, 1.0)
 		elif not Game.run.get("relic", false) and mine.relic:
 			target = mine.relic.global_position

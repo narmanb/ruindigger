@@ -744,13 +744,19 @@ const MISSIONS := [
 	{"id": "lake", "name": "THE SUNKEN LAKE", "map": "lake", "seed": 4107, "reward": 300,
 		"desc": "A dry lake bed lies under a cavern full of trapped water. Drill and blast channels so the water runs down into the bed. Fill it to the top and the lift beside it powers up.",
 		"goal": "Fill the lake bed to the top", "target": 1.0, "water": 0.5, "lakes": 2, "bed_depth": 14, "eels": 2, "pressure": false, "needs": {}},
+	{"id": "dock", "name": "THE DRY DOCK", "map": "dock", "seed": 5531, "reward": 400, "fill": "sand", "full": 0.9, "short": "DOCK",
+		"desc": "An old dockyard with a pit cut through its floor and the lift on the far side. Sand hoppers sit above the dock: open their plugs from the service tunnel and the sand runs down into the pit. Fill it and walk across.",
+		"goal": "Fill the dock pit with sand", "target": 1.0, "crawlers": 4, "pressure": false,
+		"done_banner": "DOCK FILLED", "done_toast": "THE PIT IS FULL - walk across, the lift is online. Ride it out for +%d CR",
+		"locked_toast": "NO POWER - fill the dock pit with sand first (now %d%%)", "needs": {"after": ["lake"]}},
 	{"id": "lake2", "name": "THE SUNKEN LAKE: HIGH WATER", "map": "lake", "seed": 9263, "reward": 650,
 		"desc": "A different cavern over a deeper bed, with less water to spare and more eels in it. This time the mine wakes while you work.",
 		"goal": "Fill the deep lake bed to the top", "target": 1.0, "water": 0.6, "lakes": 2, "bed_depth": 18, "eels": 4, "pressure": true,
 		"needs": {"after": ["lake"], "depth": 130}},
 ]
 const MISSION_FILL_TICK := 0.25      # s between measurements of the lake bed
-const MISSION_FULL := 0.98           # share of a lake bed that counts as full (the top row never lies quite level)
+const MISSION_FULL := 0.98           # share of a lake bed that counts as full (the top row never lies quite level); a mission's "full" overrides it
+const SAND_MISSION_LEVEL := 1        # missions built on sand keep Sand physics at least this high
 
 # --- Contextual hints and the codex ------------------------------------------------
 const HINT_SHOW := 5.0               # s a hint stays up

@@ -343,11 +343,15 @@ func sand_top(x: int, y: int, fx: float) -> float:
 
 
 ## Where the pile's base sits at column fx: the cell's floor, lowered onto the
-## visible ground of the rock below it.
+## visible ground of the rock below it, or onto the surface of the sand below
+## (a full cell's top dips toward a lower neighbour; without this, a taller
+## pile's next row would start as a little ledge you walk into).
 func sand_base(x: int, y: int, fx: float) -> float:
 	var b := (y + 1) * C
 	if grid.is_solid(x, y + 1):
 		b += float(surface_depth(x * C + clampf(fx, 0.0, C - 1.0), y + 1))
+	elif grid.get_sand(x, y + 1) > 0:
+		b = maxf(b, sand_top(x, y + 1, fx))
 	return b
 
 

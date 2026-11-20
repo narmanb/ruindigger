@@ -36,6 +36,9 @@ func _ready() -> void:
 			if k != "":
 				Progress.explosives[k] = 3
 	if screen == "mission":
+		for need: String in Balance.mission(String(args.get("mission", "lake"))).get("needs", {}).get("after", []):
+			if not Progress.mission_done(need):
+				Progress.missions_done.append(need)
 		Game.start_mission.call_deferred(String(args.get("mission", "lake")))
 	elif screen == "mine":
 		Game.contract = Game.contract_offers[0]
@@ -483,6 +486,15 @@ func _process(_d: float) -> void:
 		var g: TerrainGrid = mine.grid
 		var pc: Vector2i = g.world_to_cell(mine.player.global_position)
 		mine.explode(g.cell_center(Vector2i(pc.x - 7, pc.y - 4)), 2.0, 1.0, 0.0, "charge", false)
+	# dockpour=1: stand on the dock's west rim and open every hopper plug
+	if mine and args.has("dockpour") and frame == 20 and mine.get("player") != null:
+		mine.player.global_position = Vector2(float(args.get("px", "33")) * 16 + 8, DockGenerator.RIM_Y * 16 - Player.HALF.y - 0.5)
+		mine.player.invuln = 1e9
+	if mine and args.has("dockpour") and frame == 24 and mine.get("data") != null and args.get("dockpour", "1") != "0":
+		for lm: Dictionary in mine.data["landmarks"]:
+			if String(lm["kind"]) == "hopper":
+				for dx in 2:
+					mine.damage_cell(lm["plug"] + Vector2i(dx, 0), 999.0, 9, true, "drill")
 	if mine and args.has("hintdemo") and frame == 20 and mine.get("hud") != null:
 		mine.hud.hints._gap = 0.0
 	if mine and args.has("codex") and frame == target - 5 and mine.get("hud") != null:

@@ -29,8 +29,11 @@ func _init(g: TerrainGrid, w: WaterSim = null) -> void:
 	rng.seed = 0x73616e64
 
 
+static var min_level := 0          # a mission that needs sand keeps it on even if Settings say off
+
+
 static func level() -> int:
-	return clampi(int(Settings.get_value("sand_physics")), 0, Balance.SAND_LEVELS.size() - 1)
+	return clampi(maxi(int(Settings.get_value("sand_physics")), min_level), 0, Balance.SAND_LEVELS.size() - 1)
 
 
 static func enabled() -> bool:
@@ -173,6 +176,8 @@ func step() -> void:
 		if y + 1 < grid.h and grid.sand[bi] < smax and _hold(bi):
 			_move(i, bi, mini(s, smax - grid.sand[bi]))
 			continue
+		if y + 1 < grid.h and grid.sand[bi] < smax and not Cell.is_solid(grid.mat[bi]) and grid.lava[bi] == 0:
+			active[i] = true            # only an actor is in the way: try again once it moves
 		# slide toward a lower neighbour
 		var first := -1 if rng.randf() < 0.5 else 1
 		for d: int in [first, -first]:

@@ -27,6 +27,7 @@ static func run(t: Node) -> void:
 			"diag": await diagonal(t)
 			"codex": await codex(t)
 			"ladders": await ladder_blasts(t)
+			"dock": await dock(t)
 		return
 	await economy(t)
 	await orders(t)
@@ -49,6 +50,7 @@ static func run(t: Node) -> void:
 	await diagonal(t)
 	await codex(t)
 	await ladder_blasts(t)
+	await dock(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -2360,6 +2362,8 @@ static func perf(t: Node) -> void:
 static func missions(t: Node) -> void:
 	t.section("missions: the sunken lake map")
 	for m: Dictionary in Balance.MISSIONS:
+		if String(m.get("map", "lake")) != "lake":
+			continue
 		var t0 := Time.get_ticks_msec()
 		var d: Dictionary = LakeGenerator.new().generate(m)
 		var ms := Time.get_ticks_msec() - t0
@@ -2724,3 +2728,237 @@ static func ladder_blasts(t: Node) -> void:
 	var left: int = mine.entity_root.get_children().filter(func(n: Node) -> bool: return n is Hazards.LadderBit).size() - bits_before
 	t.check(left == 0, "the pieces clatter down and are gone, nothing left behind")
 	t.check(not Cell.is_destructible(Cell.LADDER), "drilling still leaves ladders alone (only blasts break them)")
+
+
+static func _dock_ascii(g: TerrainGrid) -> void:
+	for y in g.h:
+		var row := ""
+		for x in g.w:
+			var mt := g.get_mat(x, y)
+			var sd := g.get_sand(x, y)
+			if mt == Cell.BEDROCK:
+				row += "B"
+			elif mt == Cell.HARD:
+				row += "%" if g.has_flag(x, y, Cell.F_PROTECTED) else "#"
+			elif mt == Cell.SOFT:
+				row += "o" if g.get_ore(x, y) != 0 else "+"
+			elif mt == Cell.LADDER:
+				row += "H"
+			elif mt == Cell.PLATFORM:
+				row += "="
+			elif sd >= Balance.SAND_MAX:
+				row += "S"
+			elif sd > 0:
+				row += "s"
+			else:
+				row += " "
+		print(row)
+
+
+## 0.20.0: The Dry Dock (sand).
+static func dock(t: Node) -> void:
+	t.section("missions: the dry dock map")
+	var m := Balance.mission("dock")
+	var t0 := Time.get_ticks_msec()
+	var d: Dictionary = load("res://src/world/mine.gd").mission_map(m)
+	var ms := Time.get_ticks_msec() - t0
+	var g: TerrainGrid = d["grid"]
+	var need := float(d["bed_capacity"]) * float(d["bed_target"]) * float(m["full"])
+	if OS.has_environment("RD_DBG"):
+		print("DOCK gen %d ms dig %.0f cap %d sand %d (x%.2f) pocket %d drifts %d crawlers %d ore %d" % [ms, d["dig_to_lift_s"], d["bed_capacity"], d["sand_above"], float(d["sand_above"]) / need, d["sand_pocket"], d["drifts"], d["crawlers"], d["ore_cells"]])
+		_dock_ascii(g)
+	t.check(bool(d["valid"]) and float(d["dig_to_lift_s"]) >= 0.0, "the lift on the far rim can be reached with starting gear (%.0f s of digging)" % d["dig_to_lift_s"])
+	t.check(float(d["sand_above"]) >= need * 1.3 and float(d["sand_above"]) <= need * 2.4, "the hoppers hold sand to spare, but not endless (%.1f times what the goal needs)" % (float(d["sand_above"]) / need))
+	t.check(int(d["bed_start"]) == 0, "the pit starts empty")
+	var d2: Dictionary = load("res://src/world/mine.gd").mission_map(m)
+	t.check(hash((d2["grid"] as TerrainGrid).mat) == hash(g.mat) and hash((d2["grid"] as TerrainGrid).sand) == hash(g.sand), "the map is the same every time")
+	t.check(ms < 3000, "it builds quickly (%d ms)" % ms)
+	var walls_ok := true
+	for lm: Dictionary in d["landmarks"]:
+		if String(lm["kind"]) == "hopper":
+			var r: Rect2i = lm["rect"]
+			for y in range(r.position.y - 1, r.end.y + 1):
+				for x in [r.position.x - 1, r.end.x]:
+					if not g.has_flag(x, y, Cell.F_PROTECTED):
+						walls_ok = false
+			var p: Vector2i = lm["plug"]
+			if g.get_mat(p.x, p.y) != Cell.SOFT or g.has_flag(p.x, p.y, Cell.F_PROTECTED) or g.get_mat(p.x, p.y + 3) != Cell.PLATFORM:
+				walls_ok = false
+	t.check(walls_ok, "each hopper is sealed in rock nothing breaks, with a sediment plug over a grate")
+	# the sand lies still until something moves it
+	var sim := SandSim.new(g)
+	for i in g.sand.size():
+		if g.sand[i] > 0:
+			sim.active[i] = true
+	var total0 := sim.total()
+	for k in 30:
+		sim.step()
+	t.check(sim.moves == 0 and sim.total() == total0, "every pile and hopper is at rest when the mission starts (%d moves)" % sim.moves)
+
+	# --- live ---
+	t.section("missions: playing the dry dock")
+	var saved := Progress.to_dict()
+	var keep_sand: int = int(Settings.get_value("sand_physics"))
+	Progress.reset()
+	t.check(not Progress.mission_open("dock"), "the dry dock opens after the sunken lake")
+	Progress.missions_done = ["lake"]
+	t.check(Progress.mission_open("dock"), "and then it is open")
+	Settings.values["sand_physics"] = 0
+	await _settle(t)
+	t.check(Game.start_mission("dock"), "it starts from the terminal")
+	await _settle(t)
+	await t._frames(20)
+	var mine: Node = Game.current
+	var mg: TerrainGrid = mine.grid
+	t.check(mine.stage == "mission" and mine.data.has("bed") and mine.data.has("sand_hoppers"), "it runs on the dock map")
+	t.check(SandSim.enabled() and SandSim.level() >= Balance.SAND_MISSION_LEVEL, "sand keeps moving here even with Sand physics off in Settings")
+	var crawlers := 0
+	for e in mine.enemies:
+		if e is Crawler:
+			crawlers += 1
+	t.check(crawlers == int(mine.data["crawlers"]) and crawlers >= 3, "crawlers roam the galleries (%d)" % crawlers)
+	var locked: Entities.Lift = null
+	for l in mine.lifts:
+		if l.locked:
+			locked = l
+	t.check(locked != null, "the lift on the far rim has no power yet")
+	var tot0: int = mine.sand.total()
+	await t._frames(60)
+	t.check(mine.sand.total() == tot0 and mine.sand.moves == 0, "nothing moves until you open something")
+	# sand resting on rock moves when the rock under it goes (the drift on the west rim)
+	Settings.values["sand_physics"] = 2
+	var drift_x := -1
+	for x in range(DockGenerator.HALL_X0, DockGenerator.PIT_X0 - 1):
+		if mg.get_sand(x, DockGenerator.RIM_Y - 1) >= Balance.SAND_MAX:
+			drift_x = x
+	var dc := Vector2i(drift_x, DockGenerator.RIM_Y)
+	var s0: int = mg.get_sand(dc.x, dc.y - 1)
+	mine.damage_cell(dc, 999.0, 9, true, "test")
+	await t._frames(90)
+	t.check(drift_x >= 0 and mg.get_sand(dc.x, dc.y) > 0 and mg.get_sand(dc.x, dc.y - 1) < s0, "dig the floor out from under a drift and the sand drops into the hole")
+	# open the plugs and let the hoppers pour
+	var plugs: Array = []
+	for lm: Dictionary in mine.data["landmarks"]:
+		if String(lm["kind"]) == "hopper":
+			plugs.append(lm["plug"])
+	# a digger opens the first plug the way a player would: stand on the grate
+	# in the tunnel, drill up into the plug, then step off
+	var pl0: Player = mine.player
+	pl0.invuln = 1e9
+	var p0: Vector2i = plugs[0]
+	pl0.global_position = Vector2(p0.x * 16 + 8, (DockGenerator.TUN_Y0 + 2) * 16 - Player.HALF.y - 0.5)
+	pl0.velocity = Vector2.ZERO
+	await t._frames(10)
+	var bed0: Rect2i = mine.data["bed"]
+	pl0.input_override = {"drill": true, "y": -1.0}
+	var opened := false
+	for k in 300:
+		await t._frames(1)
+		if not mg.is_solid(p0.x, p0.y) or not mg.is_solid(p0.x + 1, p0.y):
+			opened = true
+			break
+	pl0.input_override = {"x": -1.0}
+	await t._frames(40)
+	pl0.input_override = {}
+	var poured := 0
+	for k in 600:
+		await t._frames(1)
+		poured = 0
+		for y in range(bed0.position.y, bed0.end.y):
+			for x in range(bed0.position.x, bed0.end.x):
+				poured += mg.get_sand(x, y)
+		if poured >= Balance.SAND_MAX * 20:
+			break
+	if OS.has_environment("RD_DBG"):
+		print("PLUG active=%d moves=%d level=%d player=%s" % [mine.sand.active.size(), mine.sand.moves, SandSim.level(), str(mg.world_to_cell(pl0.global_position))])
+		for y in range(p0.y - 3, p0.y + 6):
+			var row := ""
+			for x in range(p0.x - 4, p0.x + 6):
+				var sd: int = mg.get_sand(x, y)
+				var mt: int = mg.get_mat(x, y)
+				row += ("%x" % mini(15, sd)) if sd > 0 else ("#" if Cell.is_solid(mt) else ("=" if mt == Cell.PLATFORM else "."))
+			print("PLUG ROW %d %s" % [y, row])
+	t.check(opened, "a digger on the grate drills up into a hopper's plug")
+	t.check(poured >= Balance.SAND_MAX * 20 and not pl0.dead, "step off and the hopper pours down its chute into the pit (%d cells' worth so far)" % (poured / Balance.SAND_MAX))
+	for p: Vector2i in plugs:
+		for dx in 2:
+			mine.damage_cell(p + Vector2i(dx, 0), 999.0, 9, true, "drill")
+	var t_full := -1.0
+	var t1 := Time.get_ticks_msec()
+	for k in 60 * 240:
+		await t._frames(1)
+		if Game.mission_goal_met():
+			t_full = k / 60.0
+			break
+	var pit_sand := 0
+	var bed: Rect2i = mine.data["bed"]
+	for y in range(bed.position.y, bed.end.y):
+		for x in range(bed.position.x, bed.end.x):
+			pit_sand += mg.get_sand(x, y)
+	if OS.has_environment("RD_DBG"):
+		print("DOCK fill %d%% after %.1f s game (%d ms real); pit sand %d of %d; left in hoppers etc %d" % [int(Game.run.get("mission_fill", 0)), t_full, Time.get_ticks_msec() - t1, pit_sand, int(mine.data["bed_capacity"]), mine.sand.total() - pit_sand])
+		_dock_ascii(mg)
+	t.check(t_full > 0.0 and int(Game.run.get("mission_fill", 0)) >= 100, "opening the three hopper plugs pours enough sand to fill the pit (%.0f s)" % t_full)
+	t.check(not locked.locked and locked.active, "a full pit powers up the lift")
+	# walk across the pit on the sand
+	var pl: Player = mine.player
+	pl.invuln = 1e9
+	for e in mine.enemies.duplicate():
+		if is_instance_valid(e):
+			e.queue_free()
+	mine.enemies.clear()
+	await t._frames(60 * 6)
+	pl.global_position = Vector2((DockGenerator.PIT_X0 - 16) * 16 + 8, DockGenerator.RIM_Y * 16 - Player.HALF.y - 2.0)
+	pl.velocity = Vector2.ZERO
+	await t._frames(10)
+	if OS.has_environment("RD_DBG"):
+		for y in range(DockGenerator.RIM_Y - 6, DockGenerator.RIM_Y + 2):
+			var row := ""
+			for x in range(DockGenerator.PIT_X0 - 6, DockGenerator.PIT_X1 + 7):
+				var sd: int = mg.get_sand(x, y)
+				row += ("B" if mg.get_mat(x, y) == Cell.BEDROCK else ("+" if mg.is_solid(x, y) else ("%x" % mini(15, sd) if sd > 0 else ".")))
+			print("ROW %d %s" % [y, row])
+	pl.input_override = {"x": 1.0}
+	var crossed := false
+	var low := 0.0
+	for k in 60 * 12:
+		await t._frames(1)
+		low = maxf(low, pl.global_position.y)
+		if OS.has_environment("RD_DBG") and k % 30 == 0:
+			print("WALK k=%d pos=%s cell=%s floor=%s vel=%s" % [k, str(pl.global_position.round()), str(mg.world_to_cell(pl.global_position)), str(pl.is_on_floor()), str(pl.velocity.round())])
+			if k == 150:
+				for y in range(DockGenerator.RIM_Y - 6, DockGenerator.RIM_Y + 1):
+					var row := ""
+					for x in range(30, 46):
+						var sd: int = mg.get_sand(x, y)
+						row += ("B" if mg.get_mat(x, y) == Cell.BEDROCK else ("+" if mg.is_solid(x, y) else ("%x" % mini(15, sd) if sd > 0 else ".")))
+					print("STUCK ROW %d %s  wall=%s" % [y, row, str(pl.is_on_wall())])
+				for yy in [50, 51]:
+					var line := ""
+					for px in range(560, 660, 4):
+						var cx := px / 16
+						if mine.view.has_sand_shape(cx, yy) and mine.view._sand_floor(cx, yy):
+							line += "%d " % int(mine.view.sand_top(cx, yy, float(px % 16)))
+						else:
+							line += "- "
+					print("TOP row %d: %s" % [yy, line])
+				print("player rect ", Rect2(pl.global_position - Player.HALF, Player.HALF * 2.0), " wallnormal ", pl.get_wall_normal())
+		if pl.global_position.x > (DockGenerator.PIT_X1 + 3) * 16:
+			crossed = true
+			break
+	pl.input_override = {}
+	t.check(crossed and low < (DockGenerator.RIM_Y + 2) * 16, "you can walk across the filled pit (lowest point %.1f cells under the rim)" % ((low + Player.HALF.y) / 16.0 - DockGenerator.RIM_Y))
+	pl.global_position = locked.global_position + Vector2(0, -14)
+	var cr0 := Progress.credits
+	mine.extract(locked)
+	for k in 300:
+		await t._frames(1)
+		if Game.current_name == "results":
+			break
+	await _settle(t)
+	t.check(Game.last_result.get("mission_won", false) and Progress.mission_done("dock") and Progress.credits >= cr0 + int(m["reward"]), "riding it out completes the mission and pays (+%d CR)" % (Progress.credits - cr0))
+	t.check(SandSim.min_level == 0, "leaving the mission hands Sand physics back to Settings")
+	Settings.values["sand_physics"] = keep_sand
+	Progress.from_dict(saved)
+	Game.goto("title", true)
+	await _settle(t)

@@ -100,11 +100,19 @@ static func generate_stage(stage_name: String, seed_in: int, contract: Dictionar
 		return FirstCivGenerator.new().generate(FirstCivGenerator.deep_seed(seed_in), contract)
 	if stage_name == "mission":
 		# a mission's map is built from its own fixed seed
-		return LakeGenerator.new().generate(Balance.mission(String(Game.run.get("mission", ""))))
+		return mission_map(Balance.mission(String(Game.run.get("mission", ""))))
 	return MineGenerator.new().generate(seed_in, contract)
 
 
+## The fixed map for a mission, by its "map" kind.
+static func mission_map(m: Dictionary) -> Dictionary:
+	if String(m.get("map", "lake")) == "dock":
+		return DockGenerator.new().generate(m)
+	return LakeGenerator.new().generate(m)
+
+
 func _exit_tree() -> void:
+	SandSim.min_level = 0
 	Perf.finish()
 	Audio.stop_all_loops()
 	if player:
@@ -134,6 +142,7 @@ func _build_world() -> void:
 	var water_view := WaterRenderer.new()
 	add_child(water_view)
 	water_view.setup(grid, water, self)
+	SandSim.min_level = Balance.SAND_MISSION_LEVEL if stage == "mission" and mission_info().get("fill", "water") == "sand" else 0
 	sand = SandSim.new(grid, water)
 	sand.occupied = _cell_occupied
 	sand_drops = SandDrops.new()
@@ -1871,7 +1880,7 @@ func _update_orders(delta: float) -> void:
 		return
 	_orders_t = 0.25
 	if stage == "mission":
-		Game.run["mission_fill"] = lake_fill()
+		Game.run["mission_fill"] = mission_fill()
 	for o: Dictionary in Orders.update(Game.run):
 		if String(o["kind"]) == "mission":
 			_mission_goal_met(o)
@@ -1880,28 +1889,37 @@ func _update_orders(delta: float) -> void:
 		Audio.play("lift_ding", -4.0)
 
 
-## How full the mission's lake bed is, in whole percent (0..100).
-func lake_fill() -> int:
+## This run's mission entry ({} outside a mission).
+func mission_info() -> Dictionary:
+	return Balance.mission(String(Game.run.get("mission", "")))
+
+
+## How full the mission's bed is (water in a lake bed, sand in the dock pit),
+## in whole percent (0..100).
+func mission_fill() -> int:
 	if not data.has("bed") or int(data.get("bed_capacity", 0)) <= 0:
 		return 0
+	var sand_fill := String(mission_info().get("fill", "water")) == "sand"
 	var bed: Rect2i = data["bed"]
 	var held := 0
 	for y in range(bed.position.y, bed.end.y):
 		for x in range(bed.position.x, bed.end.x):
-			held += grid.get_water(x, y)
-	return clampi(int(floor(100.0 * float(held) / (float(data["bed_capacity"]) * Balance.MISSION_FULL))), 0, 100)
+			held += grid.get_sand(x, y) if sand_fill else grid.get_water(x, y)
+	var full := float(mission_info().get("full", Balance.MISSION_FULL))
+	return clampi(int(floor(100.0 * float(held) / (float(data["bed_capacity"]) * full))), 0, 100)
 
 
-## The mission's goal is met: the lift by the lake bed powers up.
+## The mission's goal is met: the lift by the bed powers up.
 func _mission_goal_met(o: Dictionary) -> void:
 	for l in lifts:
 		if l.locked:
 			l.unlock()
 	Audio.play("relic")
 	shake(0.3)
+	var mi := mission_info()
 	if hud:
-		hud.banner("LAKE FILLED")
-	toast("THE LAKE IS FULL ENOUGH - the lift beside it is online. Ride it out for +%d CR" % int(o["reward"]))
+		hud.banner(String(mi.get("done_banner", "LAKE FILLED")))
+	toast(String(mi.get("done_toast", "THE LAKE IS FULL ENOUGH - the lift beside it is online. Ride it out for +%d CR")) % int(o["reward"]))
 
 
 func toast(text: String) -> void:
@@ -1912,6 +1930,8 @@ func toast(text: String) -> void:
 func _on_cell_changed(x: int, y: int, old_m: int, new_m: int) -> void:
 	if Cell.is_solid(old_m) and not Cell.is_solid(new_m):
 		collapse.on_opened(x, y)
+		if sand:
+			sand.wake(x, y)           # sand resting on it (or beside it) can move now
 
 
 # ---------------------------------------------------------------------------
@@ -1968,7 +1988,10 @@ func player_interact(pl: Player) -> void:
 		"lift":
 			var l: Entities.Lift = it["node"]
 			if l.locked:
-				toast("NO POWER - fill the lake bed to %d%% first (now %d%%)" % [int(round(float(data.get("bed_target", 0.6)) * 100.0)), lake_fill()])
+				if mission_info().has("locked_toast"):
+					toast(String(mission_info()["locked_toast"]) % mission_fill())
+				else:
+					toast("NO POWER - fill the lake bed to %d%% first (now %d%%)" % [int(round(float(data.get("bed_target", 0.6)) * 100.0)), mission_fill()])
 				Audio.play("ui_deny")
 			elif not l.active:
 				l.activate()
