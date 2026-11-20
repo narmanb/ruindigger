@@ -563,6 +563,7 @@ func _build_ui() -> void:
 	descent_prompt.mine = self
 	add_child(descent_prompt)
 	hud.hints.busy = hints_busy
+	hud.hints.avoid = player_screen_rect
 	hint("drill")
 	if Game.slot_ammo(0) > 0:
 		hint("explosive")
@@ -837,7 +838,7 @@ func _atmosphere(delta: float) -> void:
 		if hud:
 			hud.banner(Balance.STRATUM_NAMES[s])
 		if stage != "mission":
-			codex_unlock("zone:%d" % s)
+			codex_unlock("zone:%d" % s, _hint_t > 2.0)    # the zone you start in opens quietly
 		Game.run["zone"] = s
 	if stage == "deep":
 		# the stage is one biome, so announce its three regions as the player moves
@@ -868,10 +869,10 @@ func hint(id: String) -> bool:
 
 
 ## Open a codex page; the first time, a short notice says so.
-func codex_unlock(key: String) -> bool:
+func codex_unlock(key: String, notify: bool = true) -> bool:
 	if not Progress.unlock(key):
 		return false
-	if hud:
+	if hud and notify:
 		hud.hints.notice("CODEX: %s added" % String(CodexData.entry(key).get("name", key)))
 		hint("codex")
 	return true
@@ -887,6 +888,16 @@ func tell_once(id: String, text: String) -> void:
 func discover(id: String) -> void:
 	hint(id)
 	codex_unlock("hazard:" + id)
+
+
+## The digger (with its drill and a little room) on screen, for the hint strip.
+func player_screen_rect() -> Rect2:
+	if player == null or not player.visible:
+		return Rect2()
+	var xf := player.get_global_transform_with_canvas()
+	var a := xf * (-Player.HALF - Vector2(10, 6))
+	var b := xf * (Player.HALF + Vector2(10, 2))
+	return Rect2(a, b - a).abs()
 
 
 ## Hints wait while you are being hurt or chased.
@@ -1303,14 +1314,14 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 		if is_instance_valid(e):
 			var ed: float = e.global_position.distance_to(pos)
 			if ed < r + 8.0:
-				e.set("last_hit", "charge" if cause == "charge" else "gas")
+				e.set("last_hit", "charge" if cause in ["charge", "eater"] else "gas")
 				e.hit(ent_dmg * lerpf(1.0, 0.5, ed / (r + 8.0)), pos)
 				e.stun(1.2)
 	if player and not player.dead:
 		var pd := player.global_position.distance_to(pos)
 		if pd < r + 6.0:
 			var self_dmg := Balance.CHARGE_SELF_DAMAGE * Balance.demo_mult("shield", Progress.demo_level("shield")) if cause == "charge" else ent_dmg * 0.55
-			player.take_damage(self_dmg * lerpf(1.0, 0.4, pd / (r + 6.0)), pos, "own charge" if cause == "charge" else "gas ignition")
+			player.take_damage(self_dmg * lerpf(1.0, 0.4, pd / (r + 6.0)), pos, {"charge": "own charge", "eater": "bomb-eater blast"}.get(cause, "gas ignition"))
 	debris.blast(pos, r)
 	noise(pos, 16.0)
 	_chain_mines(pos, r)
@@ -1580,10 +1591,12 @@ func spawn_charge(pos: Vector2, v: Vector2, kind: String = "charge") -> Hazards.
 	entity_root.add_child(ch)
 	if ch.remote:
 		remotes.append(ch)
+	charges.append(ch)
 	return ch
 
 
 var remotes: Array = []          # remote charges waiting for their signal
+var charges: Array = []          # thrown charges of every kind (bomb-eaters look here)
 
 
 func remotes_out() -> int:
@@ -1667,6 +1680,11 @@ func blast_power() -> float:
 func charge_blast(pos: Vector2) -> void:
 	var p := blast_power()
 	explode(pos, blast_radius(), Balance.CHARGE_TILE_DAMAGE * p, Balance.CHARGE_ENTITY_DAMAGE * p, "charge")
+
+
+## A bomb-eater going off: a fixed, bigger blast that your upgrades don't touch.
+func eater_blast(pos: Vector2) -> void:
+	explode(pos, Balance.EATER_BLAST_CELLS, Balance.CHARGE_TILE_DAMAGE, Balance.CHARGE_ENTITY_DAMAGE, "eater")
 
 
 ## A fresh ore drop, graded by the zone it came from.

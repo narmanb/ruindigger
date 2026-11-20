@@ -352,8 +352,13 @@ func _tunnel(delta: float) -> void:
 		repath_t = 0.2
 
 
+## Cells per second right now (subclasses may slow down, e.g. on a ladder).
+func move_speed() -> float:
+	return speed_chase if state in [S.CHASE, S.INVESTIGATE] else speed_patrol
+
+
 func _step(delta: float) -> void:
-	var speed := speed_chase if state in [S.CHASE, S.INVESTIGATE] else speed_patrol
+	var speed := move_speed()
 	if state in [S.STUNNED, S.TUNNEL] or hitstun > 0.0 or windup > 0.0:
 		speed = 0.0
 	if move_t < 1.0:

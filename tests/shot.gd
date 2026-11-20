@@ -19,7 +19,15 @@ func _ready() -> void:
 	var screen: String = args.get("screen", "mine")
 	if screen == "results":
 		Game.last_result = {"extracted": args.get("ok", "1") == "1", "cause": "burrow crawler", "cargo": {1: 9, 2: 4, 3: 2, 5: 3},
-			"credits": 200, "relic": true, "relic_bonus": 260, "depth": 388, "kills": 3, "time": 612.0, "seed": 4242, "contract": "STANDARD SURVEY"}
+			"credits": 200, "relic": true, "relic_bonus": 260, "depth": 388, "kills": 3, "time": 612.0, "seed": 4242, "contract": "STANDARD SURVEY",
+			"summary": ["Killed by burrow crawler in Forgotten Engine, 10:12 in.", "Last 10 s: burrow crawler 18, falling rubble 9.", "Damage taken: 61 (burrow crawler 30, toxic gas 22, falling rubble 9)."] if args.get("ok", "1") != "1" else ["Out in 10:12.", "Damage taken: 61 (burrow crawler 30, toxic gas 22, falling rubble 9)."],
+			"records": ["best haul", "best depth"] if args.get("ok", "1") == "1" else []}
+	# hintdemo=1: a fresh save's hints, shown at once; codex=1: the codex screen
+	if args.has("hintdemo") or args.has("codex"):
+		Progress.hints_seen.clear()
+		Progress.codex.clear()
+		for k in ["creature:crawler", "creature:brute", "creature:eel", "hazard:water", "hazard:gas", "explosive:charge", "relic:charm", "zone:0", "zone:1"]:
+			Progress.codex.append(k)
 	# slots=charge,rocket: pack these explosives (second may be empty)
 	if args.has("slots"):
 		var sl: PackedStringArray = String(args["slots"]).split(",")
@@ -435,6 +443,36 @@ func _process(_d: float) -> void:
 		mine.build_ladder(mine.player)
 	if mine and args.has("layout") and frame == target - 6:
 		get_tree().root.add_child(load("res://src/ui/layout_editor.gd").new())
+	# eaterdemo=1: a counting-down bomb-eater climbing a bare ladder toward a ledge
+	if mine and args.has("eaterdemo") and frame == 20 and mine.get("player") != null:
+		var g: TerrainGrid = mine.grid
+		var pc: Vector2i = g.world_to_cell(mine.player.global_position)
+		for e in mine.enemies.duplicate():
+			if is_instance_valid(e):
+				e.queue_free()
+		mine.enemies.clear()
+		for x in range(pc.x - 6, pc.x + 14):
+			for y in range(pc.y - 9, pc.y + 3):
+				g.set_flag(x, y, Cell.F_PROTECTED, false)
+				g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.BEDROCK)
+				g.set_water(x, y, 0)
+		for x in range(pc.x + 4, pc.x + 12):
+			g.set_mat(x, pc.y - 6, Cell.BEDROCK)
+		for y in range(pc.y - 7, pc.y + 1):
+			g.set_mat(pc.x + 3, y, Cell.LADDER)
+		mine.player.global_position = Vector2((pc.x + 8) * 16 + 8, (pc.y - 6) * 16 - Player.HALF.y - 0.5)
+		mine.player.invuln = 1e9
+		var be: BombEater = mine.spawn_kin("eater", Vector2i(pc.x + 3, pc.y))
+		be.carrying = true
+		be.fuse_t = float(args.get("fuse", "2.0"))
+		be.speed_chase = Balance.EATER_RUSH
+	if mine and args.has("hintdemo") and frame == 20 and mine.get("hud") != null:
+		mine.hud.hints._gap = 0.0
+	if mine and args.has("codex") and frame == target - 5 and mine.get("hud") != null:
+		var cp := CodexPanel.new()
+		mine.hud.add_child(cp)
+		if args.has("tab"):
+			cp.ready.connect(func() -> void: cp.show_tab(String(args["tab"])))
 	if mine and args.has("pause") and frame == target - 5 and mine.get("pause_menu") != null:
 		mine.pause_menu.open()
 	if mine and args.has("panel") and frame == 30 and mine.has_method("_upgrade_panel"):

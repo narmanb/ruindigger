@@ -18,13 +18,14 @@ static func run(t: Node) -> void:
 	if t.args.has("only"):
 		match String(t.args["only"]):
 			"roamers": await roamers(t)
-			"roamers_b": await roamers_b(t)
+			"roamers_b", "eater": await roamers_b(t)
 			"roamers_c": await roamers_c(t)
 			"charges": await charges(t)
 			"drops": await drops_on_sand(t)
 			"perf": await perf(t)
 			"missions": await missions(t)
 			"diag": await diagonal(t)
+			"codex": await codex(t)
 		return
 	await economy(t)
 	await orders(t)
@@ -45,6 +46,7 @@ static func run(t: Node) -> void:
 	await perf(t)
 	await missions(t)
 	await diagonal(t)
+	await codex(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -1940,7 +1942,7 @@ static func roamers_b(t: Node) -> void:
 		if not is_instance_valid(be) or be.state == Crawler.S.DEAD:
 			break
 	await t._frames(4)
-	t.check(pl.hp < php - Balance.EATER_DAMAGE - 1.0, "then it runs at you and blows beside you (%.0f damage)" % (php - pl.hp))
+	t.check(pl.hp < php - Balance.EATER_DAMAGE - 1.0, "then it comes for you and blows (%.0f damage)" % (php - pl.hp))
 	pl.invuln = 1e9
 	pl.hp = pl.max_hp
 	floor_it.call()
@@ -1963,6 +1965,80 @@ static func roamers_b(t: Node) -> void:
 	be2.hit(999.0, be2.global_position, false)
 	await t._frames(4)
 	t.check(be2.state == Crawler.S.DEAD and not g.is_solid(bc.x + 1, bc.y - 2), "killed with a bomb inside, it blows where it falls")
+	floor_it.call()
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	await t._frames(3)
+	# 0.20.0: it eats a lit charge too, never a drill rocket
+	var lit: Hazards.Charge = mine.spawn_charge(home + Vector2(6 * 16, -8), Vector2.ZERO, "charge")
+	lit.fuse = 30.0
+	var be3: BombEater = mine.spawn_kin("eater", Vector2i(pc.x + 12, pc.y))
+	for k in 900:
+		await t._frames(1)
+		if be3.carrying:
+			break
+	t.check(be3.carrying and not is_instance_valid(lit), "a bomb-eater swallows a lit charge as well")
+	var rk := Hazards.Rocket.new()
+	t.check(not BombEater.edible(rk) and BombEater.edible(mine.spawn_mine(home + Vector2(-64, 8))), "a drill rocket is never food; a mine is")
+	rk.free()
+	for m in mine.mines.duplicate():
+		if is_instance_valid(m):
+			m.queue_free()
+	mine.mines.clear()
+	t.check(be3.calm_t > 0.0 and be3.fuse_t < 0.0 and is_zero_approx(be3.pulse()), "for a moment after swallowing it looks normal")
+	# sealed in a box it can't break out of: the countdown still ends in a blast
+	be3.set_physics_process(false)
+	var ec: Vector2i = g.world_to_cell(be3.global_position)
+	for x in range(ec.x - 2, ec.x + 3):
+		for y in range(ec.y - 2, ec.y + 2):
+			if absi(x - ec.x) == 2 or y == ec.y - 2 or y == ec.y + 1:
+				g.set_mat(x, y, Cell.BEDROCK)
+	be3.set_physics_process(true)
+	var pulsed := false
+	var far := true
+	for k in int((Balance.EATER_CALM + Balance.EATER_COUNTDOWN + 1.0) * 60.0):
+		await t._frames(1)
+		if not is_instance_valid(be3) or be3.state == Crawler.S.DEAD:
+			break
+		pulsed = pulsed or be3.pulse() > 0.3
+		far = far and be3.global_position.distance_to(pl.global_position) > 5.0 * 16.0
+	t.check(pulsed, "then its belly pulses red while it counts down")
+	t.check(is_instance_valid(be3) and be3.blew and far, "it blows when the countdown ends, even nowhere near you")
+	floor_it.call()
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	await t._frames(3)
+	# it climbs ladders after you (a plain crawler can't climb a bare ladder)
+	var lx := pc.x + 11
+	for x in range(pc.x + 12, pc.x + 21):
+		g.set_mat(x, pc.y - 5, Cell.BEDROCK)
+	for y in range(pc.y - 6, pc.y + 1):
+		g.set_mat(lx, y, Cell.LADDER)
+	var bare := Vector2i(lx, pc.y - 2)
+	var plain: Crawler = mine.spawn_crawler(Vector2i(pc.x - 5, pc.y))
+	var be4: BombEater = mine.spawn_kin("eater", Vector2i(pc.x + 4, pc.y))
+	await t._frames(2)
+	t.check(be4.walkable(bare) and not plain.walkable(bare), "a bomb-eater can hold onto a bare ladder; a crawler can't")
+	plain.queue_free()
+	mine.enemies.erase(plain)
+	pl.global_position = Vector2((pc.x + 17) * 16 + 8, (pc.y - 5) * 16 - Player.HALF.y - 0.5)
+	pl.velocity = Vector2.ZERO
+	be4.carrying = true
+	be4.fuse_t = 60.0
+	be4.speed_chase = Balance.EATER_RUSH
+	var top := 99
+	for k in 900:
+		await t._frames(1)
+		if not is_instance_valid(be4):
+			break
+		top = mini(top, be4.cell.y - pc.y)
+		if be4.ladder_steps >= 4 and be4.cell.y <= pc.y - 4:
+			break
+	t.check(is_instance_valid(be4) and be4.ladder_steps >= 4 and top <= -4, "it climbs a ladder to get at you (%d ladder steps, up %d)" % [be4.ladder_steps if is_instance_valid(be4) else -1, -top])
+	if is_instance_valid(be4):
+		be4.carrying = false
+		be4.queue_free()
+		mine.enemies.erase(be4)
 	floor_it.call()
 	pl.global_position = home
 	pl.velocity = Vector2.ZERO
@@ -2466,3 +2542,125 @@ static func diagonal(t: Node) -> void:
 	await _settle(t)
 	Game.goto("title", true)
 	await _settle(t)
+
+
+## 0.20.0: codex, records, contextual hints and the run summary.
+static func codex(t: Node) -> void:
+	t.section("codex, hints and run summary")
+	Progress.reset()
+	var keep_hints: bool = bool(Settings.get_value("hints"))
+	Settings.values["hints"] = true
+	# the data
+	var hints_ok := true
+	for id: String in CodexData.HINTS:
+		var line := String(CodexData.HINTS[id])
+		if line.is_empty() or line.length() > 90:
+			hints_ok = false
+	t.check(hints_ok, "every hint is one short line (%d hints)" % CodexData.HINTS.size())
+	var cats_ok := true
+	for cat: String in CodexData.CATS:
+		for e: Dictionary in CodexData.entries(cat):
+			if String(e.get("name", "")) == "" or String(e.get("text", "")) == "" or not CodexData.is_key("%s:%s" % [cat, e["id"]]):
+				cats_ok = false
+	t.check(cats_ok, "every codex page has a name and text")
+	t.check(CodexData.entries("relic").size() == Balance.RUN_RELICS.size() and CodexData.entries("zone").size() == Balance.STRATUM_NAMES.size(),
+		"relic and zone pages follow the game's own lists")
+	t.check(not CodexData.is_key("relic:nope") and not CodexData.is_key("creature") and not Progress.unlock("creature:nope"), "unknown pages are refused")
+	# the save
+	Progress.unlock("creature:eel")
+	Progress.mark_hint("ore")
+	Progress.mission_best["lake"] = 300
+	var d := Progress.to_dict()
+	d["codex"].append("relic:bogus")
+	d["hints_seen"].append(42)
+	Progress.from_dict(d)
+	t.check(Progress.has_entry("creature:eel") and not Progress.has_entry("relic:bogus") and Progress.codex.size() == 1, "codex pages survive a save; junk is dropped")
+	t.check(Progress.seen_hint("ore") and Progress.hints_seen.size() == 1 and int(Progress.mission_best.get("lake", 0)) == 300, "seen hints and mission times survive a save")
+	t.check(Progress.record_mission_time("lake", 200.4) and not Progress.record_mission_time("lake", 250.0) and int(Progress.mission_best["lake"]) == 201,
+		"only a faster mission time replaces the record")
+	Progress.reset()
+	# a dive
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var strip: HintStrip = mine.hud.hints
+	t.check(not strip.queue.is_empty() and String(strip.queue[0]["id"]) == "drill", "a new digger's first hint is how to drill")
+	var vp := mine.get_viewport().get_visible_rect().size
+	var r := Rect2(strip.global_position, strip.size)
+	t.check(r.position.y >= 100.0 and r.end.y <= vp.y * 0.42, "hints sit under the top HUD, clear of the player at screen centre (y %d..%d)" % [int(r.position.y), int(r.end.y)])
+	t.check(r.end.y < vp.y - 120.0, "hints stay clear of the touch buttons along the bottom")
+	strip._gap = 0.0
+	for k in 120:
+		await t._frames(1)
+		if Progress.seen_hint("drill"):
+			break
+	t.check(Progress.seen_hint("drill") and strip.is_showing(), "a hint is marked seen once it is on screen")
+	t.check(not strip.hint("drill"), "a seen hint never comes back")
+	Settings.values["hints"] = false
+	t.check(not strip.hint("water"), "with hints off, nothing is queued")
+	Settings.values["hints"] = true
+	pl.invuln = 0.0
+	pl.take_damage(1.0, Vector2.INF, "test")
+	t.check(mine.hints_busy(), "hints wait while you are being hurt")
+	# a kill opens the creature's page
+	var pc: Vector2i = mine.grid.world_to_cell(pl.global_position)
+	var cr: Crawler = mine.spawn_crawler(pc + Vector2i(3, 0))
+	await t._frames(2)
+	cr.hit(9999.0, pl.global_position)
+	await t._frames(2)
+	var noticed := false
+	for q: Dictionary in strip.queue:
+		if bool(q["notice"]) and String(q["text"]) == "CODEX: Burrow Crawler added":
+			noticed = true
+	t.check(Progress.has_entry("creature:crawler") and noticed, "killing a creature opens its codex page, with a notice")
+	t.check(int(Progress.stats.get("kills", 0)) == 1, "kills are counted for the records")
+	var brute := Brute.new()
+	t.check(mine.codex_kind(brute) == "brute" and mine.codex_kind(SporePod.new()) == "spore" and mine.codex_kind(Breaker.new()) == "breaker", "each creature maps to its own page")
+	brute.free()
+	t.check(Progress.has_entry("zone:0"), "entering a zone opens its page")
+	mine.discover("gas")
+	t.check(Progress.has_entry("hazard:gas"), "meeting a hazard opens its page")
+	mine.tell_once("t_slam", "x")
+	t.check(Progress.seen_hint("t_slam") and not Progress.mark_hint("t_slam"), "one-off creature explanations are kept once per save")
+	# the run summary
+	Game.run["time"] = 125.0
+	Game.run["zone"] = 1
+	Game.note_damage(5.0, "burrow crawler")
+	Game.run["time"] = 190.0
+	Game.note_damage(4.0, "toxic gas")
+	Game.run["time"] = 190.5
+	Game.note_damage(4.0, "toxic gas")
+	Game.run["time"] = 192.0
+	var lines: Array = Game.run_summary(false, "toxic gas")
+	t.check(lines.size() >= 2 and String(lines[0]) == "Killed by toxic gas in Spore Veins, 3:12 in.", "a death says what got you, where and when: %s" % str(lines))
+	t.check(String(lines[1]).begins_with("Last 10 s: toxic gas 8"), "and what hurt you just before")
+	var joined := " ".join(lines)
+	t.check(joined.contains("Damage taken: 14") and joined.contains("burrow crawler 5"), "older damage shows in the total")
+	var out_lines: Array = Game.run_summary(true, "")
+	t.check(String(out_lines[0]) == "Out in 3:12.", "an extraction says how long it took")
+	# the codex screen
+	var cp := CodexPanel.new()
+	mine.hud.add_child(cp)
+	await t._frames(3)
+	var locked := 0
+	for b: Button in cp.list.get_children():
+		if b.disabled and b.text == "???":
+			locked += 1
+	t.check(locked == CodexData.CREATURES.size() - 1 and cp.page_title.text == "BURROW CRAWLER", "creatures you have not killed show as ???")
+	cp.show_tab("records")
+	t.check(cp.page.text.contains("Kills: 1") and cp.page.text.contains("Dives: 1") and not cp.list_scroll.visible, "the records tab lists your stats")
+	cp.show_tab("hints")
+	t.check(cp.page.text.contains(String(CodexData.HINTS["drill"])), "hints you have seen can be read again")
+	cp.close()
+	Game.goto("outpost", true)
+	await _settle(t)
+	await t._frames(3)
+	var op: Node = Game.current
+	t.check(op.hints != null and String(op.hints.queue[0]["id"]) == "outpost" if not op.hints.queue.is_empty() else op.hints.is_showing(), "the outpost has hints too")
+	Settings.values["hints"] = keep_hints
+	Progress.reset()

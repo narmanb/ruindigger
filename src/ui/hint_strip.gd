@@ -6,6 +6,7 @@ extends Control
 ## A hint is only marked seen once it has actually been on screen.
 
 var busy: Callable                 # returns true while now is a bad moment (a fight)
+var avoid: Callable                # returns the player's rect on screen; the strip keeps off it
 var top := Balance.HINT_TOP
 var queue: Array = []              # {id, text, notice}
 var showing: Dictionary = {}
@@ -66,6 +67,7 @@ func is_showing() -> bool:
 
 func _process(delta: float) -> void:
 	if not showing.is_empty():
+		_place()
 		_t -= delta
 		modulate.a = clampf(minf(_t, Balance.HINT_SHOW - _t) * 3.0, 0.0, 1.0)
 		if _t <= 0.0:
@@ -102,9 +104,22 @@ func _process(delta: float) -> void:
 	var w := _label.get_minimum_size().x
 	if w > Balance.HINT_WIDTH - 16.0:
 		_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_label.custom_minimum_size.x = Balance.HINT_WIDTH - 16.0
+		_label.custom_minimum_size.x = minf(Balance.HINT_WIDTH - 16.0, w * 0.56 + 8.0)   # two even lines
 	else:
 		_label.custom_minimum_size.x = 0.0
 	_panel.reset_size()
 	_panel.offset_left = -_panel.get_combined_minimum_size().x * 0.5
 	_panel.offset_right = _panel.get_combined_minimum_size().x * 0.5
+
+
+## Under the top HUD normally; if the player is up there (a high zoom, a
+## camera catching up), drop to the gap between the stick and the buttons.
+func _place() -> void:
+	var y := top
+	if avoid.is_valid():
+		var pr: Rect2 = avoid.call()
+		var mine_rect := Rect2(global_position.x + _panel.position.x, top, _panel.size.x, _panel.size.y + 4.0)
+		if pr.size != Vector2.ZERO and pr.intersects(mine_rect):
+			y = get_viewport_rect().size.y - Balance.HINT_LOW - _panel.size.y
+	offset_top = y
+	offset_bottom = y + 40
