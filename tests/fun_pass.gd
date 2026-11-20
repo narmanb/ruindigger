@@ -26,6 +26,7 @@ static func run(t: Node) -> void:
 			"missions": await missions(t)
 			"diag": await diagonal(t)
 			"codex": await codex(t)
+			"ladders": await ladder_blasts(t)
 		return
 	await economy(t)
 	await orders(t)
@@ -47,6 +48,7 @@ static func run(t: Node) -> void:
 	await missions(t)
 	await diagonal(t)
 	await codex(t)
+	await ladder_blasts(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -2664,3 +2666,61 @@ static func codex(t: Node) -> void:
 	t.check(op.hints != null and String(op.hints.queue[0]["id"]) == "outpost" if not op.hints.queue.is_empty() else op.hints.is_showing(), "the outpost has hints too")
 	Settings.values["hints"] = keep_hints
 	Progress.reset()
+
+
+## 0.20.0: blasts break ladders; the part above falls, the part below stays.
+static func ladder_blasts(t: Node) -> void:
+	t.section("blasts break ladders")
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(5)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	for e in mine.enemies.duplicate():
+		if is_instance_valid(e):
+			e.queue_free()
+	mine.enemies.clear()
+	pl.invuln = 1e9
+	var pc: Vector2i = g.world_to_cell(pl.global_position) + Vector2i(0, 26)
+	var x0 := pc.x - 8
+	for x in range(x0 - 6, x0 + 7):
+		for y in range(pc.y - 16, pc.y + 3):
+			if g.in_bounds(x, y):
+				g.set_flag(x, y, Cell.F_PROTECTED, false)
+				g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.BEDROCK)
+				g.set_water(x, y, 0)
+	var lx := x0
+	for y in range(pc.y - 14, pc.y + 1):
+		g.set_mat(lx, y, Cell.LADDER)
+	g.set_flag(lx, pc.y - 7, Cell.F_PROTECTED)
+	# the digger climbs the top part
+	pl.global_position = g.cell_center(Vector2i(lx, pc.y - 12))
+	pl.velocity = Vector2.ZERO
+	pl.on_ladder = true
+	await t._frames(5)
+	var blast := g.cell_center(Vector2i(lx + 2, pc.y - 7))
+	var bits_before: int = mine.entity_root.get_children().filter(func(n: Node) -> bool: return n is Hazards.LadderBit).size()
+	mine.explode(blast, 2.2, 1.0, 0.0, "charge", false)
+	var ladder_above := 0
+	var ladder_below := 0
+	for y in range(pc.y - 14, pc.y + 1):
+		if g.get_mat(lx, y) == Cell.LADDER:
+			if y < pc.y - 7:
+				ladder_above += 1
+			else:
+				ladder_below += 1
+	var bits: int = mine.entity_root.get_children().filter(func(n: Node) -> bool: return n is Hazards.LadderBit).size() - bits_before
+	t.check(g.get_mat(lx, pc.y - 7) != Cell.LADDER, "a blast breaks the ladder in its reach, even a protected one")
+	t.check(ladder_above == 0 and bits >= 5, "everything above the blast loses its footing and falls (%d pieces falling)" % bits)
+	t.check(ladder_below >= 4 and g.get_mat(lx, pc.y) == Cell.LADDER, "the part below the blast stays (%d cells)" % ladder_below)
+	var y0 := pl.global_position.y
+	await t._frames(20)
+	t.check(not pl.on_ladder and pl.global_position.y > y0 + 16.0, "a digger on the falling part drops with it")
+	await t._frames(240)
+	var left: int = mine.entity_root.get_children().filter(func(n: Node) -> bool: return n is Hazards.LadderBit).size() - bits_before
+	t.check(left == 0, "the pieces clatter down and are gone, nothing left behind")
+	t.check(not Cell.is_destructible(Cell.LADDER), "drilling still leaves ladders alone (only blasts break them)")

@@ -1300,6 +1300,7 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 	shake(0.6)
 	var c := grid.world_to_cell(pos)
 	var ri := ceili(radius_cells)
+	var ladders: Array[Vector2i] = []
 	for dy in range(-ri, ri + 1):
 		for dx in range(-ri, ri + 1):
 			var cc := c + Vector2i(dx, dy)
@@ -1307,9 +1308,13 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 			if d > 1.0:
 				continue
 			var m := grid.get_mat(cc.x, cc.y)
+			if m == Cell.LADDER:
+				ladders.append(cc)       # every ladder breaks, even a protected one
+				continue
 			if Cell.blast_proof(m) or grid.has_flag(cc.x, cc.y, Cell.F_PROTECTED):
 				continue
 			damage_cell(cc, tile_dmg * lerpf(1.0, 0.45, d), 99, true, "blast")
+	break_ladders(ladders)
 	for e in enemies:
 		if is_instance_valid(e):
 			var ed: float = e.global_position.distance_to(pos)
@@ -1329,6 +1334,54 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 		gas.ignite_near(pos, r)
 	if cause == "charge" and Game.has_relic("faultline"):
 		fault_line(c, ri)
+
+
+## A blast breaks the ladder cells in it; the rest of each ladder above the
+## blast loses its footing and falls, and the part below stays. Returns how
+## many ladder cells went (broken + fallen).
+func break_ladders(hit: Array[Vector2i]) -> int:
+	if hit.is_empty():
+		return 0
+	var tops := {}
+	for c in hit:
+		if not tops.has(c.x) or c.y < int(tops[c.x]):
+			tops[c.x] = c.y
+	var n := 0
+	for c in hit:
+		_drop_ladder_cell(c, false)
+		n += 1
+	for x: int in tops:
+		var y: int = int(tops[x]) - 1
+		while grid.in_bounds(x, y) and grid.get_mat(x, y) == Cell.LADDER:
+			_drop_ladder_cell(Vector2i(x, y), true)
+			n += 1
+			y -= 1
+	if n > 0:
+		Audio.play_at("break_soft", grid.cell_center(hit[0]), 0.0, 0.15, 0.05)
+	ladders_broken += n
+	return n
+
+
+var ladders_broken := 0
+
+
+func _drop_ladder_cell(c: Vector2i, falls: bool) -> void:
+	var s := grid.get_stratum(c.x, c.y)
+	grid.set_flag(c.x, c.y, Cell.F_PROTECTED, false)
+	grid.set_mat(c.x, c.y, Cell.AIR, true)
+	_ladder_queue.erase(c)
+	var pos := grid.cell_center(c)
+	if falls:
+		var bit := Hazards.LadderBit.new()
+		bit.mine = self
+		bit.tex = view.tex_props
+		bit.region = view.prop_rect("ladder_wood" if s == 0 else "ladder_metal")
+		bit.position = pos
+		bit.vel = Vector2(randf_range(-12, 12), randf_range(-20, 10))
+		bit.spin = randf_range(-2.0, 2.0)
+		entity_root.add_child(bit)
+	else:
+		fx.burst(pos, Color(0.75, 0.5, 0.3), 5)
 
 
 ## Fault Line: the ceiling over a charge cracks and falls a moment later.

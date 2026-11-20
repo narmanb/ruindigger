@@ -468,6 +468,34 @@ class SonarPing extends Node2D:
 			draw_rect(Rect2(p - Vector2(3, 3), Vector2(6, 6)), inner)
 
 
+## A piece of a ladder that lost its footing in a blast: it tumbles down,
+## clatters where it lands and is gone (nothing is left behind).
+class LadderBit extends Node2D:
+	var mine: Node
+	var tex: Texture2D
+	var region := Rect2()
+	var vel := Vector2.ZERO
+	var spin := 0.0
+	var life := 4.0
+
+	func _physics_process(delta: float) -> void:
+		life -= delta
+		vel.y = minf(vel.y + 900.0 * delta, 420.0)
+		var np := global_position + vel * delta
+		var g: TerrainGrid = mine.grid
+		var c := g.world_to_cell(np + Vector2(0, 6))
+		if life <= 0.0 or not g.in_bounds(c.x, c.y) or g.is_solid(c.x, c.y) or g.get_mat(c.x, c.y) == Cell.PLATFORM:
+			mine.fx.dust(global_position + Vector2(0, 6), Color(0.7, 0.55, 0.4), 4)
+			Audio.play_at("hit_soft", global_position, -8.0, 0.2, 0.05)
+			queue_free()
+			return
+		global_position = np
+		rotation += spin * delta
+
+	func _draw() -> void:
+		draw_texture_rect_region(tex, Rect2(-region.size * 0.5, region.size), region)
+
+
 ## Gas: breaking a gas sac starts a telegraphed vent, then a lingering cloud.
 ## Any explosion touching a vent or cloud ignites it (big, readable fireball).
 class GasSystem extends Node2D:

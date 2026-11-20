@@ -466,6 +466,23 @@ func _process(_d: float) -> void:
 		be.carrying = true
 		be.fuse_t = float(args.get("fuse", "2.0"))
 		be.speed_chase = Balance.EATER_RUSH
+	# ladderblast=1: a tall ladder blown in the middle a few frames before the shot
+	if mine and args.has("ladderblast") and frame == 20 and mine.get("player") != null:
+		var g: TerrainGrid = mine.grid
+		var pc: Vector2i = g.world_to_cell(mine.player.global_position) + Vector2i(0, 26)
+		for x in range(pc.x - 12, pc.x + 12):
+			for y in range(pc.y - 14, pc.y + 3):
+				g.set_flag(x, y, Cell.F_PROTECTED, false)
+				g.set_mat(x, y, Cell.AIR if y <= pc.y else Cell.BEDROCK)
+				g.set_water(x, y, 0)
+		for y in range(pc.y - 13, pc.y + 1):
+			g.set_mat(pc.x - 3, y, Cell.LADDER)
+		mine.player.global_position = Vector2((pc.x + 5) * 16 + 8, (pc.y + 1) * 16 - Player.HALF.y - 0.5)
+		mine.player.invuln = 1e9
+	if mine and args.has("ladderblast") and frame == int(args.get("boom", "40")):
+		var g: TerrainGrid = mine.grid
+		var pc: Vector2i = g.world_to_cell(mine.player.global_position)
+		mine.explode(g.cell_center(Vector2i(pc.x - 7, pc.y - 4)), 2.0, 1.0, 0.0, "charge", false)
 	if mine and args.has("hintdemo") and frame == 20 and mine.get("hud") != null:
 		mine.hud.hints._gap = 0.0
 	if mine and args.has("codex") and frame == target - 5 and mine.get("hud") != null:
