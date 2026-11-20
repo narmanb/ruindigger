@@ -2907,7 +2907,11 @@ static func dock(t: Node) -> void:
 		if is_instance_valid(e):
 			e.queue_free()
 	mine.enemies.clear()
-	await t._frames(60 * 6)
+	# let the sand finish settling (slower machines take longer)
+	for k in 60 * 30:
+		await t._frames(1)
+		if mine.sand.active.is_empty() and mine.sand_drops.pos.is_empty() and k > 60:
+			break
 	pl.global_position = Vector2((DockGenerator.PIT_X0 - 16) * 16 + 8, DockGenerator.RIM_Y * 16 - Player.HALF.y - 2.0)
 	pl.velocity = Vector2.ZERO
 	await t._frames(10)
@@ -2921,6 +2925,9 @@ static func dock(t: Node) -> void:
 	pl.input_override = {"x": 1.0}
 	var crossed := false
 	var low := 0.0
+	var jumps := 0
+	var last_x := pl.global_position.x
+	var still := 0
 	for k in 60 * 12:
 		await t._frames(1)
 		low = maxf(low, pl.global_position.y)
@@ -2946,7 +2953,16 @@ static func dock(t: Node) -> void:
 		if pl.global_position.x > (DockGenerator.PIT_X1 + 3) * 16:
 			crossed = true
 			break
+		# a player hops over a lump of sand: allow it, but count it
+		still = still + 1 if absf(pl.global_position.x - last_x) < 0.5 else 0
+		last_x = pl.global_position.x
+		pl.input_override = {"x": 1.0, "jump": still > 20, "jump_just": still == 21}
+		if still == 21:
+			jumps += 1
+		if still > 40:
+			still = 0
 	pl.input_override = {}
+	t.check(jumps <= 2, "walking it takes at most a hop or two (%d)" % jumps)
 	t.check(crossed and low < (DockGenerator.RIM_Y + 2) * 16, "you can walk across the filled pit (lowest point %.1f cells under the rim)" % ((low + Player.HALF.y) / 16.0 - DockGenerator.RIM_Y))
 	pl.global_position = locked.global_position + Vector2(0, -14)
 	var cr0 := Progress.credits
