@@ -23,6 +23,9 @@ var charges: int:
 	set(v):
 		explosives["charge"] = v
 var stats: Dictionary = {}
+var hints_seen: Array = []         # contextual hints already shown (once per save)
+var codex: Array = []              # unlocked codex pages, "cat:id"
+var mission_best: Dictionary = {}  # mission id -> fastest completion, seconds
 var tutorial_done: bool = false
 var path: String = PATH
 
@@ -32,7 +35,9 @@ func _ready() -> void:
 
 
 func default_stats() -> Dictionary:
-	return {"runs": 0, "extractions": 0, "deaths": 0, "relics": 0, "best_depth": 0, "lifetime_credits": 0}
+	return {"runs": 0, "extractions": 0, "deaths": 0, "relics": 0, "best_depth": 0, "lifetime_credits": 0,
+		"kills": 0, "terrain_kills": 0, "ore_mined": 0, "best_haul": 0, "ladders_built": 0, "explosives_used": 0,
+		"longest_run": 0, "most_kills": 0}
 
 
 func reset() -> void:
@@ -43,6 +48,9 @@ func reset() -> void:
 	missions_done = []
 	slots = Balance.EXPLOSIVE_DEFAULT.duplicate()
 	stats = default_stats()
+	hints_seen = []
+	codex = []
+	mission_best = {}
 	tutorial_done = false
 
 
@@ -193,6 +201,59 @@ func complete_mission(id: String) -> bool:
 	return true
 
 
+# --- hints, codex, records ------------------------------------------------------
+func seen_hint(id: String) -> bool:
+	return hints_seen.has(id)
+
+
+## Marks a hint as shown. Returns false if it already was.
+func mark_hint(id: String) -> bool:
+	if hints_seen.has(id):
+		return false
+	hints_seen.append(id)
+	save_progress()
+	return true
+
+
+func reset_hints() -> void:
+	hints_seen.clear()
+	save_progress()
+
+
+func has_entry(key: String) -> bool:
+	return codex.has(key)
+
+
+## Opens a codex page. Returns true only the first time.
+func unlock(key: String) -> bool:
+	if codex.has(key) or not CodexData.is_key(key):
+		return false
+	codex.append(key)
+	save_progress()
+	changed.emit()
+	return true
+
+
+func add_stat(key: String, n: int = 1) -> void:
+	stats[key] = int(stats.get(key, 0)) + n
+
+
+func record_max(key: String, v: int) -> bool:
+	if v <= int(stats.get(key, 0)):
+		return false
+	stats[key] = v
+	return true
+
+
+## Keeps the fastest time for a mission. Returns true on a new best.
+func record_mission_time(id: String, seconds: float) -> bool:
+	var s := int(ceil(seconds))
+	if mission_best.has(id) and int(mission_best[id]) <= s:
+		return false
+	mission_best[id] = s
+	return true
+
+
 func charges_max() -> int:
 	return carry("charge")
 
@@ -207,7 +268,8 @@ func to_dict() -> Dictionary:
 	return {"version": VERSION, "credits": credits, "upgrades": upgrades.duplicate(),
 		"explosives": explosives.duplicate(), "demo": demo.duplicate(), "slots": slots.duplicate(),
 		"missions_done": missions_done.duplicate(),
-		"stats": stats.duplicate(), "tutorial_done": tutorial_done}
+		"stats": stats.duplicate(), "hints_seen": hints_seen.duplicate(), "codex": codex.duplicate(),
+		"mission_best": mission_best.duplicate(), "tutorial_done": tutorial_done}
 
 
 func from_dict(d: Variant) -> void:
@@ -252,6 +314,21 @@ func from_dict(d: Variant) -> void:
 	if typeof(st) == TYPE_DICTIONARY:
 		for k in stats.keys():
 			stats[k] = _int(st.get(k), 0, 0, 999999999)
+	var hs: Variant = d.get("hints_seen")
+	if typeof(hs) == TYPE_ARRAY:
+		for id in hs:
+			if typeof(id) == TYPE_STRING and CodexData.HINTS.has(id) and not hints_seen.has(id):
+				hints_seen.append(id)
+	var cx: Variant = d.get("codex")
+	if typeof(cx) == TYPE_ARRAY:
+		for key in cx:
+			if typeof(key) == TYPE_STRING and CodexData.is_key(key) and not codex.has(key):
+				codex.append(key)
+	var mb: Variant = d.get("mission_best")
+	if typeof(mb) == TYPE_DICTIONARY:
+		for id in mb:
+			if typeof(id) == TYPE_STRING and not Balance.mission(id).is_empty():
+				mission_best[id] = _int(mb[id], 0, 1, 999999)
 
 
 func _int(v: Variant, def: int, lo: int, hi: int) -> int:

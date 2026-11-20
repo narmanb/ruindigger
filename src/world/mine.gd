@@ -43,8 +43,9 @@ var ending := false
 var _alarm_t := 0.0
 var current_stratum := -1
 var seed_value := 0
-var tutorial_step := 0
-var _tut_t := 0.0
+var _hint_t := 0.0               # s into this dive (timed hints)
+var _hint_scan_t := 0.0
+var _hurt_ago := 99.0             # s since the digger was last hurt
 var headless_test := false
 var stage := "mine"               # which generated stage this scene is running
 var depth_offset := 0             # cells descended before this stage (for depth read-outs)
@@ -546,6 +547,7 @@ func _spawn_player() -> void:
 	add_child(player)
 	player.setup_stats()
 	player.died.connect(_on_player_died)
+	player.hurt.connect(func(_a: float) -> void: _hurt_ago = 0.0)
 	camera.global_position = player.global_position
 	camera.reset_smoothing()
 
@@ -560,6 +562,12 @@ func _build_ui() -> void:
 	descent_prompt = load("res://src/ui/descent_prompt.gd").new()
 	descent_prompt.mine = self
 	add_child(descent_prompt)
+	hud.hints.busy = hints_busy
+	hint("drill")
+	if Game.slot_ammo(0) > 0:
+		hint("explosive")
+	if Game.slot_kind(1) != "" and Game.slot_ammo(1) > 0:
+		hint("backup")
 
 
 # ---------------------------------------------------------------------------
@@ -749,7 +757,7 @@ func _process(delta: float) -> void:
 		if _alarm_t <= 0.0:
 			_alarm_t = 7.0
 			noise(player.global_position, 20.0)
-	_tutorial(delta)
+	_hints(delta)
 
 
 func _apply_zoom() -> void:
@@ -828,6 +836,9 @@ func _atmosphere(delta: float) -> void:
 		Audio.music(MUSIC[s])
 		if hud:
 			hud.banner(Balance.STRATUM_NAMES[s])
+		if stage != "mission":
+			codex_unlock("zone:%d" % s)
+		Game.run["zone"] = s
 	if stage == "deep":
 		# the stage is one biome, so announce its three regions as the player moves
 		var py := int(player.global_position.y / C)
@@ -850,22 +861,88 @@ func _explore() -> void:
 				grid.explore(c.x + dx, c.y + dy)
 
 
-func _tutorial(delta: float) -> void:
-	if Progress.tutorial_done or hud == null:
+# --- Contextual hints and the codex --------------------------------------------
+## Queue a contextual hint (shown once per save; see HintStrip).
+func hint(id: String) -> bool:
+	return hud != null and hud.hints.hint(id)
+
+
+## Open a codex page; the first time, a short notice says so.
+func codex_unlock(key: String) -> bool:
+	if not Progress.unlock(key):
+		return false
+	if hud:
+		hud.hints.notice("CODEX: %s added" % String(CodexData.entry(key).get("name", key)))
+		hint("codex")
+	return true
+
+
+## A one-off explanation of something that just happened (once per save).
+func tell_once(id: String, text: String) -> void:
+	if bool(Settings.get_value("hints")) and Progress.mark_hint(id):
+		toast(text)
+
+
+## Something happened that has a hint and a codex page (water, gas, ...).
+func discover(id: String) -> void:
+	hint(id)
+	codex_unlock("hazard:" + id)
+
+
+## Hints wait while you are being hurt or chased.
+func hints_busy() -> bool:
+	if _hurt_ago < Balance.HINT_CALM or player == null or player.dead:
+		return true
+	for e in enemies:
+		if is_instance_valid(e) and e.get("state") != null and e.state == Crawler.S.CHASE \
+				and e.global_position.distance_to(player.global_position) < 10.0 * C:
+			return true
+	return false
+
+
+func _hints(delta: float) -> void:
+	_hurt_ago += delta
+	_hint_t += delta
+	if hud == null or player == null or player.dead:
 		return
-	_tut_t += delta
-	var tips := [
-		["Hold DRILL to bore. Aim UP/DOWN to drill vertically.", 1.0],
-		["Climb ladders with UP. JUMP again in mid-air for a jet burst.", 9.0],
-		["Ore glows. Break seams and collect the chunks.", 17.0],
-		["CHARGE throws a demolition charge. Mind the red ring!", 26.0],
-		["Breaking rock fills SCAF. LADDER raises a ladder from your feet to the ceiling.", 36.0],
-		["Deeper down the ladders run out: drill your own way, cracked rock marks the route.", 48.0],
-		["USE with nothing nearby throws a LURE. Crawlers go to the noise: lead them under loose rock or into water.", 62.0],
-	]
-	if tutorial_step < tips.size() and _tut_t > tips[tutorial_step][1]:
-		hud.hint(tips[tutorial_step][0])
-		tutorial_step += 1
+	if _hint_t > 90.0 and Progress.stats.get("runs", 0) <= 2:
+		hint("lure")
+	if player.heat >= player.heat_cap * Balance.HINT_HEAT:
+		hint("heat")
+	if player.overheated:
+		hint("overheat")
+	_hint_scan_t -= delta
+	if _hint_scan_t > 0.0:
+		return
+	_hint_scan_t = 0.5
+	var pc := grid.world_to_cell(player.global_position)
+	var r := Balance.HINT_SCAN
+	var seen := {}
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			var x := pc.x + dx
+			var y := pc.y + dy
+			if not grid.in_bounds(x, y):
+				continue
+			if grid.get_water(x, y) >= Balance.WATER_MAX / 4:
+				seen["water"] = true
+			if grid.get_lava(x, y) > 0:
+				seen["lava"] = true
+			if grid.get_sand(x, y) >= Balance.SAND_MAX / 2:
+				seen["sand"] = true
+			if absi(dx) <= 2 and absi(dy) <= 2 and grid.get_mat(x, y) == Cell.LADDER:
+				seen["ladder"] = true
+	for k: String in seen:
+		if k == "ladder":
+			hint("ladder")
+		else:
+			discover(k)
+	if steam and steam.density(pc) > 0.0:
+		codex_unlock("hazard:steam")
+	if Game.cargo_count() > 0:
+		for l in lifts:
+			if l.active and l.global_position.distance_to(player.global_position) < 6.0 * C:
+				hint("lift")
 
 
 # ---------------------------------------------------------------------------
@@ -908,6 +985,7 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 			fx.flash(pos, Balance.ore_color(o), 0.45, 0.25)
 			Audio.play_at("ore_rare" if o == Cell.ORE_AETHER else "ore", pos, -3.0)
 			Game.run["ore_mined"] = int(Game.run.get("ore_mined", 0)) + 1
+			Progress.add_stat("ore_mined")
 		# loose ground: some drilled sediment and blasted rubble stays behind
 		# as sand that settles into piles
 		if sand and SandSim.enabled():
@@ -936,9 +1014,8 @@ func add_scaffold(n: int) -> void:
 		return
 	var before := int(Game.run.get("scaffold", 0))
 	Game.run["scaffold"] = mini(scaffold_cap(), before + n)
-	if before < scaffold_cap() and int(Game.run["scaffold"]) >= scaffold_cap() and not Game.run.get("scaffold_tip", false) and hud:
-		Game.run["scaffold_tip"] = true
-		hud.hint("Scaffold full. LADDER raises a ladder from your feet to the ceiling.")
+	if before < scaffold_cap() and int(Game.run["scaffold"]) >= scaffold_cap():
+		hint("scaffold")
 
 
 ## Cells a ladder raised from `from` would fill: straight up to the first solid
@@ -973,6 +1050,7 @@ func build_ladder(by: Player) -> int:
 	var n := mini(cells.size(), afford)
 	Game.run["scaffold"] = energy - Balance.SCAFFOLD_ACTIVATE_COST - n * Balance.SCAFFOLD_CELL_COST
 	Game.run["ladders_built"] = int(Game.run.get("ladders_built", 0)) + 1
+	Progress.add_stat("ladders_built")
 	for i in n:
 		_ladder_queue.append(cells[i])
 	if n < cells.size() and hud:
@@ -1096,6 +1174,8 @@ func reveal_zone(z: int) -> int:
 
 ## A run relic was just taken (RunRelic.take): effects that start at once.
 func on_relic_taken(id: String) -> void:
+	hint("relic")
+	codex_unlock("relic:" + id)
 	match id:
 		"cartographer":
 			for z in Game.run.get("zones_seen", []):
@@ -1623,12 +1703,14 @@ func collect(p: Node) -> void:
 		Game.run["swaps"] = int(Game.run.get("swaps", 0)) + 1
 		toast("SWAPPED %s FOR %s" % [Balance.ore_label(cheap).to_upper(), Balance.ore_label(key).to_upper()])
 	cargo[key] = int(cargo.get(key, 0)) + 1
+	hint("ore")
 	Audio.play("pickup", -6.0, 0.1, 0.02)
 	if hud:
 		hud.pulse_cargo()
 	if Game.cargo_count() >= cargo_cap() and int(Game.run.get("swaps", 0)) == 0 and not _full_warned:
 		_full_warned = true
 		toast("CARGO FULL - better ore now replaces your cheapest")
+		hint("full")
 	p.queue_free()
 
 
@@ -1637,11 +1719,37 @@ var _full_warned := false
 
 func on_enemy_killed(e: Node) -> void:
 	Game.run["kills"] = int(Game.run.get("kills", 0)) + 1
+	Progress.add_stat("kills")
+	codex_unlock("creature:" + codex_kind(e))
 	var src: String = String(e.get("last_hit")) if e.get("last_hit") != null else ""
 	if src in Orders.TERRAIN_SOURCES:
+		Progress.add_stat("terrain_kills")
 		Game.run["terrain_kills"] = int(Game.run.get("terrain_kills", 0)) + 1
 		toast("TERRAIN KILL - %s" % {"rubble": "crushed", "gas": "gassed", "lava": "burned", "prop": "flattened", "water": "drowned", "steam": "scalded", "flood": "swept away", "dry": "left high and dry", "quench": "turned to stone", "fall": "fell to its death"}.get(src, src))
 	enemies.erase(e)
+
+
+## The codex creature id of an enemy (most specific class first).
+static func codex_kind(e: Node) -> String:
+	if e is SporePod:
+		return "spore"
+	if e is BombEater:
+		return "eater"
+	if e is Breaker:
+		return "breaker"
+	if e is Burrower:
+		return "burrower"
+	if e is Eel:
+		return "eel"
+	if e is Slag:
+		return "slag"
+	if e is Flier:
+		return "flier"
+	if e is Brute:
+		return "brute"
+	if e is Sentry:
+		return "sentry"
+	return "crawler"
 
 
 var _orders_t := 0.0

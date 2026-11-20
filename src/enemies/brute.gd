@@ -38,8 +38,6 @@ var spr: Sprite2D
 var mat: ShaderMaterial
 var eye_glow: Sprite2D
 var _step_t := 0.0
-static var _told_plate := false
-static var _told_slam := false
 
 
 func _ready() -> void:
@@ -307,9 +305,7 @@ func _slam() -> void:
 	mine.fx.sparks(global_position + Vector2(facing * HALF.x, -4), Vector2(-facing, -0.5), Color(1.0, 0.85, 0.5))
 	mine.fx.dust(global_position + Vector2(facing * HALF.x, 0), Color(0.8, 0.75, 0.7), 8)
 	stun(Balance.BRUTE_SLAM_STUN)
-	if not _told_slam:
-		_told_slam = true
-		mine.toast("THE BRUTE STUNNED ITSELF - hit it now, the plate is down!")
+	mine.tell_once("t_slam", "THE BRUTE STUNNED ITSELF - hit it now, the plate is down!")
 
 
 ## Does a hit from `from` land on the plate?
@@ -331,9 +327,8 @@ func hit(dmg: float, from: Vector2, knock: bool = true) -> void:
 			mine.fx.sparks(global_position + Vector2(facing * HALF.x, randf_range(-10, 8)), Vector2(facing, -0.4), Color(1.0, 0.85, 0.5))
 		if last_hit == "drill" and randf() < 0.3:
 			Audio.play_at("hit_metal", global_position, -8.0, 0.15, 0.1)
-		if not _told_plate and blocked_hits >= 6:
-			_told_plate = true
-			mine.toast("ITS PLATE STOPS YOUR DRILL - get behind it, or bring the roof down")
+		if blocked_hits >= 6:
+			mine.tell_once("t_plate", "ITS PLATE STOPS YOUR DRILL - get behind it, or bring the roof down")
 	else:
 		flash = 1.0
 		if knock:

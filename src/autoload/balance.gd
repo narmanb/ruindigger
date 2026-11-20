@@ -749,6 +749,17 @@ const MISSIONS := [
 const MISSION_FILL_TICK := 0.25      # s between measurements of the lake bed
 const MISSION_FULL := 0.98           # share of a lake bed that counts as full (the top row never lies quite level)
 
+# --- Contextual hints and the codex ------------------------------------------------
+const HINT_SHOW := 5.0               # s a hint stays up
+const HINT_GAP := 15.0               # s between hints
+const NOTICE_GAP := 2.5              # s after a codex notice
+const HINT_CALM := 3.0               # s since you were last hurt before a hint shows
+const HINT_TOP := 112.0              # px from the top: under the toasts and the orders panel
+const HINT_WIDTH := 320.0
+const HINT_SCAN := 6                 # cells around you checked for water, lava and sand
+const HINT_HEAT := 0.7               # heat share for the "running hot" hint
+const SUMMARY_RECENT := 10.0         # s before a death the run summary looks at
+
 const CONTRACTS := [
 	{"id": "survey", "name": "STANDARD SURVEY", "desc": "Recover the relic. Balanced seams and threats.",
 		"ore": 1.0, "crawlers": 1.0, "gas": 1.0, "bonus": 1.0},

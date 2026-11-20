@@ -18,6 +18,7 @@ var ui_root: Control
 var prompt: Label
 var credits_label: Label
 var toast_label: Label
+var hints: HintStrip
 var _toast_t := 0.0
 var stations: Array = []   # {name, x, label}
 var panel: Control
@@ -241,6 +242,10 @@ func _build_ui() -> void:
 	toast_label.offset_bottom = 60
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ui_root.add_child(toast_label)
+	hints = HintStrip.new()
+	hints.top = 66.0
+	ui_root.add_child(hints)
+	hints.hint("outpost")
 	var touch := TouchControls.new()
 	touch.mine = self
 	touch.show_bar = false
@@ -264,6 +269,10 @@ func _process(delta: float) -> void:
 	_toast_t -= delta
 	toast_label.modulate.a = clampf(_toast_t * 2.0, 0.0, 1.0)
 	var it := nearest_interactable(player)
+	if not it.is_empty():
+		var h: String = {"contracts": "contracts", "demolitions": "demo", "missions": "missions"}.get(String(it["kind"]), "")
+		if h != "":
+			hints.hint(h)
 	if not it.is_empty() and panel == null:
 		var key := "Y" if InputSetup.last_device == "gamepad" else ("USE" if InputSetup.last_device == "touch" else "E")
 		prompt.text = "[%s] %s" % [key, it["label"]]

@@ -11,7 +11,7 @@ var orders_panel: OrdersPanel
 var panels: Control
 var toast_label: Label
 var banner_label: Label
-var hint_label: Label
+var hints: HintStrip
 var prompt_label: Label
 var touch: TouchControls
 var pause_btn: Button
@@ -20,7 +20,6 @@ var fps_label: Label
 var ladder_label: Label
 var _toast_t := 0.0
 var _banner_t := 0.0
-var _hint_t := 0.0
 var _cargo_pulse := 0.0
 var _scaf_pulse := 0.0
 var map_screen: Node
@@ -110,11 +109,8 @@ func _ready() -> void:
 	panels.add_child(pause_btn)
 	toast_label = _center_label(13, UIKit.TEXT, 66)
 	banner_label = _center_label(24, UIKit.AMBER, 130, true)
-	hint_label = _center_label(11, UIKit.TEAL, 0)
-	hint_label.anchor_top = 1.0
-	hint_label.anchor_bottom = 1.0
-	hint_label.offset_top = -40
-	hint_label.offset_bottom = -24
+	hints = HintStrip.new()
+	root.add_child(hints)
 	prompt_label = _center_label(12, UIKit.AMBER, 0, true)
 	prompt_label.anchor_top = 1.0
 	prompt_label.anchor_bottom = 1.0
@@ -197,11 +193,6 @@ func banner(text: String) -> void:
 	_banner_t = 2.2
 
 
-func hint(text: String) -> void:
-	hint_label.text = text
-	_hint_t = 6.0
-
-
 func pulse_cargo() -> void:
 	_cargo_pulse = 1.0
 
@@ -224,12 +215,10 @@ func open_cargo() -> void:
 func _process(delta: float) -> void:
 	_toast_t -= delta
 	_banner_t -= delta
-	_hint_t -= delta
 	_cargo_pulse = maxf(0.0, _cargo_pulse - delta * 3.0)
 	_scaf_pulse = maxf(0.0, _scaf_pulse - delta * 2.0)
 	toast_label.modulate.a = clampf(_toast_t * 2.0, 0.0, 1.0)
 	banner_label.modulate.a = clampf(_banner_t * 1.5, 0.0, 1.0)
-	hint_label.modulate.a = clampf(_hint_t, 0.0, 1.0)
 	var it: Dictionary = mine.nearest_interactable(mine.player) if mine.player else {}
 	if not it.is_empty() and not touch.visible:
 		var key := "Y" if InputSetup.last_device == "gamepad" else "E"

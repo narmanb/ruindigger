@@ -498,6 +498,8 @@ class GasSystem extends Node2D:
 		vents.append({"pos": centre, "t": Balance.GAS_TELEGRAPH, "size": cluster.size()})
 		Audio.play_at("gas_warn", centre, 0.0)
 		mine.toast("GAS POCKET RUPTURED - back off!")
+		if mine.has_method("discover"):
+			mine.discover("gas")
 
 	## Gas seeping out of the rock at a point (pressure events): same warning
 	## and cloud as a ruptured pocket, without a pocket.
@@ -505,6 +507,8 @@ class GasSystem extends Node2D:
 		vents.append({"pos": pos, "t": Balance.GAS_TELEGRAPH * 1.4, "size": size})
 		Audio.play_at("gas_warn", pos, 0.0)
 		mine.toast("GAS SEEPING FROM THE ROCK - back off!")
+		if mine.has_method("discover"):
+			mine.discover("gas")
 
 	func ignite_near(pos: Vector2, radius: float) -> void:
 		for v in vents.duplicate():
@@ -538,6 +542,7 @@ class GasSystem extends Node2D:
 				mine.fx.gas_puff(c["pos"] + Vector2(cos(a), sin(a)) * randf() * c["r"])
 			if pl and pl.global_position.distance_to(c["pos"]) < c["r"]:
 				# gas bypasses invulnerability frames as a slow, steady burn
+				Game.note_damage(minf(Balance.GAS_DPS * delta, pl.hp), "toxic gas")
 				pl.hp -= Balance.GAS_DPS * delta
 				if pl.hp <= 0.0:
 					pl.hp = 0.0
@@ -765,6 +770,8 @@ class Collapse extends Node2D:
 			mine.shake(0.12)
 		if pending.size() == 1:
 			mine.toast("The ceiling is giving way!")
+		if mine.player and mine.has_method("discover") and mine.grid.cell_center(c).distance_to(mine.player.global_position) < 10.0 * Balance.CELL:
+			mine.discover("collapse")
 
 	var _dribble_t := 0.0
 

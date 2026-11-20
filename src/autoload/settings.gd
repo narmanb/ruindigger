@@ -26,6 +26,7 @@ const DEFAULTS := {
 	"jump_grabs_ladders": false,
 	"sand_physics": 2,
 	"touch_diag": false,     # show the DIAG (diagonal drill) touch button
+	"hints": true,           # contextual hints (each shows once per save)
 	"gadget_bar_open": true,  # touch gadget toolbar expanded (remembered)      # 0 off, 1 low, 2 normal, 3 high (see Balance.SAND_LEVELS)
 	# layout offsets (viewport px) dragged in the layout editor
 	"pos_move_x": 0.0, "pos_move_y": 0.0,

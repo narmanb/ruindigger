@@ -38,11 +38,12 @@ func _ready() -> void:
 	menu.anchor_bottom = 1.0
 	menu.offset_left = -80
 	menu.offset_right = 80
-	menu.offset_top = -170
+	menu.offset_top = -196
 	menu.offset_bottom = -40
 	add_child(menu)
 	var start := UIKit.button("START", func() -> void: Game.goto("outpost"), 160)
 	menu.add_child(start)
+	menu.add_child(UIKit.button("CODEX", _codex, 160))
 	menu.add_child(UIKit.button("SETTINGS", _settings, 160))
 	if OS.get_name() not in ["Android", "iOS", "Web"]:
 		menu.add_child(UIKit.button("QUIT", func() -> void: get_tree().quit(), 160))
@@ -98,6 +99,15 @@ func _settings() -> void:
 	sp.closed.connect(func() -> void:
 		menu.visible = true
 		menu.get_child(0).grab_focus())
+
+
+func _codex() -> void:
+	menu.visible = false
+	var cp := CodexPanel.new()
+	add_child(cp)
+	cp.closed.connect(func() -> void:
+		menu.visible = true
+		menu.get_child(1).grab_focus())
 
 
 class Logo extends Control:

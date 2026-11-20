@@ -8,7 +8,6 @@ extends PoolDweller
 ## on it, or throw cryo.
 
 var quenched := false
-static var _told := false
 
 
 func _ready() -> void:
@@ -83,9 +82,7 @@ func quench(cause: String = "quench") -> bool:
 	mine.fx.dust(pos, Color(0.85, 0.85, 0.9), 10)
 	mine.fx.burst(pos, Color(0.5, 0.5, 0.55), 12)
 	Audio.play_at("gas_hiss", pos, 0.0, 0.2, 0.0)
-	if not _told:
-		_told = true
-		mine.toast("THE SALAMANDER SET INTO STONE - there is aetherite in it")
+	mine.tell_once("t_quench", "THE SALAMANDER SET INTO STONE - there is aetherite in it")
 	die()
 	return placed
 

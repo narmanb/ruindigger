@@ -301,6 +301,67 @@ func bargain_pay_for(ore_credits: int) -> int:
 	return int(round(float(ore_credits) * missing * Balance.BARGAIN_MAX))
 
 
+## Log damage to the digger for the run summary. Hits from the same cause
+## within a second are merged (gas and steam burn every frame).
+func note_damage(amount: float, cause: String) -> void:
+	if run.is_empty() or amount <= 0.0:
+		return
+	var t := float(run.get("time", 0.0))
+	var hlog: Array = run.get("hurt_log", [])
+	if not hlog.is_empty() and String(hlog[-1][2]) == cause and t - float(hlog[-1][0]) < 1.0:
+		hlog[-1][0] = t
+		hlog[-1][1] = float(hlog[-1][1]) + amount
+	else:
+		hlog.append([t, amount, cause])
+	run["hurt_log"] = hlog
+
+
+## A few plain lines on how the dive went: what got you, and from where.
+func run_summary(extracted: bool, cause: String) -> Array:
+	var out: Array = []
+	var t := float(run.get("time", 0.0))
+	var zone := int(run.get("zone", -1))
+	var where := ""
+	if in_mission():
+		where = ""
+	elif zone >= 0 and zone < Balance.STRATUM_NAMES.size():
+		where = " in %s" % String(Balance.STRATUM_NAMES[zone]).capitalize()
+	var hlog: Array = run.get("hurt_log", [])
+	var total := 0.0
+	var by_cause: Dictionary = {}
+	var recent: Dictionary = {}
+	for e: Array in hlog:
+		total += float(e[1])
+		by_cause[e[2]] = float(by_cause.get(e[2], 0.0)) + float(e[1])
+		if t - float(e[0]) <= Balance.SUMMARY_RECENT:
+			recent[e[2]] = float(recent.get(e[2], 0.0)) + float(e[1])
+	if not extracted:
+		if cause == "abandoned contract":
+			out.append("You called the dive off%s, %s in." % [where, _clock(t)])
+		else:
+			out.append("Killed by %s%s, %s in." % [cause if cause != "" else "something", where, _clock(t)])
+			if not recent.is_empty():
+				out.append("Last %d s: %s." % [int(Balance.SUMMARY_RECENT), _causes(recent)])
+	else:
+		out.append("Out in %s%s." % [_clock(t), " with no damage taken" if total <= 0.0 else ""])
+	if total > 0.0 and (extracted or by_cause.size() > recent.size()):
+		out.append("Damage taken: %d (%s)." % [int(round(total)), _causes(by_cause)])
+	return out
+
+
+func _causes(d: Dictionary) -> String:
+	var keys: Array = d.keys()
+	keys.sort_custom(func(a: Variant, b: Variant) -> bool: return float(d[a]) > float(d[b]))
+	var parts: Array = []
+	for k in keys.slice(0, 3):
+		parts.append("%s %d" % [k, int(round(float(d[k])))])
+	return ", ".join(parts)
+
+
+func _clock(s: float) -> String:
+	return "%d:%02d" % [int(s) / 60, int(s) % 60]
+
+
 func end_run(extracted: bool, cause: String = "") -> void:
 	var cargo: Dictionary = run.get("cargo", {}).duplicate()
 	var credits := 0
@@ -331,12 +392,26 @@ func end_run(extracted: bool, cause: String = "") -> void:
 	var depth_m := int(run.get("max_depth", 0) * Balance.METERS_PER_CELL)
 	var mission_id := String(run.get("mission", ""))
 	var mission_won := mission_id != "" and extracted and mission_goal_met()
+	var depth_record := false
 	if mission_id == "":
 		# a mission's map has its own depths: they do not count as how deep
 		# you have been in the mine
+		depth_record = depth_m > int(Progress.stats.get("best_depth", 0))
 		Progress.stats["best_depth"] = maxi(int(Progress.stats.get("best_depth", 0)), depth_m)
 	var mission_first := Progress.complete_mission(mission_id) if mission_won else false
-	Progress.add_credits(credits + relic_bonus + finds_bonus + deep_bonus + orders_bonus + mod_pay + bargain_pay)
+	var mission_best := Progress.record_mission_time(mission_id, float(run.get("time", 0.0))) if mission_won else false
+	var earned := credits + relic_bonus + finds_bonus + deep_bonus + orders_bonus + mod_pay + bargain_pay
+	var records: Array = []
+	if extracted and Progress.record_max("best_haul", earned) and earned > 0:
+		records.append("best haul")
+	if depth_record:
+		records.append("best depth")
+	if Progress.record_max("most_kills", int(run.get("kills", 0))):
+		records.append("most kills")
+	Progress.record_max("longest_run", int(run.get("time", 0.0)))
+	if mission_best:
+		records.append("fastest mission")
+	Progress.add_credits(earned)
 	Progress.tutorial_done = true
 	Progress.save_progress()
 	last_result = {
@@ -349,6 +424,7 @@ func end_run(extracted: bool, cause: String = "") -> void:
 		"kills": run.get("kills", 0), "time": run.get("time", 0.0), "seed": run.get("seed", 0),
 		"contract": String(run.get("contract", {}).get("name", contract.get("name", ""))) if mission_id != "" else contract.get("name", ""),
 		"mission": mission_id, "mission_won": mission_won, "mission_first": mission_first,
+		"records": records, "summary": run_summary(extracted, cause),
 	}
 	roll_contracts()
 	goto("results")

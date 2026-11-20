@@ -46,6 +46,13 @@ func _ready() -> void:
 	_slider(list, "Effects volume", "sfx_volume", 0.0, 1.0, 0.05)
 	_slider(list, "Music volume", "music_volume", 0.0, 1.0, 0.05)
 	_slider(list, "Screen shake", "screen_shake", 0.0, 1.0, 0.1)
+	_toggle(list, "Hints", "hints")
+	var hint_btn := UIKit.button("RESET HINTS", func() -> void: pass, 200.0)
+	hint_btn.pressed.connect(func() -> void:
+		Progress.reset_hints()
+		hint_btn.text = "HINTS WILL SHOW AGAIN"
+		Audio.play("ui_confirm"))
+	list.add_child(hint_btn)
 	_toggle(list, "Reduced flashing", "reduced_flashing")
 	_toggle(list, "Low effects mode", "low_effects")
 	_toggle(list, "30 FPS cap (battery)", "fps_30")

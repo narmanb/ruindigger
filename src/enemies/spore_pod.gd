@@ -9,7 +9,6 @@ extends Flier
 var swell_t := -1.0
 var blasted := false              # the hit that killed it was a blast
 var burst := ""                   # how it ended: "gas" or "fire"
-static var _told := false
 
 
 func _ready() -> void:
@@ -67,9 +66,7 @@ func die() -> void:
 	else:
 		mine.gas.vents.append({"pos": pos, "t": Balance.GAS_TELEGRAPH, "size": Balance.SPORE_GAS})
 		Audio.play_at("gas_warn", pos, 0.0)
-		if not _told:
-			_told = true
-			mine.toast("A SPORE POD BURST - gas! A blast would have set it alight")
+		mine.tell_once("t_spore", "A SPORE POD BURST - gas! A blast would have set it alight")
 
 
 func _visual() -> void:

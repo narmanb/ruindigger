@@ -480,6 +480,8 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 		global_position.x = move_toward(global_position.x, cx, 70.0 * delta)
 	elif drill_dir.x != 0 and drill_dir.y < 0:
 		_diag_climb(delta)
+	elif drill_dir.y == 0 and is_on_floor() and mine and _facing_step():
+		mine.hint("diag")
 	drill_tick -= delta
 	var heat_mult := 0.25
 	for t0 in targets:
@@ -510,6 +512,8 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 		if drill_blocked and _blocked_msg_t <= 0.0 and mine:
 			_blocked_msg_t = 2.0
 			mine.toast("Too tough - needs DRILL Mk.IV" if grid.get_mat(targets[0].x, targets[0].y) == Cell.ALLOY else "Indestructible")
+			var bm := grid.get_mat(targets[0].x, targets[0].y)
+			mine.hint("bedrock" if bm == Cell.BEDROCK or grid.has_flag(targets[0].x, targets[0].y, Cell.F_PROTECTED) else "tier")
 		_shake_t = 0.06
 		if drill_dir.y > 0 and hit_any:
 			velocity.y = minf(velocity.y, 30.0)
@@ -537,6 +541,13 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 ## Diagonal drilling: stay centred in your column, and once the step ahead
 ## is cut (the cell in front is solid with two open cells above it, and you
 ## have headroom), hop up onto it.
+## A one-cell step in front of the feet, with room to stand on it.
+func _facing_step() -> bool:
+	var f := feet_cell()
+	var fx := f.x + facing
+	return grid.is_solid(fx, f.y) and not grid.is_solid(fx, f.y - 1) and not grid.is_solid(fx, f.y - 2) and not grid.is_solid(f.x, f.y - 2)
+
+
 func _diag_climb(delta: float) -> void:
 	var f := feet_cell()
 	var cxp := (f.x + 0.5) * C
@@ -706,6 +717,9 @@ func use_explosive(slot: int, ay: float) -> void:
 		Audio.play("ui_deny")
 		return
 	Game.run[key] = int(Game.run[key]) - 1
+	Progress.add_stat("explosives_used")
+	mine.hint("x_" + kind)
+	mine.codex_unlock("explosive:" + kind)
 	match kind:
 		"rocket":
 			var dir := Vector2i(facing, 0)
@@ -733,6 +747,7 @@ func use_explosive(slot: int, ay: float) -> void:
 func take_damage(amount: float, from: Vector2 = Vector2.INF, cause: String = "hazard") -> void:
 	if dead or invuln > 0.0 or amount <= 0.0:
 		return
+	Game.note_damage(minf(amount, hp), cause)
 	hp -= amount
 	invuln = Balance.INVULN_TIME
 	_hurt_t = 0.3

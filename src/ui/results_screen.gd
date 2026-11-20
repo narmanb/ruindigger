@@ -38,8 +38,13 @@ func _ready() -> void:
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(list)
-	if not ok:
-		list.add_child(UIKit.label("Cause: %s" % r.get("cause", "unknown"), 11, UIKit.TEXT))
+	for line: String in r.get("summary", []):
+		var sl := UIKit.label(line, 11, UIKit.TEXT)
+		sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list.add_child(sl)
+	var recs: Array = r.get("records", [])
+	if not recs.is_empty():
+		list.add_child(UIKit.label("NEW RECORD: %s" % ", ".join(recs).to_upper(), 11, UIKit.AMBER, true))
 	var cargo: Dictionary = r.get("cargo", {})
 	if cargo.is_empty():
 		list.add_child(UIKit.label("No cargo recovered.", 11, UIKit.MUTED))

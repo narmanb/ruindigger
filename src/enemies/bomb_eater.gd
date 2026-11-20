@@ -15,7 +15,6 @@ var fuse_t := -1.0
 var _scan_t := 0.0
 var _bomb: Node2D = null
 var _blink := 0.0
-static var _told := false
 
 
 func _ready() -> void:
@@ -101,9 +100,7 @@ func _swallow(b: Node2D) -> void:
 	flash = 1.0
 	Audio.play_at("crawler_bite", global_position, 0.0)
 	Audio.play_at("fuse", global_position, 0.0)
-	if not _told:
-		_told = true
-		mine.toast("A BOMB-EATER SWALLOWED YOUR CHARGE - it's coming back with it!")
+	mine.tell_once("t_eater", "A BOMB-EATER SWALLOWED YOUR CHARGE - it's coming back with it!")
 
 
 ## It has a bomb: it knows where you are and comes straight for you.

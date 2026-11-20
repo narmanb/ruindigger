@@ -47,6 +47,7 @@ func _ready() -> void:
 			pb.text = "COPIED - PASTE IT ANYWHERE" if Perf.copy_report() else "TOO SOON - PLAY A LITTLE FIRST"
 			Audio.play("ui_confirm"))
 		v.add_child(pb)
+	v.add_child(UIKit.button("CODEX", _codex))
 	v.add_child(UIKit.button("SETTINGS", _settings))
 	v.add_child(UIKit.button("ABANDON RUN", _abandon))
 	var c: Dictionary = Game.run.get("contract", {})
@@ -140,6 +141,16 @@ func _settings() -> void:
 	var sp := SettingsPanel.new()
 	root.add_child(sp)
 	sp.closed.connect(func() -> void:
+		layout.visible = true
+		resume_btn.grab_focus())
+
+
+func _codex() -> void:
+	var layout := panel.get_parent() as Control
+	layout.visible = false
+	var cp := CodexPanel.new()
+	root.add_child(cp)
+	cp.closed.connect(func() -> void:
 		layout.visible = true
 		resume_btn.grab_focus())
 
