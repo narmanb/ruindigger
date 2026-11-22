@@ -92,3 +92,62 @@ the start and the deep half familiar, and is easy to undo (the branch).
 With B, each upper flank has room for a stable 20 x 8 footprint well away from
 the shaft. A future Molefolk village could claim one in `GenSpace` as an
 `anchor`, the same way the relay station does. Nothing is reserved yet.
+
+## Phases 2-4: what was built
+
+- `Balance.UPPER_X0/X1` (6, 122): the Dustworks and Spore Veins rectangles span
+  them. `CORE_X0/X1` (28, 100) stay as the **anchor column**: the lift room,
+  timber shaft, relay station, shelf gates, relic and route centre use them,
+  so all of those are exactly where they were.
+- Bedrock claims (`flank_w`, `flank_e`, `shelf`) follow the new width. Worm
+  burrows: one extra in each side region. Landmarks placed "by rows only" and
+  the fossil band use the full upper width.
+- `LayoutPlanner._flanks`: each upper zone tries for one optional chamber in
+  each side region (halls/terraces/fissures; never on the backbone).
+  `MineGenerator._flank_links`: Spore Veins side caverns tunnel to the shelf
+  gate on their side, a second way down to that wing.
+- Budgets stay per zone (ore veins back to the original counts; Spore Veins
+  crawlers 5 -> 6). Ore value rises ~7% from the extra rooms' wall seams.
+- Bugs found on the way (both affect normal mines too):
+  - `_connect_secret` (survey post passages) cut through other features'
+    sealed water walls. Seed 861598 / quiet drained a floodgate reservoir and
+    took 10.7 s to settle. It now stops at sealed walls.
+  - Run relic choice pairs were only tried at the first relic spot; the wider
+    layout often put that in a cramped burrow (1 of 8 test maps had a pair).
+    The pair now goes to the first picked spot with room, or the best-ranked
+    other spot with room replaces the first pick.
+- Debug helpers: `RD_LEAK=1` (where each water feature escapes before
+  settling), `RD_NEAR=x,y` in gen_dump (landmarks/chambers near a cell),
+  `RD_CELL` now also traces after each landmark.
+
+## Baseline vs experiment (500 seed x contract combinations each)
+
+| Metric (mean) | Baseline (`8216549`) | Experiment |
+|---|---|---|
+| invalid or repaired | 0 | 0 |
+| traps | 0 | 0 |
+| bedrock share of the map | 31.2% | 9.7% |
+| open cells | 6,447 | 8,183 (+27%) |
+| open cells in the old side margins | 0 | 1,502 |
+| chambers (optional) | 15.5 (10.0) | 19.4 (13.8) |
+| side caverns / gate links | 0 / 0 | 4.6 / 2.0 |
+| loops / branches | 3.5 / 14.7 | 5.5 / 18.5 |
+| DigCheck spawn -> relic door | 37.6 s | 37.3 s |
+| DigCheck climb back up | 78.2 s | 75.2 s |
+| first reward (cells from spawn) | 25.3 | 30.3 |
+| ore value | 17,912 | 19,157 (+7%) |
+| crawlers | 14.6 | 15.2 |
+| water units | 20,296 | 21,949 |
+| generation ms mean / max | 1,209 / 3,572 | 1,490 / 2,350 |
+
+Desktop numbers (this container, headless). Not measured on a phone.
+The quickest route is as quick as before; the gain is space and options.
+
+Before/after maps for seeds 7, 1000, 8919, 42, 31337 and 77777 are made with
+`gen_dump` (see the build folder notes above); a sheet was sent to the owner.
+
+## For the playtest (owner's questions from the brief)
+Does the start feel familiar but less cramped? Do you want to go and look at
+the sides? Are the side caverns worth it or dead ends? Can you still go down
+fast? Is it easy to find the way back? Does it feel bigger? Is layout the
+bigger issue, or does it still need a larger world?

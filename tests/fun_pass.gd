@@ -29,6 +29,7 @@ static func run(t: Node) -> void:
 			"ladders": await ladder_blasts(t)
 			"dock": await dock(t)
 			"feel": await feel(t)
+			"relics": await relics(t)
 		return
 	await economy(t)
 	await orders(t)

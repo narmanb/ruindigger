@@ -54,24 +54,48 @@ static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: Packed
 	if not deep:
 		# relics marked "deep" belong to The First Civilization only
 		ids = ids.filter(func(id: int) -> bool: return not bool(Balance.RUN_RELICS[id].get("deep", false)))
+	# a choice: a second, different relic three or four cells along the same
+	# floor (taking one makes the other crumble). It goes to the first picked
+	# spot with room beside it; if none has room, the best-ranked spot that
+	# does (and keeps its distance from the others) replaces the first pick.
+	var mate_of := func(c: Vector2i) -> Vector2i:
+		for dx in [3, -3, 4, -4]:
+			var m := Vector2i(c.x + dx, c.y)
+			if not g.in_bounds(m.x, m.y + 1):
+				continue
+			var i := g.idx(m.x, m.y)
+			if reachable[i] < DigCheck.UNREACHED and escape[i] == 1 and g.get_mat(m.x, m.y) == Cell.AIR \
+					and g.get_mat(m.x, m.y - 1) == Cell.AIR and g.is_solid(m.x, m.y + 1) and g.water[i] == 0 and g.lava[i] == 0 and g.lava[i + g.w] == 0 \
+					and not occupied.has(m) and not (g.get_mat(m.x, m.y + 1) in [Cell.GAS, Cell.LOOSE]):
+				return m
+		return Vector2i(-1, -1)
+	if pair_first and not picked.is_empty():
+		var any := false
+		for c in picked:
+			if (mate_of.call(c) as Vector2i).x >= 0:
+				any = true
+				break
+		if not any:
+			for cand in cands:
+				var c2: Vector2i = cand[1]
+				if (mate_of.call(c2) as Vector2i).x < 0:
+					continue
+				var far := true
+				for p in picked.slice(1) + avoid:
+					if Vector2(c2 - (p as Vector2i)).length() < Balance.RUN_RELIC_SEP:
+						far = false
+						break
+				if far:
+					picked[0] = c2
+					break
 	var out: Array = []
 	var next := 0
 	var paired := false
 	for k in picked.size():
 		var c: Vector2i = picked[k]
 		var mate := Vector2i(-1, -1)
-		# the choice pair goes to the first picked spot with room beside it
 		if pair_first and not paired:
-			# a choice: a second, different relic three cells along the same
-			# floor. Taking one makes the other crumble.
-			for dx in [3, -3, 4, -4]:
-				var m := Vector2i(c.x + dx, c.y)
-				var i := g.idx(m.x, m.y)
-				if g.in_bounds(m.x, m.y) and reachable[i] < DigCheck.UNREACHED and escape[i] == 1 and g.get_mat(m.x, m.y) == Cell.AIR \
-						and g.get_mat(m.x, m.y - 1) == Cell.AIR and g.is_solid(m.x, m.y + 1) and g.water[i] == 0 and g.lava[i] == 0 and g.lava[i + g.w] == 0 \
-						and not occupied.has(m) and not (g.get_mat(m.x, m.y + 1) in [Cell.GAS, Cell.LOOSE]):
-					mate = m
-					break
+			mate = mate_of.call(c)
 		paired = paired or mate.x >= 0
 		var group := 1 if mate.x >= 0 else 0
 		out.append({"id": ids[next % ids.size()], "cell": c, "group": group})

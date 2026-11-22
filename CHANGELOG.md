@@ -7,7 +7,7 @@
 - **Side caverns.** Each of the two upper zones tries for an optional chamber on each side, out in the new space, with its own tunnel back. The usual caves, worm burrows, landmarks, water pockets, gas, ore and crawlers spread into the new rock too.
 - **A second way down.** Side caverns in the Spore Veins also tunnel to the shelf gate on their side, so you can come down the main trunk or swing out through a side cavern to that wing's gate.
 - **Not inflated.** Ore and crawler counts are budgets per zone, so they spread over the wider rock instead of growing with it. The extra side caverns bring their own small ore seams, and the Spore Veins get one more crawler so the wider caves aren't empty.
-- **Relic choice pairs** now go to the first relic spot with room beside it (they were only ever tried at one spot, which in the wider layout was often a cramped burrow).
+- **Relic choice pairs** now go to the first relic spot with room beside it, or to the best other spot that has room (they were only ever tried at one spot, which in the wider layout was often a cramped burrow).
 - **Fix (also affects normal mines):** the hidden passage from a survey post could cut through a sealed water reservoir's wall, draining it while the mine was being built and once taking 10 seconds to generate. It now stops at sealed walls.
 
 ## 0.21.0
