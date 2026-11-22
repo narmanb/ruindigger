@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.21.0
+**Game feel polish**
+- **New setting: Game Feel Intensity** (Settings, under Screen shake): Off, Subtle, Normal (the default) or Strong. It controls the extras added in this update: drill recoil, impact dust, the landing bounce, and the new camera knocks. Off turns all of them off and leaves everything else as it was. Screen shake keeps its own slider; at 0 the camera never shakes, whatever this is set to. Reduced Flashing still caps flashes at Strong, and Low Effects still turns the decorative extras off.
+- **The drill pushes back.** When the bit meets rock, the arm is knocked back a couple of pixels and springs back. Sediment gives a little, basalt more, and rock you can't cut (bedrock, alloy, protected walls) shoves hardest, with sparks and no chips, so it never looks like it's doing damage. Breaking through gives a last snap. Only the drawing moves: aiming, targets, dig speed and heat are exactly the same. The spring never overshoots, so the drill tip never pokes past where it really cuts, and it behaves the same at 30 and 60 FPS.
+- **Rock breaks by material.** Sediment breaks with more dust and a soft puff; basalt and harder rock break into chunks. Chips while drilling are lighter on sediment and heavier on hard rock.
+- **Smoother, smarter camera shake.** The shake now wobbles smoothly instead of jumping to a new random spot every frame, and it's capped. A blast's shake depends on how far it is: a charge going off next to you shakes as before, one at the edge of the screen less, and one far off screen not at all. Bigger blasts (a bomb-eater) shake a little more than small ones (a shear charge).
+- **Blasts are sized.** Small blasts make a smaller burst; big ones a second fireball and more debris. At Normal and Strong a wider ring of dust and a spray of chips go with the bigger ones.
+- **Rockfalls land with weight.** Rubble and boulders landing near you kick up dust and give a short knock. When a dozen blocks land at once, the camera takes one knock instead of twelve.
+- **Heavy landings.** A long fall squashes the digger's sprite for a moment and puffs up dust; a really hard one gives a small knock. Fall damage and controls are unchanged.
+- **Water breaches.** When a strong jet of water first bursts out near you, it splashes in the direction it's going, with a small knock. A stream that keeps running stays quiet.
+- **Gas fireballs** flash a little brighter at Strong (Reduced Flashing caps it). **Kills** get a small finishing burst; a brute or a sentry also gives a small knock.
+- **Effects fixes:**
+  - Asking for a bigger or smaller burst of particles now actually changes the size (before, every burst was the same size, whatever was asked for).
+  - A flash light reused for a new flash could be switched off early by the old flash's fade. Fixed: each light belongs to its newest flash.
+  - Low Effects used to drop half of all effects at random, warnings included. Now it keeps every effect but makes each one smaller, and drops only the decorative extras. Hazard warnings (dust from a crumbling ceiling, loose basalt about to drop, a breaker gnawing, a burrower breaking through, a gas vent) always show.
+  - Effects far off screen are skipped, and the decorative extras have a small budget per frame, so a big chain of explosions can't pile up hundreds of emitters.
+- Not added: "hitstop" (freezing the action for a split second on a big hit). The water, sand and lava keep running in real time, and freezing them, even briefly, risked more than it added.
+
 ## 0.20.0
 **The codex, hints, a run summary, the Dry Dock mission, a meaner bomb-eater, and ladders that break**
 - **CODEX** (title screen and the pause menu). Tabs for Creatures, Hazards, Explosives, Relics, Zones, Records and Hints.

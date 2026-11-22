@@ -1071,7 +1071,7 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 		var s := grid.get_stratum(c.x, c.y)
 		var cls := Cell.sound_class(m)
 		# a cell giving way: sediment puffs, hard rock breaks into chunks
-		fx.burst(pos, Cell.debris_color(m, s), 8 if cls == "soft" else 18)
+		fx.burst(pos, Cell.debris_color(m, s), 8 if cls == "soft" else 10)
 		fx.dust(pos, Cell.debris_color(m, s), 12 if cls == "soft" else 6)
 		if source == "drill":
 			if cls == "soft":

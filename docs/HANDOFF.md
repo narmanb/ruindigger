@@ -1,6 +1,6 @@
 # Handoff: state of Ruin Digger (read this first in a new session)
 
-Last updated at version **0.20.0** (Android code 35). **`main` is the
+Last updated at version **0.21.0** (Android code 36). **`main` is the
 up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 
 ## Branches
@@ -39,7 +39,7 @@ up-to-date branch** (merged with `feature/fun-pass` at 0.9.0 on 2026-11-16).
 ## Tests
 `TEST_TIMEOUT=1500 ./tools/run_tests.sh` runs these suites: terrain, physics,
 save, ui, gen, game, lava, deep and fun. Also run `cargo`, `water_live` and
-`structures` separately. All are green at 0.20.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|eater|roamers_c|charges|drops|perf|missions|diag|codex|ladders|dock`
+`structures` separately. All are green at 0.21.0. Run one section of the fun suite with `suite=fun only=roamers|roamers_b|eater|roamers_c|charges|drops|perf|missions|diag|codex|ladders|dock|feel`
 (add more names in `FunPass.run`); loop it to chase an intermittent failure.
 Note: `t._frames(n)` waits on
 physics ticks; headless runs space idle `_process` frames out more, so a test
@@ -49,10 +49,28 @@ parse error makes a headless run hang. The screenshot harness is
 `decor=<kind>`, `sandtest=1`, `kitdemo=1`, `pourtest=1|2`,
 `drill_left=1 stopat=N back=N`, `touch_mode=1`, `gadget_bar_open=0`,
 `allrelics=1`, `cargo_open=1 [cargo_end=1]`, `hintdemo=1`, `codex=1 [tab=records]`,
-`eaterdemo=1 [fuse=N]`, `ladderblast=1 [boom=N]`, `screen=mission mission=dock [dockpour=0|1 px=N]`,
+`eaterdemo=1 [fuse=N]`, `game_feel=0..3`, `rockwall=HARD|SOFT|ALLOY`, `boomat=N`, `ladderblast=1 [boom=N]`, `screen=mission mission=dock [dockpour=0|1 px=N]`,
 `--resolution 1846x852` (the owner's phone ratio).
 
 ## What exists (newest first)
+- **0.21.0:** game feel pass (owner's brief, 2026-11-21). Presentation only.
+  - Setting `game_feel` 0..3 (Off/Subtle/Normal/Strong), `Settings.feel(key)`
+    reads `Balance.FEEL[level]` (recoil, squash, decor, impact, flash), with
+    Reduced Flashing capping flash and Low Effects zeroing decor. Screen Shake
+    stays the master scale (0 = no camera offset, checked in tests).
+  - `Fx`: requests n particles -> 1..3 pooled emitters (`Fx.UNIT`, `emitters_for`);
+    priorities `Fx.ESSENTIAL` (hazard telegraphs, blast core; always), `NORMAL`
+    (one emitter under Low Effects; skipped off screen), `DECOR` (needs feel >
+    Off, no Low Effects, `FX_DECOR_PER_FRAME` budget). Lights own their fade
+    tween (`_light_tw`), killed on reuse.
+  - Player: `drill_kick(kind)` from `Mine.drill_cell`; `_step_recoil` is a
+    critically damped spring in 1/120 s slices, clamped >= 0 (never past rest);
+    landing squash `_squash_t`. The dead `_shake_t` is gone.
+  - Mine: `shake_at(pos, amount)` (SHAKE_NEAR/FAR), `impact_shake` (new knocks,
+    x feel "impact"), `rockfall(pos)` batched once per frame, smooth-noise
+    camera offset capped at `SHAKE_MAX_PX`, `_breach_check` reads
+    `WaterPressure.peak_speed/peak_at` (observed in `_emit_jet`, read-only).
+  - No hitstop (by design; see the brief). Phase F (HUD springs) not done.
 - **0.20.0:** codex, records, contextual hints, run summary, The Dry Dock,
   bomb-eater rework, blasts break ladders, sand fixes.
   - Codex/hints text lives in `src/world/codex_data.gd` (`CodexData`): creature

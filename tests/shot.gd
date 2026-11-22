@@ -275,7 +275,7 @@ func _process(_d: float) -> void:
 	if mine and args.has("charge") and frame == 40:
 		mine.player.input_override = {"charge_just": true, "x": 0.0}
 	if frame == 2:
-		for k in ["move_control", "touch_mode", "camera_zoom", "stick_size", "gadget_bar_open", "touch_scale", "touch_diag"]:
+		for k in ["move_control", "touch_mode", "camera_zoom", "stick_size", "gadget_bar_open", "touch_scale", "touch_diag", "game_feel"]:
 			if args.has(k):
 				Settings.values[k] = Settings._sanitize(k, float(args[k]) if k in ["camera_zoom", "stick_size", "touch_scale"] else int(args[k]))
 		Settings.changed.emit()
@@ -495,6 +495,20 @@ func _process(_d: float) -> void:
 			if String(lm["kind"]) == "hopper":
 				for dx in 2:
 					mine.damage_cell(lm["plug"] + Vector2i(dx, 0), 999.0, 9, true, "drill")
+	# rockwall=HARD|SOFT|ALLOY: a wall of that rock right in front of the digger
+	if mine and args.has("rockwall") and frame == 20 and mine.get("player") != null:
+		var g: TerrainGrid = mine.grid
+		var pc: Vector2i = g.world_to_cell(mine.player.global_position)
+		var mat: int = {"HARD": Cell.HARD, "SOFT": Cell.SOFT, "ALLOY": Cell.ALLOY}.get(String(args["rockwall"]), Cell.HARD)
+		for x in range(pc.x + 1, pc.x + 4):
+			for y in range(pc.y - 2, pc.y + 1):
+				g.set_flag(x, y, Cell.F_PROTECTED, false)
+				g.set_mat(x, y, mat)
+		mine.player.facing = 1
+	# boomat=N: a charge goes off 3 cells in front of the digger at frame N
+	if mine and args.has("boomat") and frame == int(args["boomat"]) and mine.get("player") != null:
+		mine.player.invuln = 1e9
+		mine.charge_blast(mine.player.global_position + Vector2(48, -6))
 	if mine and args.has("hintdemo") and frame == 20 and mine.get("hud") != null:
 		mine.hud.hints._gap = 0.0
 	if mine and args.has("codex") and frame == target - 5 and mine.get("hud") != null:
