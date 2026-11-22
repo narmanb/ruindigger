@@ -1419,6 +1419,9 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 		for dy in range(-2, 1):
 			if g.has_flag(x, fy + dy, Cell.F_PROTECTED) or g.get_mat(x, fy + dy) == Cell.BEDROCK:
 				return
+			# never through another feature's sealed water container (its own walls are fine)
+			if sealed.has(Vector2i(x, fy + dy)) and not r.grow(1).has_point(Vector2i(x, fy + dy)):
+				return
 			if reserved.has(Vector2i(x, fy + dy)):
 				col_reserved = true
 		for dy in range(-2, 1):
@@ -1446,6 +1449,8 @@ func _connect_secret(r: Rect2i, wall_mat: int) -> void:
 		y += ystep
 		for xx in [x, x + 1]:
 			if g.has_flag(xx, y, Cell.F_PROTECTED) or g.get_mat(xx, y) == Cell.BEDROCK:
+				return
+			if sealed.has(Vector2i(xx, y)) and not r.grow(1).has_point(Vector2i(xx, y)):
 				return
 			if support.has(Vector2i(xx, y)):
 				continue
@@ -1751,6 +1756,28 @@ func _water_in(r: Rect2i) -> int:
 
 ## Let every body of water find its level now so the mine starts calm.
 func _settle_water() -> void:
+	if OS.get_environment("RD_LEAK") != "":
+		for wf in data["water_features"]:
+			var r: Rect2i = wf["rect"]
+			var q: Array[Vector2i] = []
+			var seen := {}
+			for y in range(r.position.y, r.end.y):
+				for x in range(r.position.x, r.end.x):
+					if not g.is_solid(x, y):
+						q.append(Vector2i(x, y))
+						seen[Vector2i(x, y)] = true
+			var head := 0
+			while head < q.size() and head < 3000:
+				var c: Vector2i = q[head]
+				head += 1
+				if not r.grow(1).has_point(c):
+					print("LEAK ", wf["kind"], " ", r, " escapes at ", c, " via ", q[maxi(0, head - 2)], " sealed=", sealed.has(c))
+					break
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n: Vector2i = c + d
+					if not seen.has(n) and not g.is_solid(n.x, n.y):
+						seen[n] = true
+						q.append(n)
 	var sim := WaterSim.new(g)
 	var before: Array = []
 	for wf in data["water_features"]:
@@ -1848,6 +1875,7 @@ func _landmarks_v2() -> void:
 	data["crystal_galleries"] = galleries
 	if land_rng.randf() < 0.5:
 		lm.survey_post(Balance.Z_CRYSTAL)
+	_trace("  wing landmarks")
 	# a deterministic but shuffled order, so the same few don't always win space
 	var order: Array = ["floodgate", "flooded_machinery", "hanging_gallery", "cistern", "survey_post", "vent_cluster"]
 	for i in range(order.size() - 1, 0, -1):
@@ -1873,6 +1901,7 @@ func _landmarks_v2() -> void:
 				lm.vent_cluster()
 				if cid == "gas":
 					lm.vent_cluster()
+		_trace("  landmark " + kind)
 	# every mine gets at least two v2 landmarks: fall back to the compact ones
 	var placed := 0
 	for l in data["landmarks"]:

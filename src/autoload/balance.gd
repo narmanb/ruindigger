@@ -737,9 +737,9 @@ const GEN_HARD_THRESH :=  [0.28, 0.12, -0.02, 0.2,    0.0]
 const GEN_LOOSE :=        [14,  10,   5,     5,       26]
 const GEN_BOULDERS :=     [5,   4,    2,     1,       5]
 const GEN_POCKETS :=      [[1, 2], [2, 3], [0, 1], [3, 5], [0, 1]]
-const GEN_ORE_VEINS :=    [30,  26,   10,    13,      16]     # upper zones +25% for their wider rock (not +60%)
+const GEN_ORE_VEINS :=    [26,  23,   10,    13,      16]     # upper zones ~+10% for their wider rock (0.22: +25% gave +11% ore in total)
 const GEN_GAS :=          [2,   7,    2,     1,       3]
-const GEN_CRAWLERS :=     [4,   6,    2,     3,       3]
+const GEN_CRAWLERS :=     [3,   6,    2,     3,       3]
 const GEN_GEODES :=       [0,   [1, 2], [0, 1], [0, 1], [3, 5]]
 const GEN_AQUEDUCT_CHANNELS := [2, 3]
 # primary ore per zone for fault veins (Cell.ORE_* ids: 1 copper, 2 cobalt, 3 aetherite, 4 fossil)

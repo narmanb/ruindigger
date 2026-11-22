@@ -24,6 +24,16 @@ func _ready() -> void:
 	print("boulders=", d.get("boulders"), " geodes=", d.get("geodes"), " pockets=", d.get("water_pockets", []).size(), " lake=", d.get("lake"), " settle=", d.get("settle_steps"), " stabilized=", d.get("basalt_stabilized"), " water=", d.get("water_total"))
 	print("DIGVALS down ", d.get("dig_down_s"), " relay ", d.get("climb_relay_s"), " relic ", d.get("dig_relic_s"), " climb ", d.get("climb_up_s"))
 	print("generated in %d ms, valid=%s repairs=%d" % [Time.get_ticks_msec() - t0, d["valid"], d["repairs"]])
+	if OS.get_environment("RD_NEAR") != "":
+		var pp := OS.get_environment("RD_NEAR").split(",")
+		var at := Vector2i(int(pp[0]), int(pp[1]))
+		for lm in d["landmarks"]:
+			var r: Rect2i = lm.get("rect", Rect2i())
+			if r.grow(3).has_point(at):
+				print("NEAR LM ", lm.get("kind"), " ", r)
+		for c in d["plan"]["chambers"]:
+			if (c["rect"] as Rect2i).grow(3).has_point(at):
+				print("NEAR CH ", c["arch"], " ", c["rect"], " backbone=", c["backbone"])
 	var g: TerrainGrid = d["grid"]
 	var img := Image.create(g.w, g.h, false, Image.FORMAT_RGBA8)
 	var cols := {0: Color(0.05, 0.04, 0.07), 1: Color(0.55, 0.38, 0.2), 2: Color(0.45, 0.43, 0.42), 3: Color(0.8, 0.7, 0.45),
