@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.21.0-layout
+**Experiment (branch `experiment/world-layout-same-size`): a wider upper mine, same map size.** Not on `main`. Same Android version code as 0.21.0, so you can install this over 0.21.0 and later put 0.21.0 back over it without uninstalling (your save stays).
+- **The Dustworks and Spore Veins now use the whole width of the map.** They used to sit in a 72-cell column with solid bedrock on both sides, about a quarter of the map that nobody could enter. Now they are about 116 cells wide, like the wings below. The map is still 128 x 236.
+- **Same entrance.** The surface lift room, the timber shaft, the relay station, both shelf gates and the relic chamber are exactly where they were.
+- **Side caverns.** Each of the two upper zones tries for an optional chamber on each side, out in the new space, with its own tunnel back. The usual caves, worm burrows, landmarks, water pockets, gas, ore and crawlers spread into the new rock too.
+- **A second way down.** Side caverns in the Spore Veins also tunnel to the shelf gate on their side, so you can come down the main trunk or swing out through a side cavern to that wing's gate.
+- **Not inflated.** Ore and crawler counts are budgets per zone, so they spread over the wider rock instead of growing with it. The extra side caverns bring their own small ore seams, and the Spore Veins get one more crawler so the wider caves aren't empty.
+- **Relic choice pairs** now go to the first relic spot with room beside it (they were only ever tried at one spot, which in the wider layout was often a cramped burrow).
+- **Fix (also affects normal mines):** the hidden passage from a survey post could cut through a sealed water reservoir's wall, draining it while the mine was being built and once taking 10 seconds to generate. It now stops at sealed walls.
+
 ## 0.21.0
 **Game feel polish**
 - **New setting: Game Feel Intensity** (Settings, under Screen shake): Off, Subtle, Normal (the default) or Strong. It controls the extras added in this update: drill recoil, impact dust, the landing bounce, and the new camera knocks. Off turns all of them off and leaves everything else as it was. Screen shake keeps its own slider; at 0 the camera never shakes, whatever this is set to. Reduced Flashing still caps flashes at Strong, and Low Effects still turns the decorative extras off.

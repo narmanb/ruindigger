@@ -56,10 +56,12 @@ static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: Packed
 		ids = ids.filter(func(id: int) -> bool: return not bool(Balance.RUN_RELICS[id].get("deep", false)))
 	var out: Array = []
 	var next := 0
+	var paired := false
 	for k in picked.size():
 		var c: Vector2i = picked[k]
 		var mate := Vector2i(-1, -1)
-		if pair_first and k == 0:
+		# the choice pair goes to the first picked spot with room beside it
+		if pair_first and not paired:
 			# a choice: a second, different relic three cells along the same
 			# floor. Taking one makes the other crumble.
 			for dx in [3, -3, 4, -4]:
@@ -70,6 +72,7 @@ static func relics(g: TerrainGrid, reachable: PackedFloat32Array, escape: Packed
 						and not occupied.has(m) and not (g.get_mat(m.x, m.y + 1) in [Cell.GAS, Cell.LOOSE]):
 					mate = m
 					break
+		paired = paired or mate.x >= 0
 		var group := 1 if mate.x >= 0 else 0
 		out.append({"id": ids[next % ids.size()], "cell": c, "group": group})
 		next += 1
