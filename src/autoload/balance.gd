@@ -275,6 +275,42 @@ const ZONE_ENTRY_ROWS := 3          # rows past a zone border before you count a
 const FOOT_SINK_MAX := 5             # px the sprite may sink onto rough ground
 const CAMERA_LOOK_AHEAD := 0.11     # fraction of the visible width
 
+# --- Game feel (presentation only; nothing here changes play) ----------------
+## Game Feel Intensity, by level (Off, Subtle, Normal, Strong). Only the
+## additions of the 0.21.0 polish pass read this; older effects stay as they
+## were. Screen Shake (Settings) still scales every camera shake, and 0 there
+## is no shake at all. Reduced Flashing caps "flash" at 1; Low Effects zeroes
+## "decor".
+##   recoil  px the drill arm is knocked back by a hit (hard rock gets more)
+##   squash  how much the body squashes on a heavy landing
+##   decor   extra cosmetic particles (0 none .. 1 full)
+##   impact  share of the new camera impulses (landings, rockfalls, breaches)
+##   flash   extra brightness on big flashes
+const FEEL := [
+	{"recoil": 0.0, "squash": 0.0, "decor": 0.0, "impact": 0.0, "flash": 1.0},
+	{"recoil": 1.0, "squash": 0.06, "decor": 0.5, "impact": 0.5, "flash": 1.0},
+	{"recoil": 1.6, "squash": 0.10, "decor": 1.0, "impact": 1.0, "flash": 1.0},
+	{"recoil": 2.2, "squash": 0.14, "decor": 1.0, "impact": 1.4, "flash": 1.25},
+]
+const FEEL_NAMES := ["Off", "Subtle", "Normal", "Strong"]
+const RECOIL_SOFT := 0.45            # share of "recoil" a sediment hit gives
+const RECOIL_BLOCKED := 1.2          # rock the drill can't cut pushes back hardest
+const RECOIL_BREAK := 0.8            # the snap when a cell gives way
+const RECOIL_MAX := 3.0              # px: never more than this, whatever piles up
+const RECOIL_SPRING := 900.0         # stiffness; critically damped, so no overshoot past rest
+const SQUASH_TIME := 0.16            # s for a landing squash to recover
+const SHAKE_NEAR := 8.0              # cells: a shake source this close counts in full
+const SHAKE_FAR := 30.0              # cells: ... and fades to nothing by this far
+const SHAKE_MAX_PX := 7.0            # most the camera moves at full trauma (x Screen Shake)
+const SHAKE_FREQ := 22.0             # how fast the shake wobbles (smooth noise, not white noise)
+const LAND_SHAKE_SPEED := 420.0      # px/s: landings faster than this nudge the camera
+const LAND_SHAKE := 0.12
+const ROCKFALL_SHAKE := 0.14         # per frame in which falling rock lands near you (once per frame)
+const BREACH_SHAKE := 0.18           # a strong water breach near you
+const BREACH_COOLDOWN := 1.5         # s between breach accents
+const FX_DECOR_PER_FRAME := 6        # decorative emitters started per frame, at most
+const FX_MARGIN := 48.0              # px beyond the screen edge still counted as on screen
+
 # --- Explosives (bought and upgraded at the Demolitions counter) ---
 # You pack two slots per dive (main + backup); each slot has its own button.
 # "free": units the main slot gets with every contract. "carry": most you can

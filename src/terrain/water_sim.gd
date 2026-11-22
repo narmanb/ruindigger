@@ -171,6 +171,10 @@ func _emit_jet(c: Vector2i, side: int, amount: int, speed: float) -> void:
 	motion.record(c + Vector2i(side, 0), Vector2(side * speed, 0), float(amount) / Balance.WATER_MAX)
 	pressure.jets += 1
 	pressure.discharge += amount
+	if speed > pressure.peak_speed:
+		pressure.peak_speed = speed
+		pressure.peak_at = p
+		pressure.peak_side = side
 
 
 func update_drops(delta: float) -> void:

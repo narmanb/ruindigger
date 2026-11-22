@@ -83,7 +83,7 @@ func _gnaw_step(delta: float) -> void:
 		_dust_t = 0.12
 		for c in gnaw_cells:
 			if randf() < 0.6:
-				mine.fx.dust(grid.cell_center(c) + Vector2(randf_range(-6, 6), 8), Color(0.78, 0.68, 0.52), 3)
+				mine.fx.dust(grid.cell_center(c) + Vector2(randf_range(-6, 6), 8), Color(0.78, 0.68, 0.52), 3, Fx.ESSENTIAL)
 		mine.fx.chips(global_position + Vector2(facing * 10, -4), Vector2(facing, -0.5), Color(0.6, 0.55, 0.5))
 		if randf() < 0.3:
 			Audio.play_at("hit_soft", global_position, -6.0, 0.2, 0.05)

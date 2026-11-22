@@ -713,10 +713,12 @@ var _slag_told := false
 
 
 func _water_feedback(delta: float) -> void:
+	_breach_cd = maxf(0.0, _breach_cd - delta)
 	_water_fx_t -= delta
 	if _water_fx_t > 0.0 or player == null:
 		return
 	_water_fx_t = Balance.WATER_FX_TICK
+	_breach_check()
 	for c in erosion.wear_points:
 		var pos := grid.cell_center(c)
 		if pos.distance_to(player.global_position) < Balance.WATER_FX_RADIUS:
@@ -738,6 +740,27 @@ func _water_feedback(delta: float) -> void:
 		if shown >= Balance.WATER_FX_BUDGET:
 			break
 	_water_fx_cursor += Balance.EROSION_SCAN_BUDGET
+
+
+var _breach_cd := 0.0
+var _breach_was := false
+var breaches := 0                 # breach accents shown (tests)
+
+
+## A strong jet just started near the digger (it was not jetting this hard a
+## moment ago): one splash in its direction and a small knock. A stream that
+## keeps running stays quiet. Reads the water model; changes nothing in it.
+func _breach_check() -> void:
+	var pr: WaterPressure = water.pressure
+	var strong := pr.peak_speed >= Balance.WATER_JET_MAX_SPEED * 0.6 and pr.peak_at.distance_to(player.global_position) < Balance.WATER_FX_RADIUS
+	if strong and not _breach_was and _breach_cd <= 0.0:
+		_breach_cd = Balance.BREACH_COOLDOWN
+		breaches += 1
+		var dir := Vector2(pr.peak_side, -0.35)
+		fx.spray(pr.peak_at, dir)
+		fx._emit("splash", pr.peak_at, Color(0.8, 0.95, 1.0), dir, 18, Fx.DECOR)
+		impact_shake(pr.peak_at, Balance.BREACH_SHAKE)
+	_breach_was = strong
 
 
 func water_diagnostics() -> Dictionary:
@@ -787,12 +810,71 @@ func _camera(delta: float) -> void:
 	_look = _look.lerp(want, clampf(delta * 3.5, 0.0, 1.0))
 	camera.global_position = player.global_position + _look + Vector2(0, -10)
 	trauma = maxf(0.0, trauma - delta * 1.6)
-	var amt := trauma * trauma * 7.0 * Settings.shake_scale()
-	camera.offset = Vector2(randf_range(-amt, amt), randf_range(-amt, amt))
+	_rockfall_flush()
+	# a smooth wobble (noise, not a fresh random jump every frame), capped;
+	# Screen Shake 0 means no offset at all
+	_shake_clock += delta
+	var amt := trauma * trauma * Balance.SHAKE_MAX_PX * Settings.shake_scale()
+	if amt <= 0.0:
+		camera.offset = Vector2.ZERO
+		return
+	var f := _shake_clock * Balance.SHAKE_FREQ
+	camera.offset = Vector2(clampf(_shake_noise.get_noise_2d(f, 0.0) * 1.8, -1.0, 1.0), clampf(_shake_noise.get_noise_2d(0.0, f + 57.0) * 1.8, -1.0, 1.0)) * amt
+
+
+var _shake_clock := 0.0
+var _shake_noise: FastNoiseLite = _make_shake_noise()
+
+
+static func _make_shake_noise() -> FastNoiseLite:
+	var n := FastNoiseLite.new()
+	n.seed = 7331
+	n.frequency = 1.0
+	n.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	return n
 
 
 func shake(amount: float) -> void:
 	trauma = minf(1.0, trauma + amount)
+
+
+## Shake from something at `pos`: in full within SHAKE_NEAR cells of the
+## view, fading out by SHAKE_FAR. A blast off screen barely moves the camera.
+func shake_at(pos: Vector2, amount: float) -> void:
+	var centre: Vector2 = camera.global_position if camera else pos
+	var d := pos.distance_to(centre) / Balance.CELL
+	var k := 1.0 - clampf((d - Balance.SHAKE_NEAR) / (Balance.SHAKE_FAR - Balance.SHAKE_NEAR), 0.0, 1.0)
+	if k > 0.0:
+		shake(amount * k)
+
+
+## A shake added by the game-feel pass (landings, rockfalls, breaches): scaled
+## by Game Feel Intensity on top of Screen Shake, and none at Off.
+func impact_shake(pos: Vector2, amount: float) -> void:
+	var k := Settings.feel("impact")
+	if k > 0.0:
+		shake_at(pos, amount * k)
+
+
+## Falling rock landed at pos. Many blocks can land in one frame: the camera
+## takes one knock per frame, from the nearest, not one per block.
+func rockfall(pos: Vector2) -> void:
+	if _rockfall_n == 0 or (player and pos.distance_to(player.global_position) < _rockfall_at.distance_to(player.global_position)):
+		_rockfall_at = pos
+	_rockfall_n += 1
+
+
+var _rockfall_n := 0
+var _rockfall_at := Vector2.ZERO
+
+
+func _rockfall_flush() -> void:
+	if _rockfall_n == 0:
+		return
+	shake_at(_rockfall_at, 0.08)              # the knock rubble always gave
+	impact_shake(_rockfall_at, Balance.ROCKFALL_SHAKE * (1.0 if _rockfall_n == 1 else 1.5))
+	fx.dust(_rockfall_at + Vector2(0, 8), Color(0.8, 0.7, 0.5), 12, Fx.DECOR)
+	_rockfall_n = 0
 
 
 ## The zone you are in, as the game presents it (name, music, light, water,
@@ -987,9 +1069,15 @@ func damage_cell(c: Vector2i, amount: float, tier: int, ignore_tier: bool, sourc
 		debris.on_broken(c, m, source)
 		var pos := grid.cell_center(c)
 		var s := grid.get_stratum(c.x, c.y)
-		fx.burst(pos, Cell.debris_color(m, s))
-		fx.dust(pos, Cell.debris_color(m, s))
 		var cls := Cell.sound_class(m)
+		# a cell giving way: sediment puffs, hard rock breaks into chunks
+		fx.burst(pos, Cell.debris_color(m, s), 8 if cls == "soft" else 18)
+		fx.dust(pos, Cell.debris_color(m, s), 12 if cls == "soft" else 6)
+		if source == "drill":
+			if cls == "soft":
+				fx.dust(pos + Vector2(randf_range(-5, 5), 4), Cell.debris_color(m, s), 6, Fx.DECOR)
+			else:
+				fx.chips(pos, Vector2.UP, Cell.debris_color(m, s), 14, Fx.DECOR)
 		Audio.play_at("break_hard" if cls != "soft" else "break_soft", pos, -2.0, 0.12, 0.04)
 		if source == "drill":
 			shake(0.07 if cls == "soft" else 0.12)
@@ -1109,14 +1197,23 @@ func drill_cell(c: Vector2i, amount: float, tier: int, by: Player) -> void:
 	var toward := (by.global_position - pos).normalized()
 	var contact := pos + toward * 7.0
 	var s := grid.get_stratum(c.x, c.y)
+	var soft := Cell.sound_class(m) == "soft"
 	if res["blocked"]:
+		# resistance, not damage: sparks and a hard knock, no chips
 		fx.sparks(contact, toward, Color(1.0, 0.85, 0.5))
+		fx.sparks(contact, toward.rotated(randf_range(-0.6, 0.6)), Color(1.0, 0.9, 0.6), 0, Fx.DECOR)
 		Audio.play_at("hit_metal", contact, -6.0, 0.15, 0.12)
-	elif not res["broken"]:
-		fx.chips(contact, toward + Vector2(randf_range(-0.4, 0.4), -0.3), Cell.debris_color(m, s))
-		if Cell.sound_class(m) != "soft":
+		by.drill_kick("blocked")
+	elif res["broken"]:
+		by.drill_kick("break")
+	else:
+		fx.chips(contact, toward + Vector2(randf_range(-0.4, 0.4), -0.3), Cell.debris_color(m, s), 8 if soft else 14)
+		if not soft:
 			fx.sparks(contact, toward, Color(1.0, 0.8, 0.45))
+		elif randf() < 0.35:
+			fx.dust(contact, Cell.debris_color(m, s), 4, Fx.DECOR)
 		Audio.play_at("hit_" + Cell.sound_class(m), contact, -8.0, 0.12, 0.07)
+		by.drill_kick("soft" if soft else "hard")
 		if grid.get_ore(c.x, c.y) != 0 and randf() < 0.3:
 			fx.glints(contact, Balance.ore_color(grid.get_ore(c.x, c.y)))
 
@@ -1306,7 +1403,7 @@ func explode(pos: Vector2, radius_cells: float, tile_dmg: float, ent_dmg: float,
 	var r := radius_cells * C
 	fx.explosion(pos, r)
 	Audio.play_at("explode", pos, 2.0, 0.08, 0.0)
-	shake(0.6)
+	shake_at(pos, 0.6 * clampf(radius_cells / Balance.CHARGE_RADIUS_CELLS, 0.6, 1.4))
 	var c := grid.world_to_cell(pos)
 	var ri := ceili(radius_cells)
 	var ladders: Array[Vector2i] = []
@@ -1800,6 +1897,11 @@ var _full_warned := false
 func on_enemy_killed(e: Node) -> void:
 	Game.run["kills"] = int(Game.run.get("kills", 0)) + 1
 	Progress.add_stat("kills")
+	# game feel: a finishing burst on top of the creature's own death puff
+	var big: bool = e is Brute or e is Sentry
+	fx.burst(e.global_position, Color(0.75, 0.3, 0.4), 24 if big else 12, Fx.DECOR)
+	if big:
+		impact_shake(e.global_position, 0.12)
 	codex_unlock("creature:" + codex_kind(e))
 	var src: String = String(e.get("last_hit")) if e.get("last_hit") != null else ""
 	if src in Orders.TERRAIN_SOURCES:

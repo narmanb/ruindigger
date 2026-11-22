@@ -115,7 +115,7 @@ func _chew(delta: float) -> void:
 	var res: Dictionary = mine.damage_cell(dig_cell, (9999.0 if dig_t >= need else Cell.max_hp(m) * delta / need * 0.9), 99, true, "crawler")
 	var pos := grid.cell_center(dig_cell)
 	if randf() < 0.5:
-		mine.fx.dust(pos + Vector2(randf_range(-6, 6), randf_range(-6, 6)), Cell.debris_color(m, maxi(0, grid.get_stratum(dig_cell.x, dig_cell.y))), 2)
+		mine.fx.dust(pos + Vector2(randf_range(-6, 6), randf_range(-6, 6)), Cell.debris_color(m, maxi(0, grid.get_stratum(dig_cell.x, dig_cell.y))), 2, Fx.ESSENTIAL)
 	if randf() < 0.12:
 		Audio.play_at("hit_" + Cell.sound_class(m), pos, -6.0, 0.2, 0.08)
 	if res["broken"]:

@@ -46,6 +46,20 @@ func _ready() -> void:
 	_slider(list, "Effects volume", "sfx_volume", 0.0, 1.0, 0.05)
 	_slider(list, "Music volume", "music_volume", 0.0, 1.0, 0.05)
 	_slider(list, "Screen shake", "screen_shake", 0.0, 1.0, 0.1)
+	var feel_row := HBoxContainer.new()
+	feel_row.add_child(_name("Game feel intensity"))
+	var gf := OptionButton.new()
+	for i in Balance.FEEL_NAMES.size():
+		gf.add_item(String(Balance.FEEL_NAMES[i]), i)
+	gf.selected = Settings.game_feel()
+	gf.custom_minimum_size = Vector2(110, 24)
+	gf.item_selected.connect(func(i: int) -> void: Settings.set_value("game_feel", i))
+	feel_row.add_child(gf)
+	list.add_child(feel_row)
+	var feel_note := UIKit.label("Drill recoil, impact dust and landing bounce. Screen shake has its own slider.", 9, UIKit.MUTED)
+	feel_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	feel_note.custom_minimum_size = Vector2(300, 0)
+	list.add_child(feel_note)
 	_toggle(list, "Hints", "hints")
 	var hint_btn := UIKit.button("RESET HINTS", func() -> void: pass, 200.0)
 	hint_btn.pressed.connect(func() -> void:

@@ -28,6 +28,7 @@ static func run(t: Node) -> void:
 			"codex": await codex(t)
 			"ladders": await ladder_blasts(t)
 			"dock": await dock(t)
+			"feel": await feel(t)
 		return
 	await economy(t)
 	await orders(t)
@@ -51,6 +52,7 @@ static func run(t: Node) -> void:
 	await codex(t)
 	await ladder_blasts(t)
 	await dock(t)
+	await feel(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -2976,5 +2978,195 @@ static func dock(t: Node) -> void:
 	t.check(SandSim.min_level == 0, "leaving the mission hands Sand physics back to Settings")
 	Settings.values["sand_physics"] = keep_sand
 	Progress.from_dict(saved)
+	Game.goto("title", true)
+	await _settle(t)
+
+
+## 0.21.0: game feel. Presentation only: none of it may change play.
+static func feel(t: Node) -> void:
+	t.section("game feel intensity")
+	var keep := Settings.values.duplicate()
+	# the setting
+	t.check(int(Settings.DEFAULTS["game_feel"]) == 2 and Balance.FEEL_NAMES[2] == "Normal", "Game Feel Intensity defaults to Normal")
+	t.check(Settings._sanitize("game_feel", 9) == 3 and Settings._sanitize("game_feel", -2) == 0 and Settings._sanitize("game_feel", "x") == 2, "out-of-range or broken values are cleaned up")
+	var p0 := Settings.path
+	Settings.path = "user://test_settings_feel.cfg"
+	Settings.set_value("game_feel", 1)
+	Settings.values["game_feel"] = 3
+	Settings.load_settings()
+	t.check(Settings.game_feel() == 1, "it is saved and loaded")
+	var cf := ConfigFile.new()
+	cf.set_value("options", "screen_shake", 0.5)
+	cf.save(Settings.path)
+	Settings.load_settings()
+	t.check(Settings.game_feel() == 2 and is_equal_approx(float(Settings.get_value("screen_shake")), 0.5), "an older settings file without it gets Normal and keeps its other values")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.path))
+	Settings.path = p0
+	Settings.values = keep.duplicate()
+	Settings.values["reduced_flashing"] = true
+	Settings.values["game_feel"] = 3
+	t.check(Settings.feel("flash") <= 1.0, "Reduced Flashing caps the brighter flashes at Strong")
+	Settings.values["reduced_flashing"] = false
+	t.check(Settings.feel("flash") > 1.0, "without it, Strong flashes a little brighter")
+	Settings.values["low_effects"] = true
+	t.check(Settings.feel("decor") == 0.0, "Low Effects turns the decorative extras off, even at Strong")
+	Settings.values["low_effects"] = false
+	t.check(Fx.emitters_for("burst", 6) == 1 and Fx.emitters_for("burst", 18) == 2 and Fx.emitters_for("burst", 30) == 3 and Fx.emitters_for("burst", 999) == 3, "a bigger burst uses more pooled emitters, at most three")
+	# a dive
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var g: TerrainGrid = mine.grid
+	pl.invuln = 1e9
+	for e in mine.enemies.duplicate():
+		if is_instance_valid(e):
+			e.queue_free()
+	mine.enemies.clear()
+	# recoil, by level, switched live
+	var peaks: Array = []
+	for lv in 4:
+		Settings.set_value("game_feel", lv)
+		pl.recoil = 0.0
+		pl.drill_kick("hard")
+		peaks.append(pl.recoil)
+	t.check(is_zero_approx(peaks[0]) and peaks[1] > 0.0 and peaks[2] > peaks[1] and peaks[3] > peaks[2], "drill recoil: none at Off, then more at each level (%s)" % str(peaks))
+	pl.recoil = 0.0
+	for k in 10:
+		pl.drill_kick("blocked")
+	t.check(pl.recoil <= Balance.RECOIL_MAX, "however many knocks pile up, the arm moves at most %.0f px" % Balance.RECOIL_MAX)
+	await t._frames(30)
+	t.check(is_zero_approx(pl.recoil), "and it springs back to rest")
+	pl.drill_kick("hard")
+	var lowest := 0.0
+	for k in 60:
+		pl._step_recoil(1.0 / 30.0)
+		lowest = minf(lowest, pl.recoil)
+	t.check(lowest >= 0.0 and is_zero_approx(pl.recoil), "at 30 FPS too, without ever pushing the drill tip past where it cuts")
+	# drilling the same rock at Off and at Strong: same heat, same targets
+	var pc: Vector2i = g.world_to_cell(pl.global_position)
+	var run_at := func(lv: int) -> Array:
+		Settings.set_value("game_feel", lv)
+		for x in range(pc.x + 1, pc.x + 5):
+			for y in range(pc.y - 2, pc.y + 1):
+				g.set_flag(x, y, Cell.F_PROTECTED, false)
+				g.set_mat(x, y, Cell.HARD)
+		pl.global_position = Vector2(pc.x * 16 + 8, (pc.y + 1) * 16 - Player.HALF.y - 0.5)
+		pl.velocity = Vector2.ZERO
+		pl.heat = 0.0
+		pl.overheated = false
+		pl.facing = 1
+		await t._frames(5)
+		pl.input_override = {"drill": true, "x": 0.4}
+		var tg: Array = []
+		var most := 0.0
+		for k in 90:
+			await t._frames(1)
+			most = maxf(most, pl.recoil)
+			if k == 10:
+				tg = pl.targets.duplicate()
+		pl.input_override = {}
+		return [snappedf(pl.heat, 0.5), tg, most, g.get_mat(pc.x + 1, pc.y)]
+	var off: Array = await run_at.call(0)
+	var strong: Array = await run_at.call(3)
+	t.check(off[0] == strong[0] and off[1] == strong[1] and off[3] == strong[3], "drilling basalt for 1.5 s: same heat, targets and result at Off and Strong (heat %s / %s)" % [str(off[0]), str(strong[0])])
+	t.check(is_zero_approx(off[2]) and float(strong[2]) > 0.0 and float(strong[2]) <= Balance.RECOIL_MAX, "the arm kicks only when Game Feel is on (%.2f px at Strong)" % float(strong[2]))
+	# the camera: Screen Shake 0 means none, at every level
+	for lv in 4:
+		Settings.values["game_feel"] = lv
+		Settings.values["screen_shake"] = 0.0
+		mine.trauma = 0.0
+		mine.explode(pl.global_position + Vector2(40, -20), 3.2, 0.0, 0.0, "test", false)
+		mine.impact_shake(pl.global_position, 1.0)
+		await t._frames(3)
+		if mine.camera.offset != Vector2.ZERO:
+			peaks.append(-1)
+	t.check(not peaks.has(-1), "with Screen Shake at 0 the camera never shakes, at any Game Feel level")
+	Settings.values["screen_shake"] = 0.8
+	Settings.values["game_feel"] = 2
+	mine.trauma = 0.0
+	mine.shake_at(pl.global_position + Vector2(Balance.SHAKE_FAR * 16.0 + 64.0, 0), 0.6)
+	var far_t: float = mine.trauma
+	mine.shake_at(mine.camera.global_position + Vector2(16, 0), 0.6)
+	t.check(is_zero_approx(far_t) and mine.trauma >= 0.59, "a blast far off screen doesn't shake the camera; one beside you does")
+	mine.trauma = 0.0
+	for k in 12:
+		mine.rockfall(pl.global_position + Vector2(k * 16, -32))
+	mine._rockfall_flush()
+	var many: float = mine.trauma
+	mine.trauma = 0.0
+	mine.rockfall(pl.global_position)
+	mine._rockfall_flush()
+	t.check(many <= mine.trauma * 1.6 + 0.01, "a dozen blocks landing at once knock the camera about once, not twelve times")
+	Settings.values["game_feel"] = 0
+	mine.trauma = 0.0
+	mine.impact_shake(pl.global_position, 0.5)
+	t.check(is_zero_approx(mine.trauma), "at Off the new knocks add no shake")
+	Settings.values["game_feel"] = 2
+	# particles: decorative extras obey Low Effects and the per-frame budget
+	await t._frames(1)
+	var fx: Fx = mine.fx
+	Settings.values["game_feel"] = 3
+	Settings.values["low_effects"] = true
+	var e0 := fx.emitted
+	fx.burst(pl.global_position, Color.WHITE, 30, Fx.DECOR)
+	t.check(fx.emitted == e0, "Low Effects + Strong: no decorative extras")
+	fx.gas_puff(pl.global_position + Vector2(9999, 0))
+	t.check(fx.emitted == e0 + 1, "a hazard warning always plays, even off screen with Low Effects")
+	fx.burst(pl.global_position, Color.WHITE, 30)
+	t.check(fx.emitted == e0 + 2, "Low Effects keeps normal effects to one emitter")
+	Settings.values["low_effects"] = false
+	await t._frames(1)
+	e0 = fx.emitted
+	for k in 20:
+		fx.dust(pl.global_position, Color.WHITE, 24, Fx.DECOR)
+	t.check(fx.emitted - e0 <= Balance.FX_DECOR_PER_FRAME, "decorative extras are capped per frame (%d started)" % (fx.emitted - e0))
+	e0 = fx.emitted
+	fx.burst(pl.global_position + Vector2(4000, 0), Color.WHITE, 12)
+	t.check(fx.emitted == e0, "ordinary effects far off screen are skipped")
+	Settings.values["game_feel"] = 0
+	await t._frames(1)
+	e0 = fx.emitted
+	fx.chips(pl.global_position, Vector2.UP, Color.WHITE, 14, Fx.DECOR)
+	fx.chips(pl.global_position, Vector2.UP, Color.WHITE, 14)
+	t.check(fx.emitted == e0 + 1, "at Off only the extras go; the game's own effects stay")
+	Settings.values["game_feel"] = 2
+	# flash lights: a reused light belongs to its newest flash
+	var slot: int = fx._light_i
+	for k in 6:
+		fx.flash(pl.global_position, Color.WHITE, 1.0, 0.08)
+	fx.flash(pl.global_position, Color.WHITE, 1.0, 1.0)     # the same light as the first of the six
+	var reused: PointLight2D = fx._lights[slot]
+	await t.get_tree().create_timer(0.35).timeout
+	t.check(reused.enabled and reused.energy > 0.0, "an older fade can't switch off a light that was reused for a newer flash")
+	await t.get_tree().create_timer(1.0).timeout
+	t.check(not reused.enabled, "and the light still goes out when its own fade ends")
+	# landing squash is visual only
+	Settings.values["game_feel"] = 3
+	pl.global_position += Vector2(0, -200)
+	pl.velocity = Vector2(0, 500)
+	var squashed := false
+	for k in 120:
+		await t._frames(1)
+		if pl.body_sprite.scale.y < 0.99:
+			squashed = true
+		if squashed and pl.is_on_floor() and is_equal_approx(pl.body_sprite.scale.y, 1.0):
+			break
+	t.check(squashed and is_equal_approx(pl.body_sprite.scale.y, 1.0), "a heavy landing squashes the sprite for a moment, then it is back to normal")
+	# a water breach: one accent when a strong jet starts, not every tick after
+	var pr: WaterPressure = mine.water.pressure
+	var b0: int = mine.breaches
+	for k in 5:
+		pr.peak_speed = Balance.WATER_JET_MAX_SPEED
+		pr.peak_at = pl.global_position + Vector2(30, 0)
+		pr.peak_side = 1
+		mine._breach_check()
+	t.check(mine.breaches == b0 + 1, "a strong jet starting near you splashes once; a jet that keeps running stays quiet")
+	Settings.values = keep.duplicate()
+	Settings.apply()
 	Game.goto("title", true)
 	await _settle(t)

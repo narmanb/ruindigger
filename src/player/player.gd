@@ -53,7 +53,10 @@ var _diag_push := 0.0              # s left of the hop onto a step cut by diagon
 var diag_hops := 0                 # steps climbed by diagonal drilling (tests)
 var wade_steps := 0                # steps taken through shallow water (splashes)
 var drill_regrow := 1.0            # 0 = drill just fired off as a rocket, 1 = fully grown back
-var _shake_t := 0.0
+var recoil := 0.0                  # px the drill arm is knocked back toward the shoulder (visual only)
+var _recoil_v := 0.0
+var _squash_t := 0.0               # landing squash, visual only
+var _squash_amt := 0.0
 var _anim_t := 0.0
 var _step_t := 0.0
 var _land_t := 0.0
@@ -266,8 +269,13 @@ func _physics_process(delta: float) -> void:
 		if impact > 200.0:
 			_land_t = 0.12
 			Audio.play_at("land", global_position, -4.0)
+			_squash_amt = Settings.feel("squash") * clampf(impact / 600.0, 0.4, 1.0)
+			_squash_t = Balance.SQUASH_TIME if _squash_amt > 0.0 else 0.0
 			if mine:
 				mine.fx.dust(global_position + Vector2(0, HALF.y), Color(0.8, 0.7, 0.55), 6)
+				if impact > Balance.LAND_SHAKE_SPEED:
+					mine.fx.dust(global_position + Vector2(facing * -6, HALF.y), Color(0.8, 0.7, 0.55), 6, Fx.DECOR)
+					mine.impact_shake(global_position, Balance.LAND_SHAKE)
 		fall_peak = 0.0
 	if not now_floor:
 		fall_peak = maxf(fall_peak, velocity.y)
@@ -514,7 +522,6 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 			mine.toast("Too tough - needs DRILL Mk.IV" if grid.get_mat(targets[0].x, targets[0].y) == Cell.ALLOY else "Indestructible")
 			var bm := grid.get_mat(targets[0].x, targets[0].y)
 			mine.hint("bedrock" if bm == Cell.BEDROCK or grid.has_flag(targets[0].x, targets[0].y, Cell.F_PROTECTED) else "tier")
-		_shake_t = 0.06
 		if drill_dir.y > 0 and hit_any:
 			velocity.y = minf(velocity.y, 30.0)
 	# drill bite: while the bit is in rock above or beside you, it holds your
@@ -541,6 +548,41 @@ func _update_drill(delta: float, ax: float, ay: float) -> void:
 ## Diagonal drilling: stay centred in your column, and once the step ahead
 ## is cut (the cell in front is solid with two open cells above it, and you
 ## have headroom), hop up onto it.
+## The drill met rock: knock the arm back a little (visual only; the
+## Game Feel setting sets how much, Off is none). kind: "soft", "hard",
+## "blocked" or "break". The biggest knock wins, so three targets per tick
+## never add up past RECOIL_MAX.
+func drill_kick(kind: String) -> void:
+	var k := Settings.feel("recoil")
+	if k <= 0.0:
+		return
+	match kind:
+		"soft": k *= Balance.RECOIL_SOFT
+		"blocked": k *= Balance.RECOIL_BLOCKED
+		"break": k *= Balance.RECOIL_BREAK
+	recoil = clampf(maxf(recoil, k), 0.0, Balance.RECOIL_MAX)
+
+
+## Spring the arm back to rest: critically damped (no overshoot), stepped in
+## small slices so 30 and 60 FPS look the same, and never past rest, so the
+## drill tip never pokes beyond where it really cuts.
+func _step_recoil(delta: float) -> void:
+	if recoil <= 0.0 and _recoil_v == 0.0:
+		return
+	var kspr := Balance.RECOIL_SPRING
+	var damp := 2.0 * sqrt(kspr)
+	var left := minf(delta, 0.1)
+	while left > 0.0:
+		var dt := minf(left, 1.0 / 120.0)
+		left -= dt
+		_recoil_v += (-kspr * recoil - damp * _recoil_v) * dt
+		recoil += _recoil_v * dt
+		if recoil <= 0.01:
+			recoil = 0.0
+			_recoil_v = 0.0
+			break
+
+
 ## A one-cell step in front of the feet, with room to stand on it.
 func _facing_step() -> bool:
 	var f := feet_cell()
@@ -857,7 +899,9 @@ func _animate(delta: float, ax: float) -> void:
 	var local := Vector2(sh.x - 16, sh.y - 16 - 3)
 	if facing < 0:
 		local.x = -local.x
-	drill_sprite.position = local + vib
+	_step_recoil(delta)
+	var axis := Vector2(drill_dir).normalized() if drill_dir != Vector2i.ZERO else Vector2(facing, 0)
+	drill_sprite.position = local + vib - (axis * recoil).round()
 	var spin := int(_anim_t * 30.0) % 4 if drilling else 0
 	drill_sprite.frame = spin + (4 if drilling else 0)
 	if drill_dir.y < 0 and drill_dir.x != 0:
@@ -887,6 +931,14 @@ func _animate(delta: float, ax: float) -> void:
 	grow = grow * (1.0 + 0.25 * sin(grow * PI))
 	drill_sprite.visible = drill_regrow > 0.2
 	drill_sprite.scale = Vector2(drill_sprite.scale.x * grow, grow)
+	# landing squash: wider and shorter for a moment, feet kept on the ground
+	if _squash_t > 0.0:
+		_squash_t = maxf(0.0, _squash_t - delta)
+		var sq := _squash_amt * smoothstep(0.0, 1.0, _squash_t / Balance.SQUASH_TIME)
+		body_sprite.scale = Vector2(1.0 + sq, 1.0 - sq)
+		body_sprite.position.y += 16.0 * sq
+	else:
+		body_sprite.scale = Vector2.ONE
 	lamp.position = Vector2(6 * facing, -10)
 	# hurt / invulnerability flicker
 	var fl := 0.0

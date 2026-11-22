@@ -27,6 +27,7 @@ const DEFAULTS := {
 	"sand_physics": 2,
 	"touch_diag": false,     # show the DIAG (diagonal drill) touch button
 	"hints": true,           # contextual hints (each shows once per save)
+	"game_feel": 2,          # 0 off, 1 subtle, 2 normal, 3 strong (see Balance.FEEL)
 	"gadget_bar_open": true,  # touch gadget toolbar expanded (remembered)      # 0 off, 1 low, 2 normal, 3 high (see Balance.SAND_LEVELS)
 	# layout offsets (viewport px) dragged in the layout editor
 	"pos_move_x": 0.0, "pos_move_y": 0.0,
@@ -54,6 +55,7 @@ const RANGES := {
 	"stick_size": [0.6, 1.8],
 	"stick_deadzone": [0.05, 0.35],
 	"sand_physics": [0, 3],
+	"game_feel": [0, 3],
 }
 
 var values: Dictionary = DEFAULTS.duplicate()
@@ -158,3 +160,20 @@ func reduced_flashing() -> bool:
 
 func low_effects() -> bool:
 	return values["low_effects"]
+
+
+## Game Feel Intensity: 0 off, 1 subtle, 2 normal, 3 strong.
+func game_feel() -> int:
+	return int(values.get("game_feel", DEFAULTS["game_feel"]))
+
+
+## A number from this pass's feel table (Balance.FEEL) at the chosen level.
+## Reduced Flashing caps "flash"; Low Effects caps "decor".
+func feel(key: String) -> float:
+	var row: Dictionary = Balance.FEEL[clampi(game_feel(), 0, Balance.FEEL.size() - 1)]
+	var v := float(row.get(key, 0.0))
+	if key == "flash" and reduced_flashing():
+		v = minf(v, 1.0)
+	if key == "decor" and low_effects():
+		v = 0.0
+	return v

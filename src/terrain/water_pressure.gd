@@ -9,6 +9,9 @@ var surfaces: Dictionary = {}
 var work := 0
 var jets := 0
 var discharge := 0
+var peak_speed := 0.0              # strongest jet this step, and where (presentation only)
+var peak_at := Vector2.ZERO
+var peak_side := 0
 const DIRS := [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
 
 
@@ -21,6 +24,7 @@ func begin_step() -> void:
 	work = 0
 	jets = 0
 	discharge = 0
+	peak_speed = 0.0
 
 
 func head_at(c: Vector2i) -> float:

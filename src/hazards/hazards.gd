@@ -552,7 +552,7 @@ class GasSystem extends Node2D:
 		Audio.play_at("ignite", pos, 3.0)
 		var r := Balance.GAS_IGNITE_RADIUS * k
 		mine.explode(pos, r / Balance.CELL, Balance.GAS_IGNITE_TILE_DAMAGE, Balance.GAS_IGNITE_DAMAGE, "gas", false)
-		mine.fx.flash(pos, Color(1.0, 0.7, 0.2), r / 40.0, 0.7)
+		mine.fx.flash(pos, Color(1.0, 0.7, 0.2), r / 40.0, 0.7, true)
 
 	func _physics_process(delta: float) -> void:
 		for v in vents.duplicate():
@@ -760,7 +760,7 @@ class Collapse extends Node2D:
 			if hit:
 				# the impact breaks the boulder apart into rubble that keeps falling
 				Audio.play_at("break_hard", rects[0].get_center(), 2.0)
-				mine.shake(0.5)
+				mine.shake_at(rects[0].get_center(), 0.5)
 				for p in b["cells"]:
 					falling.append({"x": b["x0"] + p[0], "y": (b["y0"] + p[1]) * 16.0 + b["off"] - 18.0, "vy": b["vy"] * 0.3, "s": p[4], "nodmg": true})
 				boulders.erase(b)
@@ -783,7 +783,8 @@ class Collapse extends Node2D:
 		mine.fx.dust(centre + Vector2(0, 10), Color(0.7, 0.65, 0.6))
 		mine.fx.dust(centre + Vector2(12, 10), Color(0.7, 0.65, 0.6))
 		mine.fx.dust(centre + Vector2(-12, 10), Color(0.7, 0.65, 0.6))
-		mine.shake(0.45)
+		mine.fx.chips(centre + Vector2(0, 10), Vector2.UP, Cell.debris_color(Cell.HARD, 0), 20, Fx.DECOR)
+		mine.shake_at(centre, 0.45)
 		mine.noise(centre, 12.0)
 
 	func _queue(c: Vector2i) -> void:
@@ -814,7 +815,7 @@ class Collapse extends Node2D:
 			var x := pc.x + randi_range(-14, 14)
 			var y := pc.y + randi_range(-10, 4)
 			if g.get_mat(x, y) == Cell.LOOSE and g.is_solid(x, y + 1) and g.get_mat(x, y + 1) != Cell.LOOSE and not g.is_solid(x, y + 2):
-				mine.fx.dust(Vector2(x * 16 + randf_range(3, 13), (y + 2) * 16 + 1), Color(0.85, 0.75, 0.55))
+				mine.fx.dust(Vector2(x * 16 + randf_range(3, 13), (y + 2) * 16 + 1), Color(0.85, 0.75, 0.55), 6, Fx.ESSENTIAL)
 				return
 
 	func _physics_process(delta: float) -> void:
@@ -828,7 +829,7 @@ class Collapse extends Node2D:
 			bp["t"] -= delta
 			if randf() < 0.4:
 				var cc: Vector2i = bp["cells"][randi() % bp["cells"].size()]
-				mine.fx.dust(g.cell_center(cc) + Vector2(randf_range(-6, 6), 8), Color(0.7, 0.65, 0.6))
+				mine.fx.dust(g.cell_center(cc) + Vector2(randf_range(-6, 6), 8), Color(0.7, 0.65, 0.6), 6, Fx.ESSENTIAL)
 			if bp["t"] <= 0.0:
 				boulder_pending.erase(bp)
 				var again := Boulders.unsupported_mass(g, bp["cells"][0])
@@ -844,7 +845,7 @@ class Collapse extends Node2D:
 		for c in pending.keys():
 			pending[c] -= delta
 			if randf() < 0.25:
-				mine.fx.dust(g.cell_center(c) + Vector2(randf_range(-6, 6), 8), Color(0.8, 0.7, 0.5))
+				mine.fx.dust(g.cell_center(c) + Vector2(randf_range(-6, 6), 8), Color(0.8, 0.7, 0.5), 6, Fx.ESSENTIAL)
 			if pending[c] <= 0.0:
 				pending.erase(c)
 				if mine.has_method("is_anchored") and mine.is_anchored(c):
@@ -903,13 +904,13 @@ class Collapse extends Node2D:
 			mine.spray_sand(Vector2i(x, y), Balance.SAND_RUBBLE_AMOUNT, 7, 45.0, 0.45)
 			Audio.play_at("rubble", r.get_center(), -2.0, 0.1, 0.06)
 			mine.fx.dust(r.get_center() + Vector2(0, 6), Color(0.8, 0.7, 0.5))
-			mine.shake(0.08)
+			mine.rockfall(r.get_center())
 			return
 		g.set_mat(x, y, Cell.LOOSE, false)
 		g.set_flag(x, y, Cell.F_DUG, false)
 		Audio.play_at("rubble", r.get_center(), -2.0, 0.1, 0.06)
 		mine.fx.dust(r.get_center() + Vector2(0, 6), Color(0.8, 0.7, 0.5))
-		mine.shake(0.08)
+		mine.rockfall(r.get_center())
 
 	func _shatter(pos: Vector2, s: int) -> void:
 		shattered += 1
