@@ -8,6 +8,11 @@ extends RefCounted
 ## Spore Veins: 3-5 organic chambers (often one monumental cathedral). The
 ##   guaranteed route passes through 2-3 of them; the rest are optional side
 ##   caverns. Consecutive backbone chambers get a second, alternate connection.
+## Side caverns (0.22 layout experiment): the two upper zones reach past the
+##   anchor column on both sides; each zone tries for one optional chamber in
+##   each side region, so the new space always holds somewhere to go. In the
+##   Spore Veins these also link to the shelf gate on their side (a second way
+##   down to that wing; see MineGenerator._flank_links).
 ## Forgotten Engine: 2-3 alloy ruins in varied arrangements; one or two sit on
 ##   the route, the others are optional (with sentries and aetherite lures).
 ## The planner only chooses footprints and roles; ChamberCarver gives shape and
@@ -71,11 +76,14 @@ func _size(arch: String, s: int, variant: String) -> Vector2i:
 	return Vector2i(12, 6)
 
 
-func _try(arch: String, s: int, y_lo: int, y_hi: int, variant: String = "") -> Dictionary:
+func _try(arch: String, s: int, y_lo: int, y_hi: int, variant: String = "", x_lo: int = -1, x_hi: int = -1) -> Dictionary:
 	var zr: Rect2i = Balance.ZONE_RECTS[s]
+	if x_lo < 0:
+		x_lo = zr.position.x + 2
+		x_hi = zr.end.x - 2
 	for attempt in 6:
 		var sz := _size(arch, s, variant)
-		var r := space.place(rng, sz.x, sz.y, y_lo, y_hi, 3, 30, zr.position.x + 2, zr.end.x - 2)
+		var r := space.place(rng, sz.x, sz.y, y_lo, y_hi, 3, 30, x_lo, x_hi)
 		if r.size.x > 0:
 			space.claim(r, "chamber", "%s_%d_%d" % [arch, s, space.claims.size()])
 			return {"arch": arch, "variant": variant, "rect": r, "stratum": s, "backbone": false, "basin": []}
@@ -89,6 +97,23 @@ func _fill(s: int, list: Array, want: int, y_lo: int, y_hi: int) -> void:
 		var c := _try(_pick(s, list), s, y_lo, y_hi)
 		if not c.is_empty():
 			list.append(c)
+
+
+## One optional chamber in each side region of an upper zone, if it fits.
+func _flanks(s: int, list: Array, y_lo: int, y_hi: int) -> void:
+	var sides := [[Balance.UPPER_X0 + 2, Balance.CORE_X0 - 1], [Balance.CORE_X1 + 1, Balance.UPPER_X1 - 2]]
+	for sd in sides:
+		if sd[1] - sd[0] < 8:
+			continue
+		for attempt in 3:
+			var arch := _pick(s, list)
+			if arch == "cathedral" or arch == "works":
+				arch = "hall"                # the side regions are ~20 wide
+			var c := _try(arch, s, y_lo, y_hi, "", sd[0], sd[1])
+			if not c.is_empty():
+				c["flank"] = true
+				list.append(c)
+				break
 
 
 static func _by_depth(a: Dictionary, b: Dictionary) -> bool:
@@ -109,6 +134,9 @@ func plan() -> Array:
 		if not cat.is_empty():
 			s1.append(cat)
 	_fill(Balance.Z_SPORE, s1, rng.randi_range(3, 4) + (1 if s1.is_empty() else 0), s1_lo, s1_hi)
+	# side caverns in the reclaimed flanks (optional, never on the backbone)
+	_flanks(Balance.Z_DUST, s0, 14, Balance.STRATUM_ROWS[1] - 10)
+	_flanks(Balance.Z_SPORE, s1, s1_lo, s1_hi)
 	# the wings: each has its own mix of shapes, below its entrance station
 	var wings: Dictionary = {}
 	for z in [Balance.Z_AQUEDUCT, Balance.Z_CRYSTAL]:
@@ -137,6 +165,12 @@ func plan() -> Array:
 		if not c2.is_empty():
 			s2.append(c2)
 	# roles: backbone chambers in the Spore Veins, spread across the band
+	# (side caverns stay optional: they hang off the route, they aren't on it)
+	var side1: Array = []
+	for c in s1.duplicate():
+		if bool(c.get("flank", false)):
+			side1.append(c)
+			s1.erase(c)
 	s1.sort_custom(_by_depth)
 	var n1 := mini(s1.size(), 2 + (1 if s1.size() >= 4 and rng.randf() < 0.5 else 0))
 	var picks: Array = []
@@ -144,6 +178,7 @@ func plan() -> Array:
 		picks.append(int(round(float(i) * (s1.size() - 1) / maxf(1.0, float(n1 - 1)))) if n1 > 1 else 0)
 	for i in s1.size():
 		s1[i]["backbone"] = picks.has(i)
+	s1.append_array(side1)
 	var idx := 0
 	for c in s0 + s1 + wings[Balance.Z_AQUEDUCT] + wings[Balance.Z_CRYSTAL] + s2:
 		c["id"] = "c%d" % idx

@@ -40,6 +40,7 @@ var enc_rng := RandomNumberGenerator.new()
 var route_rng := RandomNumberGenerator.new()
 var branches := 0
 var loops := 0
+var flank_links := 0               # side-cavern tunnels to a shelf gate (0.22 layout)
 var chamber_fixes := 0
 
 
@@ -59,9 +60,9 @@ func generate(seed_value: int, contract_in: Dictionary = {}) -> Dictionary:
 	route_rng.seed = seed_value ^ 0x74756f72
 	space = GenSpace.new(W, H)
 	# nothing may be planned inside the bedrock around the zones
-	space.claim(Rect2i(0, 0, Balance.CORE_X0, Balance.SHELF_Y1), "void", "flank_w")
-	space.claim(Rect2i(Balance.CORE_X1, 0, W - Balance.CORE_X1, Balance.SHELF_Y1), "void", "flank_e")
-	space.claim(Rect2i(Balance.CORE_X0, Balance.STRATUM_ROWS[2], Balance.CORE_X1 - Balance.CORE_X0, Balance.SHELF_Y1 - Balance.STRATUM_ROWS[2]), "void", "shelf")
+	space.claim(Rect2i(0, 0, Balance.UPPER_X0, Balance.SHELF_Y1), "void", "flank_w")
+	space.claim(Rect2i(Balance.UPPER_X1, 0, W - Balance.UPPER_X1, Balance.SHELF_Y1), "void", "flank_e")
+	space.claim(Rect2i(Balance.UPPER_X0, Balance.STRATUM_ROWS[2], Balance.UPPER_X1 - Balance.UPPER_X0, Balance.SHELF_Y1 - Balance.STRATUM_ROWS[2]), "void", "shelf")
 	space.claim(Rect2i(Balance.DIVIDER_X0, Balance.SHELF_Y1, Balance.DIVIDER_X1 - Balance.DIVIDER_X0, Balance.VAULT_Y0 - Balance.SHELF_Y1), "void", "divider")
 	var zones: Array = []
 	for z in Balance.ZONE_COUNT:
@@ -287,10 +288,13 @@ func _zone_cell(r: RandomNumberGenerator, z: int, mx: int, top: int, bot: int, m
 
 
 func _worm_tunnels() -> void:
-	# wandering burrows: a few in the core, one in each wing
-	var core := Rect2i(Balance.CORE_X0, 14, Balance.CORE_X1 - Balance.CORE_X0, Balance.STRATUM_ROWS[2] - 18)
+	# wandering burrows: a few in the upper zones (one per flank at least), one in each wing
+	var core := Rect2i(Balance.UPPER_X0, 14, Balance.UPPER_X1 - Balance.UPPER_X0, Balance.STRATUM_ROWS[2] - 18)
 	for i in rng.randi_range(2, 4):
 		_worm(core)
+	for flank in [Rect2i(Balance.UPPER_X0, 14, Balance.CORE_X0 - Balance.UPPER_X0, Balance.STRATUM_ROWS[2] - 18),
+			Rect2i(Balance.CORE_X1, 14, Balance.UPPER_X1 - Balance.CORE_X1, Balance.STRATUM_ROWS[2] - 18)]:
+		_worm(flank)
 	for z in [Balance.Z_AQUEDUCT, Balance.Z_CRYSTAL]:
 		_worm((Balance.ZONE_RECTS[z] as Rect2i).grow(-3))
 
@@ -533,9 +537,9 @@ func _set_pieces() -> void:
 ## route and its supports (landmarks are placed after the route is carved).
 func _place_landmark(rw: int, rh: int, y_lo: int, y_hi: int, margin: int, x_lo: int = -1, x_hi: int = -1) -> Rect2i:
 	if x_lo < 0:
-		# callers that only give rows mean the core column
-		x_lo = Balance.CORE_X0 + 2
-		x_hi = Balance.CORE_X1 - 2
+		# callers that only give rows mean the upper zones' full width
+		x_lo = Balance.UPPER_X0 + 2
+		x_hi = Balance.UPPER_X1 - 2
 	for attempt in 12:
 		var r := space.place(land_rng, rw, rh, y_lo, y_hi, margin, 40, x_lo, x_hi)
 		if r.size.x == 0:
@@ -1240,6 +1244,7 @@ func _branches_and_loops() -> void:
 				var anchor2: Vector2i = c["entry"] if c["entry"].distance_squared_to(best) < c["exit"].distance_squared_to(best) else c["exit"]
 				carver.tunnel(Vector2(anchor2) + Vector2(0.5, -0.5), Vector2(best) + Vector2(0.5, -0.5), 1.3, 2.0, 0.3)
 				branches += 1
+	_flank_links()
 	# loop in Dustworks: two side chambers linked to each other (and both to the shaft)
 	if s0.size() >= 2:
 		var a: Dictionary = s0[0]
@@ -1260,6 +1265,33 @@ func _branches_and_loops() -> void:
 		var pb := Vector2(rb.position.x + rb.size.x * topo.randf_range(0.2, 0.8), rb.position.y + 1.5)
 		carver.tunnel(pa, pb, 1.2, 1.7, 0.4)
 		loops += 1
+
+
+## Spore Veins side caverns also tunnel to the shelf gate on their side, so a
+## player can come down the main trunk or swing out through a side cavern to
+## that wing's gate: a second way down, not a required detour.
+func _flank_links() -> void:
+	for c in chambers:
+		if not bool(c.get("flank", false)) or int(c["stratum"]) != Balance.Z_SPORE:
+			continue
+		var r: Rect2i = c["rect"]
+		var west := r.get_center().x < (Balance.CORE_X0 + Balance.CORE_X1) / 2
+		for gate in data["gates"]:
+			if (int(gate["side"]) < 0) != west:
+				continue
+			var top: Vector2i = gate["top"]
+			# just outside the landing alcove, on the side facing the cavern
+			var lx0: int = int(gate["x"]) - 1 if west else int(gate["x"]) - 6
+			var outer := Vector2(lx0 - 1, top.y - 1) if west else Vector2(lx0 + 9, top.y - 1)
+			var anchor: Vector2i = c["entry"] if c["entry"].distance_squared_to(top) < c["exit"].distance_squared_to(top) else c["exit"]
+			carver.tunnel(Vector2(anchor) + Vector2(0.5, -0.5), outer + Vector2(0.5, 0.5), 1.3, 1.9, 0.3)
+			# open the alcove's wall where the tunnel arrives
+			for dy in range(-2, 1):
+				var wx: int = lx0 - 1 if west else lx0 + 9
+				if tunnel_ok(wx, top.y + dy):
+					g.put(wx, top.y + dy, Cell.AIR)
+			loops += 1
+			flank_links += 1
 
 
 ## Cosmetic: give stretches of constructed route corridor an uneven natural
@@ -1290,7 +1322,7 @@ func _summarise_plan() -> void:
 		summary.append({"id": c["id"], "arch": c["arch"], "variant": c.get("variant", ""), "stratum": c["stratum"], "rect": c["rect"], "backbone": c["backbone"], "fixed": c.get("fixed", false)})
 	data["plan"] = {"chambers": summary, "archetype_count": kinds.size(), "branches": branches, "loops": loops,
 		"chamber_fixes": chamber_fixes, "relic_approach": data.get("relic_approach", ""), "overlaps": space.overlaps(),
-		"shaft_styles": shaft_styles, "corridor_plugs": corridor_plugs}
+		"shaft_styles": shaft_styles, "corridor_plugs": corridor_plugs, "flank_links": flank_links}
 
 
 func _carve_corridor(x: int, y: int) -> void:
@@ -1936,7 +1968,7 @@ func _ore() -> void:
 			data["ore_structures"]["faults"] += 1
 	# fossil band: one sedimentary horizon in the Dustworks
 	var by := ore_rng.randi_range(22, Balance.STRATUM_ROWS[1] - 12)
-	for x in range(Balance.CORE_X0 + 1, Balance.CORE_X1 - 1):
+	for x in range(Balance.UPPER_X0 + 1, Balance.UPPER_X1 - 1):
 		var y := by + int(round(sin(x * 0.2) * 1.5))
 		if _ore_ok(x, y) and ore_rng.randf() < 0.09:
 			g.ore[g.idx(x, y)] = Cell.ORE_FOSSIL

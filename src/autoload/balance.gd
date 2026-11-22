@@ -611,8 +611,10 @@ const POWER_MODULE_HP := 14.0
 #   +----------- 2 Forgotten Engine (vault) ------+
 const MAP_W := 128
 const MAP_H := 236
-const CORE_X0 := 28                 # central column spans CORE_X0 .. CORE_X1-1
-const CORE_X1 := 100
+const CORE_X0 := 28                 # the anchor column CORE_X0 .. CORE_X1-1: the lift room, timber
+const CORE_X1 := 100                 # shaft, relay, shelf gates and relic are placed relative to it
+const UPPER_X0 := 6                  # the Dustworks and Spore Veins span UPPER_X0 .. UPPER_X1-1 (0.22
+const UPPER_X1 := 122                # layout experiment: they used to fill only the anchor column)
 const STRATUM_ROWS := [2, 72, 142]  # Dustworks top, Spore Veins top, shelf top
 const SHELF_Y1 := 150               # shelf rows STRATUM_ROWS[2] .. SHELF_Y1-1
 const VAULT_Y0 := 206               # wings span SHELF_Y1 .. VAULT_Y0-1
@@ -706,8 +708,8 @@ const DESCENT_ROOM_SMALL := Vector2i(9, 6)   # used when the vault is crowded
 const DESCENT_APPROACH := 14            # cells of approach corridor carved from its door
 const DESCENT_TRIES := 2500             # placement attempts per room size (cheap rejection sampling)
 const ZONE_RECTS := [
-	Rect2i(28, 2, 72, 70),      # Dustworks
-	Rect2i(28, 72, 72, 70),     # Spore Veins
+	Rect2i(6, 2, 116, 70),      # Dustworks   (UPPER_X0 .. UPPER_X1)
+	Rect2i(6, 72, 116, 70),     # Spore Veins
 	Rect2i(2, 206, 124, 24),    # Forgotten Engine vault
 	Rect2i(2, 150, 60, 56),     # Drowned Aqueducts (left wing)
 	Rect2i(66, 150, 60, 56),    # Crystal Hollows (right wing)
@@ -735,9 +737,9 @@ const GEN_HARD_THRESH :=  [0.28, 0.12, -0.02, 0.2,    0.0]
 const GEN_LOOSE :=        [14,  10,   5,     5,       26]
 const GEN_BOULDERS :=     [5,   4,    2,     1,       5]
 const GEN_POCKETS :=      [[1, 2], [2, 3], [0, 1], [3, 5], [0, 1]]
-const GEN_ORE_VEINS :=    [24,  21,   10,    13,      16]
+const GEN_ORE_VEINS :=    [30,  26,   10,    13,      16]     # upper zones +25% for their wider rock (not +60%)
 const GEN_GAS :=          [2,   7,    2,     1,       3]
-const GEN_CRAWLERS :=     [3,   5,    2,     3,       3]
+const GEN_CRAWLERS :=     [4,   6,    2,     3,       3]
 const GEN_GEODES :=       [0,   [1, 2], [0, 1], [0, 1], [3, 5]]
 const GEN_AQUEDUCT_CHANNELS := [2, 3]
 # primary ore per zone for fault veins (Cell.ORE_* ids: 1 copper, 2 cobalt, 3 aetherite, 4 fossil)
