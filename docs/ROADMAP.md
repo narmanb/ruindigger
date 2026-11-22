@@ -295,6 +295,91 @@ and usually cost them the safer trading route. Do not make aggression strictly
 more profitable or friendship purely cosmetic. Coordinate with existing
 economy and upgrade pacing; these should be choices, not mandatory power creep.
 
+### Future Molefolk quests, fixed-map missions, and rival clans
+
+**Longer-term expansion, not required for initial Molefolk implementation.**
+Molefolk can support both organic in-run side quests and the game's existing
+fixed-seed / purpose-built mission format. These should express the same core
+identity—digging, engineering, fluid systems, terrain decisions, rescue, and
+meaningful civilian lives—not become generic combat arenas.
+
+**Distinguish two formats:**
+- **Quests within ordinary runs:** Optional requests discovered while exploring
+  a generated village, camp, or work site. Examples: rescue missing miners,
+  repair an endangered floodgate, recover stolen tools, reopen a collapsed
+  supply tunnel, deliver material to an engineering crew, or mediate a local
+  dispute. Completion can grant credits, unique Molefolk tools/services,
+  reputation improvements, or access to additional trade inventory.
+- **Standalone missions:** Like existing fixed-seed maps (e.g. The Dry Dock),
+  these are deliberately authored/predictable maps built around one memorable
+  challenge. They can feature recurring settlements, named characters, or a
+  particular crisis without forcing those complex scenarios into procedural
+  generation. Replayability can come from optional objectives, alternate
+  approaches, score targets, or later harder variants, not randomizing away the
+  encounter's carefully designed geometry.
+
+**Potential rival faction: Molefolk raider clans.**
+- Not every Molefolk settlement has to share the same values or loyalties.
+  Introduce a rival, aggressive, raid-oriented culture: essentially the
+  intimidating **"Viking" Molefolk** idea—rough underground raiders with
+  scavenged armor, distinctive helmets/banners, mining axes, tunneling rams,
+  stolen pumps, and improvised siege equipment. Character and visual identity
+  to be determined; avoid assuming all Molefolk are hostile.
+- Raiders are a **separate faction** from ordinary peaceful villages. Their
+  aggression must not automatically count as crimes by friendly villagers or
+  make the entire Molefolk civilization hate the player. Distinct reputations
+  and allegiances may eventually be useful, but avoid complex diplomacy
+  simulation in the first version.
+- Their threat is not merely stronger melee enemies: they breach walls,
+  construct assault tunnels, redirect water, steal machinery, damage
+  fortifications, and threaten supply routes. This naturally creates
+  engineering-focused situations for the player.
+
+**Flagship mission concept — "Defend the Burrow" (working title):**
+- Premise: A peaceful Molefolk village is under threat from a rival raider
+  clan. The player arrives to help prepare and protect it.
+- Format: A **designed fixed map** with understandable underground topology:
+  homes and civilian shelter, reinforcement points, a vulnerable outer
+  perimeter, several possible approach tunnels, a workshop, and perhaps a
+  nearby reservoir or pump network. Avoid procedural surprises that invalidate
+  planning.
+- Preparation phase: Talk to / observe local engineers, dig defensive
+  passages, reinforce selected walls, install temporary supports or barriers,
+  configure pumps/gates, and create evacuation or retreat routes. Allow
+  different loadouts and strategies rather than one prescribed answer.
+- Assault phase: Telegraph raider breaches and staggered attacks, perhaps with
+  a small digging squad and a ram/pump team. Make civilians run to shelter and
+  friendly engineers visibly help repair defenses. Keep the encounter
+  readable and capped—not an enormous real-time battle.
+- Victory: Protect enough residents and/or critical village infrastructure
+  until the raiders retreat, or disable their tunneling/siege machinery.
+  Consider an optional objective to avoid civilian casualties and a bonus for
+  preserving buildings/resources. Offer ways to win by **outengineering**
+  enemies rather than killing all of them.
+- Failure/retry: Use clear failure conditions and telegraph major risks.
+  Avoid a random fluid simulation killing villagers outside player control.
+  A defeated village must not produce unfair permanent faction penalties in
+  the player's normal runs.
+- Rewards: Unique technology, access to a specialist workshop, upgraded
+  trading inventory, reputation with peaceful Molefolk, or a fitting
+  mission-specific reward (exact economy integration TBD).
+
+**Other possible mission concepts to evaluate later:**
+- **Raiders' Tunnel:** Locate and disable a raider drilling machine or steal
+  back essential supplies by finding, flooding, or collapsing the right route.
+- **The Great Evacuation:** Move civilians to safety while repairing a pump
+  and keeping multiple exits accessible during a controlled flood threat.
+- **Burrow Under Siege (hard variant):** Same authored map with fewer
+  resources, more simultaneous breaches, or tougher engineering constraints.
+  Increase tactical complexity rather than simply increasing enemy HP.
+
+**Design cautions:** Avoid turning villagers into escort NPCs requiring
+constant babysitting. Protect their baseline safety until the *mission's
+explicit, telegraphed* threats begin. Respect Ruin Digger's modest direct
+combat; protect and rescue objectives should have many nonlethal solutions.
+Keep any raider-related quests/mission systems well after the initial peaceful
+Molefolk vertical slice, unless a small prototype proves otherwise.
+
 ### Generation, pacing, and technical guardrails
 
 - Start with sparse encounters; avoid a village on every floor. Vary settlement
