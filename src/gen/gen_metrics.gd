@@ -85,7 +85,57 @@ static func compute(data: Dictionary) -> Dictionary:
 	for k in ["ladder", "ledges", "open", "plug"]:
 		m["shaft_" + k] = styles.get(k, 0)
 	m["corridor_plugs"] = plan.get("corridor_plugs", 0)
+	# world-layout comparison (0.22 experiment): how much of the map you can use
+	var lay := layout_use(g, data)
+	for k in lay.keys():
+		m[k] = lay[k]
+	var optional := 0
+	for c: Dictionary in plan.get("chambers", []):
+		if not bool(c.get("backbone", false)):
+			optional += 1
+	m["optional_chambers"] = optional
+	var flank_ch := 0
+	for c: Dictionary in plan.get("chambers", []):
+		var cr: Rect2i = c["rect"]
+		if int(c["stratum"]) <= Balance.Z_SPORE and (cr.end.x <= OLD_CORE_X0 or cr.position.x >= OLD_CORE_X1):
+			flank_ch += 1
+	m["flank_chambers"] = flank_ch
+	m["flank_links"] = plan.get("flank_links", 0)
 	return m
+
+
+## The original layout's upper core column: cells outside it (above the shelf)
+## were all bedrock before the 0.22 layout experiment.
+const OLD_CORE_X0 := 28
+const OLD_CORE_X1 := 100
+
+
+## How much of the map is real, usable space. open_cells: open (non-solid)
+## cells; playable_cells: anything that isn't bedrock; flank_open: open cells
+## in the old bedrock margins beside the upper zones; bedrock_pct.
+static func layout_use(g: TerrainGrid, data: Dictionary) -> Dictionary:
+	var open := 0
+	var playable := 0
+	var flank := 0
+	var flank_play := 0
+	var bed := 0
+	var top: int = Balance.STRATUM_ROWS[2]
+	for y in range(2, g.h - 2):
+		for x in range(2, g.w - 2):
+			var mt := g.get_mat(x, y)
+			var side := y < top and (x < OLD_CORE_X0 or x >= OLD_CORE_X1)
+			if mt == Cell.BEDROCK:
+				bed += 1
+				continue
+			playable += 1
+			if side:
+				flank_play += 1
+			if not Cell.is_solid(mt):
+				open += 1
+				if side:
+					flank += 1
+	return {"open_cells": open, "playable_cells": playable, "flank_open": flank, "flank_playable": flank_play,
+		"bedrock_pct": 100.0 * bed / maxi(1, (g.w - 4) * (g.h - 4))}
 
 
 static func _near(dc: DigCheck, dist: PackedFloat32Array, b: Vector2i) -> float:
