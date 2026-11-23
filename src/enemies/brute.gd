@@ -7,10 +7,13 @@ extends Node2D
 ##   - drop a ceiling on it (falling rock ignores the plate and stuns it)
 ##   - stick a charge to its back, or let a blast go off behind it
 ##   - bait its charge into rock it cannot break: it stuns itself
+##   - dodge its charge: when it misses, it skids and stands winded, plate down
+## Turning round takes it a full second (the plate swings across its front),
+## and its back is open all the while.
 ## It walks on floors, steps up one-cell ledges, falls off edges, and smashes
 ## through sediment, rubble and cracked rock in its way. It cannot climb.
 
-enum S { IDLE, HUNT, TURN, WINDUP, BRACE, CHARGE, SMASH, STUNNED, DEAD }
+enum S { IDLE, HUNT, TURN, WINDUP, BRACE, CHARGE, SMASH, STUNNED, WINDED, DEAD }
 
 const HALF := Vector2(12, 15)      # collision half extents (24 x 30: the digger is 11 x 26)
 
@@ -34,6 +37,8 @@ var asleep := false
 var smash_cells: Array[Vector2i] = []
 var slams := 0
 var blocked_hits := 0
+var winded_n := 0                 # charges that missed and left it winded (tests)
+var _air_t := 0.0                 # s continuously off the ground
 var spr: Sprite2D
 var mat: ShaderMaterial
 var eye_glow: Sprite2D
@@ -45,7 +50,7 @@ func _ready() -> void:
 	spr = Sprite2D.new()
 	spr.texture = load("res://assets/gen/brute.png")
 	spr.hframes = 4
-	spr.vframes = 4
+	spr.vframes = 6
 	spr.offset = Vector2(0, -5)        # frame 48x40, feet at y=38: body centre sits 5 px lower than the frame's
 	mat = ShaderMaterial.new()
 	mat.shader = load("res://src/fx/flash.gdshader")
@@ -116,7 +121,7 @@ func _sees_player() -> bool:
 
 ## Drilling and blasts draw it, like the crawlers.
 func hear(pos: Vector2, radius_cells: float) -> void:
-	if state in [S.DEAD, S.STUNNED, S.CHARGE, S.BRACE]:
+	if state in [S.DEAD, S.STUNNED, S.WINDED, S.CHARGE, S.BRACE]:
 		return
 	if pos.distance_to(global_position) <= radius_cells * Balance.CELL:
 		target_x = pos.x
@@ -186,9 +191,24 @@ func _physics_process(delta: float) -> void:
 				mine.shake(0.4)
 				charge_cd = Balance.BRUTE_CHARGE_COOLDOWN
 				_go(S.HUNT)
-			elif state_t >= Balance.BRUTE_CHARGE_TIME or not on_floor and state_t > 0.3:
+			elif _air_t > Balance.BRUTE_AIR_GRACE:
+				# ran off an edge: it falls, no skid
 				charge_cd = Balance.BRUTE_CHARGE_COOLDOWN
 				_go(S.HUNT)
+			elif state_t >= Balance.BRUTE_CHARGE_TIME:
+				# missed you: it skids to a stop and stands winded, plate down
+				charge_cd = Balance.BRUTE_CHARGE_COOLDOWN
+				winded_n += 1
+				_go(S.WINDED)
+				Audio.play_at("land", global_position, -2.0, 0.2, 0.0)
+				mine.tell_once("t_winded", "THE BRUTE IS WINDED - its plate is down, hit it now!")
+		S.WINDED:
+			if state_t < Balance.BRUTE_SKID:
+				want = facing * Balance.BRUTE_CHARGE_SPEED * (1.0 - state_t / Balance.BRUTE_SKID)
+				if randf() < 0.5:
+					mine.fx.dust(global_position + Vector2(facing * 6, HALF.y), Color(0.8, 0.7, 0.55), 2)
+			if state_t >= Balance.BRUTE_WINDED:
+				_go(S.HUNT if forget_t > 0.0 else S.IDLE)
 		S.SMASH:
 			if randf() < 0.3 and not smash_cells.is_empty():
 				mine.fx.chips(grid.cell_center(smash_cells[0]), Vector2(-facing, -0.4), Color(0.75, 0.65, 0.5))
@@ -246,8 +266,12 @@ func _move(want: float, delta: float) -> void:
 			var snap := floorf((foot + vel.y * delta) / Balance.CELL) * Balance.CELL - HALF.y
 			if snap >= global_position.y - 0.5 and _free(Vector2(global_position.x, snap)):
 				global_position.y = snap
-			on_floor = true
 		vel.y = 0.0
+	# standing is a direct check a pixel under the feet: falling a sliver into
+	# its own cell every other frame used to read as "in the air" and cut its
+	# charge short after three cells
+	on_floor = not _free(global_position + Vector2(0, 1.0))
+	_air_t = 0.0 if on_floor else _air_t + delta
 	if want == 0.0 or state in [S.STUNNED, S.DEAD]:
 		return
 	var dir := 1 if want > 0.0 else -1
@@ -310,7 +334,7 @@ func _slam() -> void:
 
 ## Does a hit from `from` land on the plate?
 func plate_blocks(from: Vector2) -> bool:
-	if state == S.STUNNED or state == S.DEAD:
+	if state in [S.STUNNED, S.WINDED, S.DEAD]:
 		return false
 	return signi(int(signf(from.x - global_position.x))) == facing
 
@@ -401,23 +425,29 @@ func _visual() -> void:
 		S.SMASH:
 			anim = "attack"
 			rate = 5.0
-		S.STUNNED:
+		S.STUNNED, S.WINDED:
 			anim = "stun"
-			rate = 5.0
-	if flash > 0.5:
+			rate = 5.0 if state == S.STUNNED else 3.0
+	if flash > 0.5 and state != S.TURN:
 		anim = "hurt"
 	var a: Array = anims.get(anim, [0, 4])
 	var t := state_t if state == S.WINDUP else anim_t
 	spr.frame = int(a[0]) + int(t * rate) % int(a[1])
-	# half-way through a turn it shows its back, so the turn reads
+	# turning: the plate swings across its front, frame by frame with the turn
 	var face := facing
-	if state == S.TURN and state_t > Balance.BRUTE_TURN * 0.5:
-		face = -facing
-	spr.flip_h = face < 0
+	var turn_k := 0.0
+	if state == S.TURN:
+		var ta: Array = anims.get("turn", [0, 1])
+		turn_k = clampf(state_t / Balance.BRUTE_TURN, 0.0, 1.0)
+		spr.frame = int(ta[0]) + mini(int(ta[1]) - 1, int(turn_k * float(ta[1])))
+		if turn_k > 0.5:
+			face = -facing
+	spr.flip_h = facing < 0
 	spr.position = Vector2(randf_range(-1, 1), 0).round() if state in [S.BRACE, S.SMASH] else Vector2.ZERO
 	mat.set_shader_parameter("flash", clampf(flash, 0.0, 0.6 if Settings.reduced_flashing() else 1.0))
-	eye_glow.global_position = global_position + Vector2(face * 8, -HALF.y - 1)
-	eye_glow.visible = state != S.STUNNED
+	var eye_x := float(face) * 8.0 * absf(1.0 - 2.0 * turn_k) if state == S.TURN else float(face) * 8.0
+	eye_glow.global_position = global_position + Vector2(eye_x, -HALF.y - 1)
+	eye_glow.visible = state not in [S.STUNNED, S.WINDED]
 	eye_glow.modulate = Color(1.0, 0.2, 0.2, 0.85) if state in [S.HUNT, S.BRACE, S.CHARGE, S.WINDUP, S.SMASH, S.TURN] else Color(1.0, 0.45, 0.2, 0.4)
 	queue_redraw()
 

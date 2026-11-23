@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.21.1-layout
+**The Shielded Brute, fixed and reworked** (on the layout experiment branch)
+- **Its charge works now.** It ran about 3 cells and gave up: a one-frame "am I on the ground?" glitch cancelled every charge after a third of a second. It now runs its full length (about 15 cells in 1.6 s) unless it hits you, a wall or an edge.
+- **A missed charge leaves it winded.** If the charge runs out without hitting you, it skids to a stop and stands winded for 1.5 seconds with its plate down: every hit lands in full. So the fight is: it braces (red dashes on the floor), you dodge, you hit it. Charging into basalt or harder rock still stuns it for 2.5 s; it still smashes straight through sediment.
+- **Turning round takes a full second** (was about half a second) and shows it: the plate swings from its side, across the front of its body, over to the other side, and the head comes round to face you halfway. Its back is open the whole time, so getting behind it pays off. (New sprite frames, made by the art generator.)
+- **Fix: the scrolling line under panel titles** (lift control, settings, codex and the rest) ran past the end of the line before wrapping round. It now stays on the line.
+
 ## 0.21.0-layout
 **Experiment (branch `experiment/world-layout-same-size`): a wider upper mine, same map size.** Not on `main`. Same Android version code as 0.21.0, so you can install this over 0.21.0 and later put 0.21.0 back over it without uninstalling (your save stays).
 - **The Dustworks and Spore Veins now use the whole width of the map.** They used to sit in a 72-cell column with solid bedrock on both sides, about a quarter of the map that nobody could enter. Now they are about 116 cells wide, like the wings below. The map is still 128 x 236.

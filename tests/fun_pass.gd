@@ -17,7 +17,7 @@ static func run(t: Node) -> void:
 	# only=<section>: run one section (for chasing an intermittent failure)
 	if t.args.has("only"):
 		match String(t.args["only"]):
-			"roamers": await roamers(t)
+			"roamers", "brute": await roamers(t)
 			"roamers_b", "eater": await roamers_b(t)
 			"roamers_c": await roamers_c(t)
 			"charges": await charges(t)
@@ -1760,16 +1760,73 @@ static func roamers(t: Node) -> void:
 	b3.forget_t = 0.0
 	for k in 200:
 		await t._frames(1)
-		if b3.state == Brute.S.STUNNED:
-			break
 		if b3.state != Brute.S.CHARGE:
-			b3.state = Brute.S.CHARGE       # keep it charging until it meets the wall
-			b3.state_t = 0.0
+			break                          # one real charge has to get there on its own
 	t.check(not g.is_solid(pc.x + 9, pc.y) and not g.is_solid(pc.x + 9, pc.y - 1), "a charging brute goes straight through sediment")
 	t.check(b3.state == Brute.S.STUNNED and b3.slams == 1 and g.get_mat(pc.x + 14, pc.y) == Cell.HARD, "charging into basalt stuns it and leaves the rock standing")
 	t.check(not b3.plate_blocks(b3.global_position + Vector2(40, 0)), "after a slam the plate is down")
 	b3.queue_free()
 	mine.enemies.erase(b3)
+	floor_it.call()
+	await t._frames(3)
+	# --- 0.21: a charge that misses runs its full length, then it stands winded ---
+	pl.global_position = home + Vector2(-6 * 16, 0)
+	pl.velocity = Vector2.ZERO
+	var b5: Brute = mine.spawn_brute(Vector2i(pc.x, pc.y))
+	b5.facing = 1                         # charging away from you, into open floor
+	await t._frames(4)
+	var cx0 := b5.global_position.x
+	b5._go(Brute.S.CHARGE)
+	var charge_frames := 0
+	while b5.state == Brute.S.CHARGE and charge_frames < 300:
+		await t._frames(1)
+		charge_frames += 1
+	var ran := (b5.global_position.x - cx0) / 16.0
+	t.check(ran >= 12.0, "a charge runs its full length on open floor (%.1f cells in %.2f s)" % [ran, charge_frames / 60.0])
+	t.check(b5.state == Brute.S.WINDED and b5.winded_n == 1, "when it misses, it skids to a stop winded")
+	t.check(not b5.plate_blocks(b5.global_position + Vector2(40, 0)), "winded, its plate is down")
+	var whp := b5.hp
+	b5.last_hit = "drill"
+	b5.hit(20.0, b5.global_position + Vector2(40, 0))
+	t.check(is_equal_approx(whp - b5.hp, 20.0), "a hit from the front lands in full while it is winded")
+	var winded_for := 0.0
+	while b5.state == Brute.S.WINDED and winded_for < 4.0:
+		await t._frames(1)
+		winded_for += 1.0 / 60.0
+	t.check(winded_for >= Balance.BRUTE_WINDED - 0.2 and b5.state != Brute.S.WINDED, "and it gets its breath back after about %.1f s (%.2f s)" % [Balance.BRUTE_WINDED, winded_for])
+	b5.queue_free()
+	mine.enemies.erase(b5)
+	# --- 0.21: turning round takes a full second, with the plate swinging across ---
+	var b6: Brute = mine.spawn_brute(Vector2i(pc.x + 4, pc.y))
+	b6.facing = 1
+	b6.charge_cd = 99.0
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
+	await t._frames(2)
+	var turn_t := 0.0
+	var turn_frames := {}
+	var turn_meta: Array = SpriteDB.meta()["brute"]["anims"]["turn"]
+	var back_hit := false
+	for k in 240:
+		await t._frames(1)
+		if b6.state == Brute.S.TURN:
+			turn_t += 1.0 / 60.0
+			turn_frames[b6.spr.frame] = true
+			if not back_hit and turn_t > 0.6:
+				# halfway round, the digger (now behind its old facing) drills its back
+				var bh := b6.hp
+				b6.last_hit = "drill"
+				b6.hit(10.0, pl.global_position)
+				back_hit = is_equal_approx(bh - b6.hp, 10.0)
+		elif turn_t > 0.0:
+			break
+	t.check(turn_t >= Balance.BRUTE_TURN - 0.1 and b6.facing == -1, "turning round takes it about a second (%.2f s)" % turn_t)
+	t.check(turn_frames.size() >= int(turn_meta[1]) - 1, "and it shows the plate swinging across its front (%d of %d turn frames)" % [turn_frames.size(), int(turn_meta[1])])
+	t.check(back_hit, "its back is open while it turns")
+	b6.queue_free()
+	mine.enemies.erase(b6)
+	pl.global_position = home
+	pl.velocity = Vector2.ZERO
 	floor_it.call()
 	await t._frames(3)
 	# --- ledges and soft walls on the way to you ---

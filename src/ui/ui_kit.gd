@@ -168,8 +168,12 @@ class Scanline extends Control:
 		draw_rect(Rect2(0, 1, w, 1), Color(color.r, color.g, color.b, 0.25))
 		for i in range(0, int(w), 8):
 			draw_rect(Rect2(i, 0, 1, 3), Color(color.r, color.g, color.b, 0.35))
+		# the sweep enters and leaves at the ends: clipped to the line, never past it
 		var x := fmod(t * 60.0, w + 30.0) - 30.0
-		draw_rect(Rect2(x, 0, 30, 3), Color(color.r, color.g, color.b, 0.7))
+		var x0 := maxf(0.0, x)
+		var x1 := minf(w, x + 30.0)
+		if x1 > x0:
+			draw_rect(Rect2(x0, 0, x1 - x0, 3), Color(color.r, color.g, color.b, 0.7))
 
 
 static func touch_scrollbar(scroll: ScrollContainer) -> void:

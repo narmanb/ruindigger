@@ -248,6 +248,21 @@ def gen_crawler():
 # right. Feet at y=38. Stands a little taller than the digger and far wider.
 # --------------------------------------------------------------------------
 def brute_frame(kind, t):
+    if kind == "turn":
+        # turning round: the first half swings the plate from its side across the
+        # front of the body to face you; the second half is the mirror of the
+        # first, so it ends on the normal frame facing the other way
+        if t < 0.5:
+            return _brute_turn_half(t * 2.0)
+        return np.ascontiguousarray(_brute_turn_half((1.0 - t) * 2.0)[:, ::-1])
+    return _brute_body(kind, t)
+
+
+def _brute_turn_half(s):
+    return _brute_body("turn", 0.0, s)
+
+
+def _brute_body(kind, t, s=0.0):
     c = Canvas(48, 40)
     a = t * math.tau
     bob = round(math.sin(a) * 1) if kind in ("walk", "charge") else 0
@@ -274,21 +289,27 @@ def brute_frame(kind, t):
     c.ellipse(19, 5 + bob + drop, 14, 5, P("chit4"))
     for k in range(3):
         c.px(20 + k * 4, 11 + bob + drop, P("chit0"))
-    # small head peering over the top of the plate
-    hx = 31 + lean
+    # small head peering over the top of the plate (turning: it comes round to face you)
+    hx = 31 + lean - round(7 * s)
     hy = 1 + bob + drop * 3
     c.ellipse(hx - 5, hy, 11, 10, P("chit2"))
     c.ellipse(hx - 4, hy, 8, 4, P("chit4"))
     c.px(hx - 5, hy + 5, P("chit0"))
     if kind == "stun":
         c.rect(hx, hy + 4, 3, 1, P("eye0"))
+    elif s > 0.6:
+        # face-on: both eyes
+        for ex in (hx - 3, hx + 1):
+            c.rect(ex, hy + 3, 3, 2, P("red1"))
+            c.px(ex + 1, hy + 3, P("red2"))
     else:
         c.rect(hx, hy + 3, 3, 2, P("red1"))
         c.px(hx + 1, hy + 3, P("red2"))
         c.px(hx + 2, hy + 3, P("red3"))
-    # the plate: a tall scarred shield covering the whole front
-    px0 = 33 + lean
-    top = 8 + bob + drop * 2
+    # the plate: a tall scarred shield covering the whole front (turning: it
+    # swings across the body, lifted a little as it goes)
+    px0 = 33 + lean - round(15 * s)
+    top = 8 + bob + drop * 2 - round(4 * math.sin(s * math.pi * 0.5))
     plate = [(px0, top + 3), (px0 + 5, top), (px0 + 10, top + 5), (px0 + 11, 22 + drop), (px0 + 8, 37), (px0, 38), (px0 - 2, 22)]
     c.poly(plate, P("steel2"))
     c.poly([(px0 + 1, top + 4), (px0 + 5, top + 1), (px0 + 6, 21 + drop), (px0 + 4, 36), (px0 + 1, 36)], P("steel3"))
@@ -320,10 +341,10 @@ def brute_frame(kind, t):
 def gen_brute():
     frames = []
     meta = {}
-    for name, n in [("walk", 4), ("idle", 2), ("brace", 2), ("charge", 2), ("attack", 2), ("stun", 2), ("hurt", 1)]:
+    for name, n in [("walk", 4), ("idle", 2), ("brace", 2), ("charge", 2), ("attack", 2), ("stun", 2), ("hurt", 1), ("turn", 7)]:
         meta[name] = [len(frames), n]
         for i in range(n):
-            frames.append(brute_frame(name, i / n))
+            frames.append(brute_frame(name, i / max(1, n - 1) if name == "turn" else i / n))
     save(to_image(sheet(frames, 48, 40, 4)), "brute.png")
     META["brute"] = {"fw": 48, "fh": 40, "cols": 4, "anims": meta}
 

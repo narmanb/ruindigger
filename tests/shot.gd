@@ -94,7 +94,7 @@ func _process(_d: float) -> void:
 			if args.has("brute_state"):
 				br.set_physics_process(false)
 				br.state = int(args["brute_state"])
-				br.state_t = 0.3
+				br.state_t = float(args.get("brute_t", "0.3"))
 				br._visual()
 		# pooldemo=1: an eel in a small pool and a slag salamander beside it
 		if args.has("pooldemo"):
