@@ -55,6 +55,9 @@ var wade_steps := 0                # steps taken through shallow water (splashes
 var drill_regrow := 1.0            # 0 = drill just fired off as a rocket, 1 = fully grown back
 var recoil := 0.0                  # px the drill arm is knocked back toward the shoulder (visual only)
 var _recoil_v := 0.0
+var fill: PointLight2D            # the soft second light (off at Low graphics quality)
+var _phys_prev := Vector2.ZERO       # position at the last two physics steps, for the
+var _phys_now := Vector2.ZERO        # smoothed (interpolated) camera above 60 FPS
 var _squash_t := 0.0               # landing squash, visual only
 var _squash_amt := 0.0
 var _anim_t := 0.0
@@ -108,7 +111,7 @@ func _ready() -> void:
 	lamp.color = Color(1.0, 0.9, 0.75)
 	lamp.position = Vector2(4, -10)
 	add_child(lamp)
-	var fill := PointLight2D.new()
+	fill = PointLight2D.new()
 	fill.texture = lamp.texture
 	fill.texture_scale = 0.55
 	fill.energy = 0.55
@@ -263,6 +266,8 @@ func _physics_process(delta: float) -> void:
 		fire_bolt(ay)
 
 	move_and_slide()
+	_phys_prev = _phys_now
+	_phys_now = global_position
 	var now_floor := is_on_floor()
 	if now_floor and not was_on_floor:
 		var impact := fall_peak
@@ -581,6 +586,14 @@ func _step_recoil(delta: float) -> void:
 			recoil = 0.0
 			_recoil_v = 0.0
 			break
+
+
+## Where the digger is drawn this frame. With physics interpolation on (frame
+## rate above 60) that is between its last two physics positions.
+func drawn_position() -> Vector2:
+	if not get_tree().physics_interpolation or _phys_prev == Vector2.ZERO:
+		return global_position
+	return _phys_prev.lerp(_phys_now, Engine.get_physics_interpolation_fraction())
 
 
 ## A one-cell step in front of the feet, with room to stand on it.

@@ -203,7 +203,7 @@ func build_report() -> String:
 	lines.append("device: %s | %s %s | %s x%d | %s" % [OS.get_model_name(), OS.get_name(), OS.get_version(), OS.get_processor_name(), OS.get_processor_count(), RenderingServer.get_video_adapter_name()])
 	var win := DisplayServer.window_get_size()
 	lines.append("screen: %dx%d   refresh %.0f Hz   renderer %s" % [win.x, win.y, DisplayServer.screen_get_refresh_rate(), str(ProjectSettings.get_setting("rendering/renderer/rendering_method", "?"))])
-	lines.append("settings: sand_physics=%d low_effects=%s fps_30=%s camera_zoom=%.2f touch=%s" % [int(Settings.get_value("sand_physics")), str(Settings.get_value("low_effects")), str(Settings.get_value("fps_30")), float(Settings.get_value("camera_zoom")), InputSetup.last_device])
+	lines.append("settings: sand_physics=%d graphics=%s fps_cap=%d interpolation=%s game_feel=%d camera_zoom=%.2f touch=%s" % [int(Settings.get_value("sand_physics")), String(Balance.GFX_NAMES[Settings.gfx_quality()]), Settings.fps_cap(), str(get_tree().physics_interpolation), Settings.game_feel(), float(Settings.get_value("camera_zoom")), InputSetup.last_device])
 	lines.append("run: stage=%s%s seed=%d   length %.0f s   %d frames" % [_start.get("stage", ""), (" mission=" + String(_start["mission"])) if String(_start.get("mission", "")) != "" else "", int(_start.get("seed", 0)), seconds, frames])
 	lines.append("")
 	lines.append("SUMMARY")

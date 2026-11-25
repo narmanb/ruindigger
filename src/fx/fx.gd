@@ -60,6 +60,7 @@ func _make_pool(kind: String, count: int, amount: int, parent: Node) -> void:
 	var arr: Array = []
 	for i in count:
 		var p := CPUParticles2D.new()
+		p.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # placed by hand, not moved by physics
 		p.emitting = false
 		p.one_shot = true
 		p.amount = amount
@@ -182,7 +183,8 @@ func _configure(p: CPUParticles2D, kind: String) -> void:
 
 ## How many pooled emitters a request for n particles of `kind` uses (1..3).
 static func emitters_for(kind: String, n: int) -> int:
-	return clampi(int(ceil(float(n) / float(UNIT.get(kind, 10)))), 1, 3)
+	var most := clampi(int(Settings.gfx("emitters")), 1, 4)     # Graphics quality: 1 low, 3 medium, 4 high
+	return clampi(int(ceil(float(n) / float(UNIT.get(kind, 10)))), 1, most)
 
 
 func _new_frame() -> void:
@@ -190,7 +192,7 @@ func _new_frame() -> void:
 	if f == _frame:
 		return
 	_frame = f
-	_decor_left = Balance.FX_DECOR_PER_FRAME
+	_decor_left = int(round(Balance.FX_DECOR_PER_FRAME * Settings.gfx("decor")))
 	var vp := get_viewport()
 	if vp:
 		_view = (vp.get_canvas_transform().affine_inverse() * vp.get_visible_rect()).grow(Balance.FX_MARGIN)
@@ -303,7 +305,7 @@ func flash(pos: Vector2, color: Color, scale_v: float, time: float, boost: bool 
 		old.kill()
 	l.global_position = pos
 	l.color = color
-	l.texture_scale = maxf(0.5, scale_v * 1.8)
+	l.texture_scale = maxf(0.5, scale_v * 1.8) * Settings.gfx("light")
 	l.enabled = true
 	var peak := 1.2 if Settings.reduced_flashing() else 2.4
 	if boost:

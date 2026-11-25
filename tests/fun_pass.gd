@@ -29,6 +29,7 @@ static func run(t: Node) -> void:
 			"ladders": await ladder_blasts(t)
 			"dock": await dock(t)
 			"feel": await feel(t)
+			"gfx": await graphics(t)
 			"relics": await relics(t)
 		return
 	await economy(t)
@@ -54,6 +55,7 @@ static func run(t: Node) -> void:
 	await ladder_blasts(t)
 	await dock(t)
 	await feel(t)
+	await graphics(t)
 	await sand(t)
 	await sand_look(t)
 	await zones(t)
@@ -3066,9 +3068,9 @@ static func feel(t: Node) -> void:
 	t.check(Settings.feel("flash") <= 1.0, "Reduced Flashing caps the brighter flashes at Strong")
 	Settings.values["reduced_flashing"] = false
 	t.check(Settings.feel("flash") > 1.0, "without it, Strong flashes a little brighter")
-	Settings.values["low_effects"] = true
-	t.check(Settings.feel("decor") == 0.0, "Low Effects turns the decorative extras off, even at Strong")
-	Settings.values["low_effects"] = false
+	Settings.values["gfx_quality"] = 0
+	t.check(Settings.feel("decor") == 0.0, "Low graphics quality turns the decorative extras off, even at Strong")
+	Settings.values["gfx_quality"] = 1
 	t.check(Fx.emitters_for("burst", 6) == 1 and Fx.emitters_for("burst", 18) == 2 and Fx.emitters_for("burst", 30) == 3 and Fx.emitters_for("burst", 999) == 3, "a bigger burst uses more pooled emitters, at most three")
 	# a dive
 	Game.contract = Balance.CONTRACTS[0].duplicate()
@@ -3169,7 +3171,7 @@ static func feel(t: Node) -> void:
 	await t._frames(1)
 	var fx: Fx = mine.fx
 	Settings.values["game_feel"] = 3
-	Settings.values["low_effects"] = true
+	Settings.values["gfx_quality"] = 0
 	var e0 := fx.emitted
 	fx.burst(pl.global_position, Color.WHITE, 30, Fx.DECOR)
 	t.check(fx.emitted == e0, "Low Effects + Strong: no decorative extras")
@@ -3177,7 +3179,7 @@ static func feel(t: Node) -> void:
 	t.check(fx.emitted == e0 + 1, "a hazard warning always plays, even off screen with Low Effects")
 	fx.burst(pl.global_position, Color.WHITE, 30)
 	t.check(fx.emitted == e0 + 2, "Low Effects keeps normal effects to one emitter")
-	Settings.values["low_effects"] = false
+	Settings.values["gfx_quality"] = 1
 	await t._frames(1)
 	e0 = fx.emitted
 	for k in 20:
@@ -3225,6 +3227,88 @@ static func feel(t: Node) -> void:
 		mine._breach_check()
 	t.check(mine.breaches == b0 + 1, "a strong jet starting near you splashes once; a jet that keeps running stays quiet")
 	Settings.values = keep.duplicate()
+	Settings.apply()
+	Game.goto("title", true)
+	await _settle(t)
+
+
+## 0.21.2: graphics quality and frame rate settings.
+static func graphics(t: Node) -> void:
+	t.section("graphics quality and frame rate")
+	var keep := Settings.values.duplicate()
+	t.check(int(Settings.DEFAULTS["gfx_quality"]) == 1 and int(Settings.DEFAULTS["fps_cap"]) == 60, "defaults: Medium graphics, 60 FPS")
+	Settings.values["fps_cap"] = 60
+	Settings.apply()
+	t.check(Engine.max_fps == 60 and not t.get_tree().physics_interpolation, "at 60 FPS the frame rate matches the physics: no interpolation")
+	Settings.values["fps_cap"] = 120
+	Settings.apply()
+	t.check(Engine.max_fps == 120 and t.get_tree().physics_interpolation, "at 120 FPS movement is drawn smoothly between physics steps")
+	Settings.values["fps_cap"] = 30
+	Settings.apply()
+	t.check(Engine.max_fps == 30 and not t.get_tree().physics_interpolation, "30 FPS caps the frame rate (battery)")
+	Settings.values["fps_cap"] = Settings._sanitize("fps_cap", 100)
+	t.check(Settings.fps_cap() == 90 and Settings._sanitize("fps_cap", 500) == 120 and Settings._sanitize("gfx_quality", 7) == 2, "odd values snap to the nearest choice")
+	# an older settings file: the 30 FPS switch and Low effects mode carry over
+	var p0 := Settings.path
+	Settings.path = "user://test_settings_gfx.cfg"
+	var cf := ConfigFile.new()
+	cf.set_value("options", "fps_30", true)
+	cf.set_value("options", "low_effects", true)
+	cf.save(Settings.path)
+	Settings.load_settings()
+	t.check(Settings.fps_cap() == 30 and Settings.gfx_quality() == 0 and Settings.low_effects(), "an old save with the 30 FPS switch and Low effects gets 30 FPS and Low graphics")
+	var cf2 := ConfigFile.new()
+	cf2.set_value("options", "fps_30", true)
+	cf2.set_value("options", "fps_cap", 90)
+	cf2.set_value("options", "gfx_quality", 2)
+	cf2.save(Settings.path)
+	Settings.load_settings()
+	t.check(Settings.fps_cap() == 90 and Settings.gfx_quality() == 2, "once the new options are saved, they win")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.path))
+	Settings.path = p0
+	Settings.values = keep.duplicate()
+	Settings.values["fps_cap"] = 60
+	Settings.values["gfx_quality"] = 1
+	Settings.apply()
+	# in a dive
+	Game.contract = Balance.CONTRACTS[0].duplicate()
+	Game.contract["seed"] = 7
+	await _settle(t)
+	Game.start_run()
+	await _settle(t)
+	await t._frames(10)
+	var mine: Node = Game.current
+	var pl: Player = mine.player
+	var lamp: PointLight2D = pl.lamp
+	var base_scale: float = lamp.texture_scale
+	Settings.set_value("gfx_quality", 0)
+	await t._frames(3)
+	var far_shown := false
+	for entry in mine.parallax:
+		if int(entry[1]) == 0 and (entry[2] as Parallax2D).visible:
+			far_shown = true
+	t.check(not pl.fill.visible and not mine.fore_layer.visible and not far_shown, "Low: no fill light, no foreground cables, no far background layer")
+	t.check(lamp.texture_scale < base_scale and Fx.emitters_for("burst", 999) == 1, "Low: smaller lights, one emitter per burst")
+	Settings.set_value("gfx_quality", 2)
+	await t._frames(3)
+	t.check(pl.fill.visible and mine.fore_layer.visible and lamp.texture_scale > base_scale and Fx.emitters_for("burst", 999) == 4, "High: everything on, wider lights, up to four emitters per burst")
+	Settings.set_value("gfx_quality", 1)
+	await t._frames(3)
+	t.check(is_equal_approx(lamp.texture_scale, base_scale) and Fx.emitters_for("burst", 999) == 3, "Medium is the game's own look, switched back live")
+	# 120 FPS with interpolation: the camera follows the digger as it is drawn
+	Settings.set_value("fps_cap", 120)
+	pl.input_override = {"x": 1.0}
+	var worst := 0.0
+	for k in 60:
+		await t._frames(1)
+		var drawn: Vector2 = pl.drawn_position()
+		worst = maxf(worst, absf(mine.camera.global_position.x - mine._look.x - drawn.x))
+	pl.input_override = {}
+	t.check(t.get_tree().physics_interpolation and worst < 2.0, "at 120 FPS the camera tracks the smoothed digger (off by %.2f px at most)" % worst)
+	Settings.set_value("fps_cap", 60)
+	Settings.values = keep.duplicate()
+	Settings.values["fps_cap"] = 60
+	Settings.values["gfx_quality"] = 1
 	Settings.apply()
 	Game.goto("title", true)
 	await _settle(t)

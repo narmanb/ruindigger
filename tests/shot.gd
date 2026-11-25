@@ -275,7 +275,7 @@ func _process(_d: float) -> void:
 	if mine and args.has("charge") and frame == 40:
 		mine.player.input_override = {"charge_just": true, "x": 0.0}
 	if frame == 2:
-		for k in ["move_control", "touch_mode", "camera_zoom", "stick_size", "gadget_bar_open", "touch_scale", "touch_diag", "game_feel"]:
+		for k in ["move_control", "touch_mode", "camera_zoom", "stick_size", "gadget_bar_open", "touch_scale", "touch_diag", "game_feel", "gfx_quality"]:
 			if args.has(k):
 				Settings.values[k] = Settings._sanitize(k, float(args[k]) if k in ["camera_zoom", "stick_size", "touch_scale"] else int(args[k]))
 		Settings.changed.emit()

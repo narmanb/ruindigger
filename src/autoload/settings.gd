@@ -11,8 +11,8 @@ const DEFAULTS := {
 	"music_volume": 0.6,
 	"screen_shake": 0.8,
 	"reduced_flashing": false,
-	"low_effects": false,
-	"fps_30": false,
+	"gfx_quality": 1,         # 0 low, 1 medium, 2 high (see Balance.GFX); replaced "low_effects"
+	"fps_cap": 60,            # one of FPS_CHOICES; replaced "fps_30"
 	"touch_mode": 0,        # 0 auto, 1 always, 2 never
 	"touch_scale": 1.0,
 	"touch_opacity": 0.65,
@@ -56,7 +56,11 @@ const RANGES := {
 	"stick_deadzone": [0.05, 0.35],
 	"sand_physics": [0, 3],
 	"game_feel": [0, 3],
+	"gfx_quality": [0, 2],
+	"fps_cap": [30, 120],
 }
+
+const FPS_CHOICES := [30, 45, 60, 90, 120]
 
 var values: Dictionary = DEFAULTS.duplicate()
 var path: String = PATH
@@ -112,6 +116,11 @@ func load_settings() -> void:
 	for key in DEFAULTS.keys():
 		if cfg.has_section_key("options", key):
 			values[key] = _sanitize(key, cfg.get_value("options", key))
+	# older settings files: the 30 FPS switch and Low effects mode carry over
+	if not cfg.has_section_key("options", "fps_cap") and cfg.get_value("options", "fps_30", false) == true:
+		values["fps_cap"] = 30
+	if not cfg.has_section_key("options", "gfx_quality") and cfg.get_value("options", "low_effects", false) == true:
+		values["gfx_quality"] = 0
 
 
 func save_settings() -> void:
@@ -122,7 +131,12 @@ func save_settings() -> void:
 
 
 func apply() -> void:
-	Engine.max_fps = 30 if values["fps_30"] else 0
+	var fps := fps_cap()
+	Engine.max_fps = fps
+	# above the 60 physics steps a second, draw movement smoothly between them
+	# (otherwise the extra frames would just repeat)
+	if is_inside_tree():
+		get_tree().physics_interpolation = fps > Engine.physics_ticks_per_second
 	for bus in [["Master", "master_volume"], ["SFX", "sfx_volume"], ["Music", "music_volume"]]:
 		var idx := AudioServer.get_bus_index(bus[0])
 		if idx >= 0:
@@ -158,8 +172,27 @@ func reduced_flashing() -> bool:
 	return values["reduced_flashing"]
 
 
+## Low graphics quality: what "Low effects mode" used to be, and a bit more.
 func low_effects() -> bool:
-	return values["low_effects"]
+	return gfx_quality() == 0
+
+
+func gfx_quality() -> int:
+	return clampi(int(values.get("gfx_quality", 1)), 0, Balance.GFX.size() - 1)
+
+
+## A number from the graphics quality table (Balance.GFX).
+func gfx(key: String) -> float:
+	return float(Balance.GFX[gfx_quality()].get(key, 1.0))
+
+
+func fps_cap() -> int:
+	var v := int(values.get("fps_cap", 60))
+	var best: int = 60
+	for c: int in FPS_CHOICES:
+		if absi(c - v) < absi(best - v):
+			best = c
+	return best
 
 
 ## Game Feel Intensity: 0 off, 1 subtle, 2 normal, 3 strong.

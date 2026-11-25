@@ -293,6 +293,20 @@ const FEEL := [
 	{"recoil": 2.2, "squash": 0.14, "decor": 1.0, "impact": 1.4, "flash": 1.25},
 ]
 const FEEL_NAMES := ["Off", "Subtle", "Normal", "Strong"]
+
+## Graphics quality (Settings): Low for weak phones, Medium is the game's own
+## look, High for strong ones. Presentation only.
+##   light     lamp and flash light size (smaller lights cost less to draw)
+##   fill      the digger's second, soft fill light
+##   far_bg    the far background layer and the foreground cables
+##   emitters  most pooled emitters one particle burst may use
+##   decor     share of the per-frame budget for decorative extras
+const GFX := [
+	{"light": 0.8, "fill": 0.0, "far_bg": 0.0, "emitters": 1.0, "decor": 0.0},
+	{"light": 1.0, "fill": 1.0, "far_bg": 1.0, "emitters": 3.0, "decor": 1.0},
+	{"light": 1.15, "fill": 1.0, "far_bg": 1.0, "emitters": 4.0, "decor": 2.0},
+]
+const GFX_NAMES := ["Low", "Medium", "High"]
 const RECOIL_SOFT := 0.45            # share of "recoil" a sediment hit gives
 const RECOIL_BLOCKED := 1.2          # rock the drill can't cut pushes back hardest
 const RECOIL_BREAK := 0.8            # the snap when a cell gives way
@@ -308,7 +322,7 @@ const LAND_SHAKE := 0.12
 const ROCKFALL_SHAKE := 0.14         # per frame in which falling rock lands near you (once per frame)
 const BREACH_SHAKE := 0.18           # a strong water breach near you
 const BREACH_COOLDOWN := 1.5         # s between breach accents
-const FX_DECOR_PER_FRAME := 6        # decorative emitters started per frame, at most
+const FX_DECOR_PER_FRAME := 6        # decorative emitters started per frame, at most (x Graphics quality "decor")
 const FX_MARGIN := 48.0              # px beyond the screen edge still counted as on screen
 
 # --- Explosives (bought and upgraded at the Demolitions counter) ---

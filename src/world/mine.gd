@@ -75,6 +75,7 @@ func _ready() -> void:
 	glow_root.add_child(compass)
 	grid.cell_changed.connect(_on_cell_changed)
 	Perf.begin(self)
+	apply_gfx()
 	pressure = Pressure.new()
 	pressure.mine = self
 	add_child(pressure)
@@ -196,8 +197,31 @@ func _build_world() -> void:
 	camera.limit_right = grid.w * C
 	camera.limit_bottom = grid.h * C
 	add_child(camera)
+	camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF   # it follows the smoothed digger itself
 	_apply_zoom()
 	Settings.changed.connect(_apply_zoom)
+	Settings.changed.connect(apply_gfx)
+	fore_layer = fore
+
+
+var fore_layer: Parallax2D
+
+
+## Graphics quality, applied now and whenever Settings change: lamp sizes, the
+## digger's fill light, the far background layer and the foreground cables.
+## (Flash lights and particles read the setting as they go.)
+func apply_gfx() -> void:
+	var k := Settings.gfx("light")
+	for l in find_children("*", "PointLight2D", true, false):
+		if l.get_parent() is Fx or (player and l == player.lamp):
+			continue                   # flashes size themselves; the digger's lamp is sized every frame
+		if not l.has_meta("base_scale"):
+			l.set_meta("base_scale", l.texture_scale)
+		l.texture_scale = float(l.get_meta("base_scale")) * k
+	if player and player.fill:
+		player.fill.visible = Settings.gfx("fill") > 0.0
+	if fore_layer:
+		fore_layer.visible = Settings.gfx("far_bg") > 0.0
 
 
 func _additive() -> CanvasItemMaterial:
@@ -556,6 +580,7 @@ func _spawn_player() -> void:
 	add_child(player)
 	player.setup_stats()
 	player.died.connect(_on_player_died)
+	player.reset_physics_interpolation()
 	player.hurt.connect(func(_a: float) -> void: _hurt_ago = 0.0)
 	camera.global_position = player.global_position
 	camera.reset_smoothing()
@@ -808,7 +833,10 @@ func _camera(delta: float) -> void:
 	elif player.velocity.y > 200.0:
 		want.y = view.y * 0.22
 	_look = _look.lerp(want, clampf(delta * 3.5, 0.0, 1.0))
-	camera.global_position = player.global_position + _look + Vector2(0, -10)
+	# with physics interpolation (frame rate above 60) follow where the digger
+	# is drawn, not where its last physics step left it, or it would judder
+	var ppos: Vector2 = player.drawn_position()
+	camera.global_position = ppos + _look + Vector2(0, -10)
 	trauma = maxf(0.0, trauma - delta * 1.6)
 	_rockfall_flush()
 	# a smooth wobble (noise, not a fresh random jump every frame), capped;
@@ -922,7 +950,7 @@ func _atmosphere(delta: float) -> void:
 		var node: Parallax2D = entry[2]
 		var want := 1.0 if int(entry[0]) == s else 0.0
 		node.modulate.a = move_toward(node.modulate.a, want, delta * 1.5)
-		node.visible = node.modulate.a > 0.01
+		node.visible = node.modulate.a > 0.01 and (int(entry[1]) == 1 or Settings.gfx("far_bg") > 0.0)
 	if s != current_stratum:
 		current_stratum = s
 		Audio.music(MUSIC[s])
@@ -1345,7 +1373,7 @@ func _greedy_light() -> void:
 		return
 	if _lamp_base < 0.0:
 		_lamp_base = player.lamp.texture_scale
-	player.lamp.texture_scale = _lamp_base * (Balance.GREEDY_LIGHT if Game.has_relic("greedy") else 1.0)
+	player.lamp.texture_scale = _lamp_base * (Balance.GREEDY_LIGHT if Game.has_relic("greedy") else 1.0) * Settings.gfx("light")
 
 
 var _echo_n := 0

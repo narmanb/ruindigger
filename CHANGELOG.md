@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.21.2-layout
+**Graphics options** (on the layout experiment branch)
+- **Frame rate** (Settings): 30, 45, 60, 90 or 120 FPS. 60 is the default. It replaces the "30 FPS cap" switch; if you had that on, you get 30.
+  - Before, there was no cap at all: a 120 Hz phone drew 120 frames, but things only moved 60 times a second, so half the frames were repeats. The default is now 60, which matches the game.
+  - At 90 and 120, movement is drawn smoothly between physics steps (physics interpolation), and the camera follows that smoothed position, so the extra frames really are smoother. Your screen has to support them; on a 60 Hz screen you'll still see 60.
+- **Graphics quality** (Settings): Low, Medium (the default, the game as it looks now) or High. It replaces "Low effects mode"; if you had that on, you get Low.
+  - **Low** (slower phones): fewer particles (one emitter per burst, no decorative extras), smaller lights, no second "fill" light on the digger, and no far background layer or foreground cables. On a desktop test it drew frames about a third faster.
+  - **High** (strong phones): bursts can use one more particle emitter, twice the room for decorative extras, and wider, softer lights.
+- The performance report now records the frame rate, graphics quality and Game Feel setting.
+
 ## 0.21.1-layout
 **The Shielded Brute, fixed and reworked** (on the layout experiment branch)
 - **Its charge works now.** It ran about 3 cells and gave up: a one-frame "am I on the ground?" glitch cancelled every charge after a third of a second. It now runs its full length (about 15 cells in 1.6 s) unless it hits you, a wall or an edge.
